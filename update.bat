@@ -90,20 +90,30 @@ exit /b 0
 
 :npmok
 if not exist "node_modules\.bin\wrangler.cmd" (
-  echo  구성 요소 설치 중... (최초 1회만)
-  call npm install --no-audit --no-fund >nul 2>nul
+  echo  구성 요소 설치 중... (최초 1회만, 1~2분)
+  call npm install --no-audit --no-fund > "%TEMP%\rollbook-npm.log" 2>&1
+)
+if not exist "node_modules\.bin\wrangler.cmd" (
+  echo.
+  echo  [오류] 구성 요소 설치에 실패했습니다. 아래 로그를 캡처해서 알려주세요:
+  echo  ──────────────────────────────────────
+  type "%TEMP%\rollbook-npm.log"
+  echo  ──────────────────────────────────────
+  pause
+  exit /b 1
 )
 
-REM 서버가 뜨면 브라우저를 여는 숨김 작업 (별도 창 없음)
-echo $ok=$false; for($i=0;$i -lt 180;$i++) { try { $null = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%SITE%/api/status'; $ok=$true; break } catch { Start-Sleep -Seconds 1 } }; if($ok) { Start-Process '%SITE%' }> "%TEMP%\rollbook-open.ps1"
-powershell -NoProfile -Command "Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',\"$env:TEMP\rollbook-open.ps1\""
+REM 로딩 페이지를 먼저 연다 — 서버가 켜지면 페이지가 스스로 사이트로 이동
+start "" "%WORKDIR%loading.html"
 
 echo.
-echo  서버를 시작합니다. 잠시 후 브라우저가 자동으로 열립니다.
+echo  서버를 시작합니다. 브라우저의 "시작 중" 화면이 곧 사이트로 바뀝니다.
 echo   - 출석 체크: %SITE%   ·  관리자: %SITE%/admin
 echo   - 종료: 이 창을 닫거나 Ctrl+C
 echo.
-call npx wrangler dev --port 8787
+call npx --yes wrangler dev --port 8787
+echo.
+echo  서버가 종료되었습니다. 위에 오류가 보이면 캡처해서 알려주세요.
 pause
 exit /b 0
 
