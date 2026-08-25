@@ -75,7 +75,7 @@
     camState.className = 'stag';
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 1280 } },
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       });
       video.srcObject = stream;
@@ -100,27 +100,46 @@
   });
 
   // ── 스캔 루프 ────────────────────────────────────────
+  // 작은 QR 도 잡히도록 두 전략을 번갈아 쓴다:
+  //  A) 전체 화면을 640px 로 축소해 디코딩 (크고 가까운 코드)
+  //  B) 중앙 프레임 영역을 원본 해상도로 잘라 디코딩 (작거나 먼 코드)
+  let cropPass = false;
   async function tick(now) {
     if (!stream || !stream.active) return;
     requestAnimationFrame(tick);
     if (busy || video.readyState !== video.HAVE_ENOUGH_DATA) return;
     if (now - lastDecodeAt < DECODE_INTERVAL) return;
     lastDecodeAt = now;
+    cropPass = !cropPass;
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    let sx = 0, sy = 0, sw = vw, sh = vh, target = 640;
+    if (cropPass) {
+      // 화면 중앙의 스캔 프레임 영역 (짧은 변의 60%) 을 원본 해상도로
+      const side = Math.floor(Math.min(vw, vh) * 0.6);
+      sx = Math.floor((vw - side) / 2);
+      sy = Math.floor((vh - side) / 2);
+      sw = sh = side;
+      target = 800;
+    }
+    const scale = Math.min(target / sw, 1);
+    canvas.width = Math.round(sw * scale);
+    canvas.height = Math.round(sh * scale);
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
     let text = null;
     if (detector) {
       try {
-        const codes = await detector.detect(video);
+        const codes = await detector.detect(canvas);
         if (codes.length) text = codes[0].rawValue;
       } catch {
         detector = null; // 실패 시 jsQR 로 전환
       }
     }
     if (text === null && typeof jsQR === 'function') {
-      const scale = 480 / Math.max(video.videoWidth, 1);
-      canvas.width = Math.round(video.videoWidth * Math.min(scale, 1));
-      canvas.height = Math.round(video.videoHeight * Math.min(scale, 1));
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
       if (found) text = found.data;
