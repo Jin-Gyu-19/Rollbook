@@ -1,12 +1,16 @@
 @echo off
 REM ═══════════════════════════════════════════════════════════
-REM  Rollbook 업데이트 실행파일
-REM  더블클릭하면 클라우드(GitHub)의 최신 파일을 이 폴더로 받아옵니다.
-REM   - 처음 실행: 전체 다운로드
-REM   - 이후 실행: 바뀐 파일 갱신 + 새 파일 다운로드
-REM  필요한 것: Git (https://git-scm.com/download/win)
+REM  Rollbook 실행파일
+REM  더블클릭 한 번으로:
+REM   1) 클라우드(GitHub)의 최신 파일 다운로드/갱신
+REM   2) 로컬 서버 자동 시작
+REM   3) 브라우저에서 사이트 자동 열기 (http://localhost:8787)
+REM  필요한 것: Git + Node.js LTS
 REM ═══════════════════════════════════════════════════════════
 chcp 65001 >nul
+
+REM 브라우저 오프너 모드: 서버가 응답할 때까지 기다렸다가 사이트를 연다
+if /i "%~1"=="--open" goto opener
 
 REM 이 파일 자신도 업데이트로 덮어써질 수 있으므로, 임시 복사본에서 재실행
 if /i not "%~1"=="--relaunched" (
@@ -23,7 +27,7 @@ set "BRANCH=claude/qr-attendance-system-diehqy"
 cd /d "%WORKDIR%"
 echo.
 echo  ┌──────────────────────────────────────┐
-echo  │   Rollbook — 클라우드 파일 업데이트   │
+echo  │       Rollbook — 업데이트 + 실행      │
 echo  └──────────────────────────────────────┘
 echo   폴더   : %WORKDIR%
 echo   브랜치 : %BRANCH%
@@ -50,7 +54,7 @@ git checkout -f -B "%BRANCH%" "origin/%BRANCH%"
 if errorlevel 1 goto fetchfail
 echo.
 echo  [완료] 전체 파일을 내려받았습니다.
-goto deps
+goto serve
 
 REM ── 이후 실행: 갱신 ───────────────────────────────────────
 :update
@@ -79,36 +83,51 @@ echo.
 echo  [완료] 최신 버전으로 업데이트되었습니다.
 git log -1 --format="  최신 변경: %%s (%%cd)" --date=format:"%%Y-%%m-%%d %%H:%%M"
 
-REM ── 의존성 설치 + 로컬 서버 실행 안내 ─────────────────────
-:deps
+REM ── 서버 자동 시작 + 브라우저 자동 열기 ───────────────────
+:serve
 echo.
 where npm >nul 2>nul
 if errorlevel 1 (
-  echo  [안내] Node.js 가 없어 로컬 서버는 실행할 수 없습니다.
-  echo         테스트하려면 https://nodejs.org 에서 LTS 버전을 설치해 주세요.
+  echo  [오류] Node.js 가 설치되어 있지 않아 서버를 시작할 수 없습니다.
+  echo         https://nodejs.org 에서 LTS 버전을 설치한 뒤 다시 실행해 주세요.
   echo.
   pause
-  exit /b 0
+  exit /b 1
 )
 
-echo  필요한 구성 요소를 설치하는 중... (잠시 걸릴 수 있습니다)
+echo  필요한 구성 요소를 설치하는 중... (처음에는 잠시 걸릴 수 있습니다)
 call npm install --no-audit --no-fund >nul 2>nul
 
 echo.
-choice /c YN /m "  로컬 테스트 서버를 바로 시작할까요? (Y=시작 / N=종료)"
-if errorlevel 2 (
-  echo.
-  echo  나중에 시작하려면 이 폴더에서 `npm run dev` 를 실행하세요.
-  pause
-  exit /b 0
-)
+echo  서버를 시작합니다. 잠시 후 브라우저가 자동으로 열립니다.
+echo   - 출석 체크  : http://localhost:8787
+echo   - 관리자     : http://localhost:8787/admin
+echo   - 종료하려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
+echo.
 
-echo.
-echo  서버를 시작합니다 — 브라우저에서 http://localhost:8787 을 여세요.
-echo  (관리자 페이지: http://localhost:8787/admin · 종료: Ctrl+C)
-echo.
+REM 서버가 뜨는 것을 기다렸다가 브라우저를 여는 백그라운드 창 실행
+start "" /min "%TEMP%\rollbook-update.bat" --open
+
 call npx wrangler dev
 pause
+exit /b 0
+
+REM ── 오프너: 서버 응답 대기 후 브라우저 열기 ───────────────
+:opener
+where curl >nul 2>nul
+if errorlevel 1 (
+  timeout /t 8 /nobreak >nul
+  start "" http://localhost:8787
+  exit /b 0
+)
+for /l %%i in (1,1,90) do (
+  curl -s -o nul http://localhost:8787/api/status 2>nul
+  if not errorlevel 1 (
+    start "" http://localhost:8787
+    exit /b 0
+  )
+  timeout /t 1 /nobreak >nul
+)
 exit /b 0
 
 :fetchfail
