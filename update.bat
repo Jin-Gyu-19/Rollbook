@@ -87,14 +87,43 @@ REM ── 서버 자동 시작 + 브라우저 자동 열기 ──────�
 :serve
 echo.
 where npm >nul 2>nul
-if errorlevel 1 (
-  echo  [오류] Node.js 가 설치되어 있지 않아 서버를 시작할 수 없습니다.
-  echo         https://nodejs.org 에서 LTS 버전을 설치한 뒤 다시 실행해 주세요.
-  echo.
-  pause
-  exit /b 1
+if not errorlevel 1 goto npmok
+
+REM 설치는 됐지만 PATH 에 아직 안 잡힌 경우 (설치 직후)
+if exist "%ProgramFiles%\nodejs\npm.cmd" (
+  set "PATH=%ProgramFiles%\nodejs;%PATH%"
+  goto npmok
 )
 
+echo  [안내] 서버 실행에 필요한 Node.js 가 아직 설치되어 있지 않습니다.
+choice /c YN /m "  지금 자동으로 설치할까요? (Y=자동 설치 / N=직접 설치)"
+if errorlevel 2 goto nodemanual
+
+where winget >nul 2>nul
+if errorlevel 1 goto nodemanual
+
+echo.
+echo  Node.js LTS 를 설치하는 중입니다... (관리자 확인 창이 뜨면 "예"를 눌러 주세요)
+winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements
+if exist "%ProgramFiles%\nodejs\npm.cmd" (
+  set "PATH=%ProgramFiles%\nodejs;%PATH%"
+  echo  [완료] Node.js 설치가 끝났습니다.
+  goto npmok
+)
+echo.
+echo  [안내] 설치가 끝났습니다. 이 창을 닫고 update.bat 을 한 번 더 실행해 주세요.
+pause
+exit /b 0
+
+:nodemanual
+echo.
+echo  브라우저에서 Node.js 다운로드 페이지를 엽니다.
+echo  LTS 버전을 설치한 뒤 update.bat 을 다시 실행해 주세요.
+start "" https://nodejs.org/ko
+pause
+exit /b 0
+
+:npmok
 echo  필요한 구성 요소를 설치하는 중... (처음에는 잠시 걸릴 수 있습니다)
 call npm install --no-audit --no-fund >nul 2>nul
 
