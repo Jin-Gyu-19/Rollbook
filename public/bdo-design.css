@@ -1,0 +1,203 @@
+/* ═══════════════════════════════════════════════════════════════════
+   BDO 클린 인디고 디자인 시스템 — 스타터 스타일시트
+   기준: BDO Survey System (bdosurvey) 의 clean 테마
+   사용: 새 앱의 첫 CSS 로 그대로 불러온 뒤, 앱 고유 스타일을 뒤에 추가
+   서체: PretendardVariable.woff2 를 같은 경로에 두거나 경로를 수정할 것
+   ═══════════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/PretendardVariable.woff2') format('woff2-variations');
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ── 브랜드 ── */
+  --bdo-red: #E4002B;        /* BDO 로고 전용 — UI 요소에는 쓰지 않는다 */
+
+  /* ── 핵심 팔레트 ── */
+  --primary: #4F46E5;        /* 인디고: 주 버튼·링크·포커스·강조 */
+  --primary-dark: #4338CA;   /* 주 버튼 hover */
+  --primary-soft: #EEF2FF;   /* 인디고 연한 면: 선택 상태·번호 배지 배경 */
+  --danger: #DC2626;         /* 삭제·오류 */
+  --danger-dark: #B91C1C;
+
+  /* ── 면과 잉크 ── */
+  --bg: #F9FAFB;             /* 페이지 배경 */
+  --card: #FFFFFF;           /* 카드 면 */
+  --surface-2: #F3F4F6;      /* 보조 면: 보조 버튼·비활성 입력·답변 블록 */
+  --line: #E5E7EB;           /* 테두리·구분선 */
+  --text: #111827;           /* 본문 잉크 */
+  --muted: #6B7280;          /* 보조 텍스트 */
+
+  /* ── 상태 색 (배경/글자 짝으로만 사용) ── */
+  --ok-bg: #E6F2E9;   --ok-fg: #22713C;    /* 진행 중·성공 */
+  --warn-bg: #FEF3C7; --warn-fg: #92400E;  /* 마감 임박·경고 (테두리 #FDE68A) */
+  --err-bg: #FEE2E2;  --err-fg: #A04040;   /* 마감·오류 */
+
+  /* ── 데이터 시각화: 인디고 단색 램프 (연함 → 진함) ── */
+  --ramp-1: #C7D2FE; --ramp-2: #A5B4FC; --ramp-3: #818CF8; --ramp-4: #6366F1; --ramp-5: #4F46E5;
+
+  /* ── 모양 ── */
+  --radius: 24px;                                  /* 카드 */
+  --radius-input: 12px;                            /* 입력·버튼 */
+  --shadow-sm: 0 10px 30px rgba(0, 0, 0, .04);     /* 카드 기본 */
+  --shadow-md: 0 16px 40px rgba(0, 0, 0, .09);     /* 모달·떠 있는 면 */
+  --hover-shadow: 0 4px 14px rgba(79, 70, 229, .18);
+  --focus-ring: 0 0 0 3px rgba(79, 70, 229, .15);
+}
+
+/* ── 기본 ─────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── 타이포그래피 ─────────────────────────────────────── */
+h1 { font-size: 23px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.3; margin: 0 0 6px; color: var(--text); }
+h2 { font-size: 17px; font-weight: 800; letter-spacing: -0.015em; margin: 0 0 12px; }
+h3 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 10px; }
+p { margin: 6px 0; }
+.muted { color: var(--muted); font-size: 13px; }
+.hint { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.hidden { display: none !important; }
+a { color: var(--primary); }
+
+/* ── 상단바 ───────────────────────────────────────────── */
+.topbar {
+  background: #fff; border-bottom: 1px solid var(--line);
+  padding: 0 24px; height: 60px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 10;
+}
+.topbar .brand { font-weight: 800; font-size: 16px; letter-spacing: -0.02em; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 7px; }
+.topbar .brand b { color: var(--bdo-red); font-weight: 900; font-size: 21px; line-height: 1; font-family: 'Arial Black', 'Pretendard', system-ui, sans-serif; }
+
+/* ── 레이아웃 ─────────────────────────────────────────── */
+.container { max-width: 860px; margin: 28px auto 90px; padding: 0 18px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 26px 28px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── 입력 ─────────────────────────────────────────────── */
+label { display: block; margin-bottom: 15px; font-weight: 600; font-size: 13.5px; }
+input, textarea, select {
+  width: 100%; margin-top: 6px; padding: 11px 14px;
+  border: 1px solid var(--line); border-radius: var(--radius-input);
+  font: inherit; font-weight: 400; background: #fff; color: var(--text);
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: var(--primary); box-shadow: var(--focus-ring);
+}
+input:disabled, select:disabled { background: var(--surface-2); color: var(--muted); }
+
+/* ── 버튼 ─────────────────────────────────────────────── */
+button {
+  font: inherit; font-weight: 600; font-size: 13.5px;
+  padding: 9px 16px; border-radius: var(--radius-input);
+  border: 1px solid transparent; cursor: pointer;
+  background: var(--surface-2); color: var(--muted);
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+button:not(:disabled):hover { background: #E5E7EB; color: var(--text); }
+button:active { transform: translateY(1px); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+button.primary { background: var(--primary); color: #fff; }
+button.primary:not(:disabled):hover { background: var(--primary-dark); color: #fff; box-shadow: 0 4px 14px rgba(79, 70, 229, .3); }
+button.danger { background: var(--danger); color: #fff; }
+button.danger:not(:disabled):hover { background: var(--danger-dark); color: #fff; box-shadow: 0 4px 14px rgba(220, 38, 38, .3); }
+button.ghost { background: transparent; color: var(--muted); }
+button.ghost:not(:disabled):hover { background: var(--surface-2); color: var(--text); }
+button.small { padding: 5px 12px; font-size: 12.5px; border-radius: 10px; }
+
+/* ── 탭 ───────────────────────────────────────────────── */
+.tabs { display: inline-flex; gap: 4px; background: var(--surface-2); border-radius: 14px; padding: 4px; margin-bottom: 18px; }
+.tabs button { background: transparent; border: none; padding: 8px 16px; border-radius: 10px; color: var(--muted); }
+.tabs button:hover { background: rgba(17, 24, 39, .05); }
+.tabs button.active { color: var(--primary); background: #fff; box-shadow: 0 3px 12px rgba(17, 24, 39, .1); }
+
+/* ── 배지 (알약) ──────────────────────────────────────── */
+.stag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; font-weight: 700; padding: 2px 9px;
+  border-radius: 999px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--muted); white-space: nowrap;
+}
+.stag.ok { background: var(--ok-bg); border-color: transparent; color: var(--ok-fg); }
+.stag.warn { background: var(--warn-bg); border-color: #FDE68A; color: var(--warn-fg); }
+.stag.err { background: var(--err-bg); border-color: transparent; color: var(--err-fg); }
+.stag.who { background: var(--primary-soft); border-color: transparent; color: var(--primary); }
+
+/* ── 표 ───────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
+tr.clickable { cursor: pointer; transition: background .15s; }
+tr.clickable:hover { background: var(--bg); }
+
+/* ── 수평 막대 차트 ───────────────────────────────────── */
+.chart { display: flex; flex-direction: column; gap: 2px; }
+.bar-row { display: flex; align-items: center; gap: 12px; font-size: 13px; padding: 3px 4px; border-radius: 8px; }
+.bar-row:hover { background: var(--surface-2); }
+.bar-label { flex: 0 0 190px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { flex: 1; height: 20px; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.bar-fill { height: 20px; border-radius: 0 4px 4px 0; min-width: 3px; background: var(--primary); }
+.bar-value { min-width: 74px; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar-pct { color: var(--muted); font-weight: 400; margin-left: 5px; }
+
+/* ── 안내·경고 박스 ───────────────────────────────────── */
+.note-warn {
+  background: #FFFBEB; border: 1px solid #FDE68A; color: var(--warn-fg);
+  border-radius: 12px; padding: 11px 14px; font-size: 12.5px; line-height: 1.55;
+}
+.empty { text-align: center; padding: 34px 16px; color: var(--muted); }
+.empty .icon { font-size: 30px; display: block; margin-bottom: 8px; opacity: .55; }
+
+/* ── 토스트 ───────────────────────────────────────────── */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  background: var(--text); color: #fff; font-size: 13.5px; font-weight: 600;
+  padding: 11px 20px; border-radius: 12px; box-shadow: var(--shadow-md);
+  opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 100;
+}
+.toast.show { opacity: 1; }
+.toast.error { background: var(--danger); }
+
+/* ── 진행바 ───────────────────────────────────────────── */
+.step-track { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.step-fill { height: 100%; background: var(--primary); border-radius: 999px; transition: width .3s ease; }
+
+/* ── 모달 ─────────────────────────────────────────────── */
+.modal { position: fixed; inset: 0; background: rgba(17, 24, 39, .45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+.modal-body { background: #fff; border-radius: var(--radius); padding: 26px 28px; max-width: 640px; width: 100%; max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+
+/* ── 화면 전환 ────────────────────────────────────────── */
+@keyframes tab-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.screen-enter { animation: tab-in .3s cubic-bezier(.22, .7, .3, 1) both; }
+
+/* ── 움직임 최소화 선호 시 ────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ── 모바일 ───────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .card { padding: 20px 18px; border-radius: 20px; }
+  .bar-label { flex-basis: 110px; }
+  th, td { padding: 8px 7px; font-size: 12.5px; }
+}

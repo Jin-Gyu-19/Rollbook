@@ -1,0 +1,25 @@
+{
+  // Rollbook — QR 출석부 (Cloudflare Workers + D1)
+  "name": "rollbook",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+
+  // 정적 자산: public/ 폴더. /api/* 는 Worker 가 먼저 처리
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // D1 데이터베이스 — `npm run db:create` 후 출력된 database_id 로 교체할 것
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rollbook-db",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "observability": { "enabled": true }
+}
