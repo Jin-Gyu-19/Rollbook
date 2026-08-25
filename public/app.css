@@ -15,7 +15,8 @@
 
 /* ── 스캐너 화면 (전체화면 카메라) ───────────────────── */
 .scan-full { overflow: hidden; height: 100dvh; }
-.scan-stage { position: fixed; inset: 0; background: #111827; z-index: 0; }
+.scan-full .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; }
+.scan-stage { position: fixed; left: 0; right: 0; top: 60px; bottom: 0; background: #111827; z-index: 0; }
 .scan-stage video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .scan-stage video.mirror { transform: scaleX(-1); } /* 전면 카메라 거울 모드 */
 .scan-frame {
@@ -23,10 +24,15 @@
   pointer-events: none; overflow: hidden;
 }
 .scan-frame .box {
-  width: min(58vmin, 440px); aspect-ratio: 1 / 1; border-radius: 24px;
-  box-shadow: 0 0 0 9999px rgba(17, 24, 39, .45);
-  outline: 2.5px solid rgba(255, 255, 255, .92);
+  position: relative; width: min(56vmin, 420px); aspect-ratio: 1 / 1;
+  border-radius: 24px;
+  box-shadow: 0 0 0 9999px rgba(17, 24, 39, .32);
 }
+.scan-frame .c { position: absolute; width: 44px; height: 44px; border: 4px solid rgba(255, 255, 255, .95); }
+.scan-frame .c.tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 22px; }
+.scan-frame .c.tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 22px; }
+.scan-frame .c.bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 22px; }
+.scan-frame .c.br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 22px; }
 .scan-offline {
   position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px;
   align-items: center; justify-content: center; color: #E5E7EB; font-size: 14px;
@@ -34,38 +40,46 @@
 }
 .scan-offline .icon { font-size: 40px; opacity: .8; }
 
-.scan-top {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 5;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: calc(14px + env(safe-area-inset-top)) 18px 0;
-  pointer-events: none;
+/* 기록 중인 출석부 배너 */
+.sheet-banner {
+  position: fixed; top: 78px; left: 0; right: 0; z-index: 5;
+  display: flex; justify-content: center; padding: 0 18px; pointer-events: none;
 }
-.scan-top a { pointer-events: auto; }
-.scan-chip {
-  display: inline-flex; align-items: center; gap: 7px;
-  background: #fff; border-radius: 14px; padding: 9px 16px;
-  box-shadow: var(--shadow-sm); text-decoration: none;
-  font-weight: 800; font-size: 15px; color: var(--text);
+.sheet-banner a { pointer-events: auto; }
+.sheet-card {
+  background: #fff; border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: var(--shadow-sm); padding: 10px 18px;
+  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+  animation: tab-in .3s cubic-bezier(.22, .7, .3, 1) both;
 }
-.scan-chip .brand-logo { height: 22px; }
-.scan-link { font-size: 13.5px; font-weight: 600; color: var(--muted); transition: color .15s, box-shadow .15s; }
-.scan-link:hover { color: var(--primary); box-shadow: var(--shadow-md); }
+.sheet-card .sheet-title { font-size: 15.5px; font-weight: 800; letter-spacing: -.015em; }
+.sheet-card .sheet-date { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sheet-card.warn { background: #FFFBEB; border-color: #FDE68A; color: var(--warn-fg); font-size: 13px; }
+.mini-btn {
+  display: inline-block; background: var(--primary); color: #fff;
+  font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 10px;
+  text-decoration: none; transition: background .15s;
+}
+.mini-btn:hover { background: var(--primary-dark); }
 
 .scan-bottom {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
   display: flex; justify-content: center;
-  padding: 0 18px calc(22px + env(safe-area-inset-bottom));
+  padding: 0 18px calc(20px + env(safe-area-inset-bottom));
   pointer-events: none;
 }
 .scan-info {
-  pointer-events: auto; background: #fff; border-radius: 20px;
-  box-shadow: var(--shadow-md); padding: 16px 26px 15px;
-  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  pointer-events: auto; background: #fff; border: 1px solid var(--line);
+  border-radius: 20px; box-shadow: var(--shadow-sm); padding: 15px 26px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
   text-align: center; max-width: 480px;
 }
-.scan-info-title { font-size: 17px; font-weight: 800; letter-spacing: -.015em; }
+.scan-info-title { font-size: 16px; font-weight: 800; letter-spacing: -.015em; }
 .scan-info-sub { font-size: 13px; color: var(--muted); }
-.scan-meta { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+
+/* 관리자 → 출석 체크 이동 버튼 */
+.topbar .nav a.nav-cta { background: var(--primary); color: #fff; }
+.topbar .nav a.nav-cta:hover { background: var(--primary-dark); color: #fff; box-shadow: 0 4px 14px rgba(79, 70, 229, .3); }
 
 /* ── 출석 완료 모달 ──────────────────────────────────── */
 .result-modal {

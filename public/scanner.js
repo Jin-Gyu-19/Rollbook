@@ -7,8 +7,7 @@
   const offlineMsg = document.getElementById('cameraOfflineMsg');
   const btnRetry = document.getElementById('btnRetryCamera');
   const camState = document.getElementById('camState');
-  const sheetState = document.getElementById('sheetState');
-  const sheetHint = document.getElementById('sheetHint');
+  const sheetBanner = document.getElementById('sheetBanner');
   const modal = document.getElementById('resultModal');
   const resultIcon = document.getElementById('resultIcon');
   const resultName = document.getElementById('resultName');
@@ -34,18 +33,31 @@
       .catch(() => {});
   }
 
-  // ── 활성 출석부 표시 ─────────────────────────────────
+  // ── 기록 중인 출석부 배너 ────────────────────────────
+  const esc = (s) =>
+    String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  let bannerKey = null; // 같은 내용이면 다시 그리지 않음 (애니메이션 반복 방지)
   async function refreshStatus() {
     try {
       const r = await fetch('/api/status');
       const { activeSheet } = await r.json();
+      const key = activeSheet ? `${activeSheet.id}:${activeSheet.title}:${activeSheet.sheet_date}` : 'none';
+      if (key === bannerKey) return;
+      bannerKey = key;
       if (activeSheet) {
-        sheetState.textContent = `${activeSheet.title} · ${activeSheet.sheet_date}`;
-        sheetState.classList.remove('hidden');
-        sheetHint.textContent = '';
+        sheetBanner.innerHTML = `
+          <div class="sheet-card">
+            <span class="stag ok">기록 중</span>
+            <span class="sheet-title">${esc(activeSheet.title)}</span>
+            <span class="sheet-date">${esc(activeSheet.sheet_date)}</span>
+          </div>`;
       } else {
-        sheetState.classList.add('hidden');
-        sheetHint.textContent = '사용 중인 출석부가 없습니다. 관리자 페이지에서 출석부를 만들어 "사용"으로 지정해 주세요.';
+        sheetBanner.innerHTML = `
+          <div class="sheet-card warn">
+            <span>⚠️ 사용 중인 출석부가 없어 지금은 출석이 기록되지 않습니다</span>
+            <a class="mini-btn" href="/admin">관리자에서 설정</a>
+          </div>`;
       }
     } catch {
       /* 다음 주기에 재시도 */

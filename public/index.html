@@ -10,10 +10,22 @@
 </head>
 <body class="scan-full">
 
+<header class="topbar">
+  <a class="brand" href="/"><img src="/api/logo" class="brand-logo" alt="BDO"> Rollbook</a>
+  <nav class="nav">
+    <a href="/" class="active">출석 체크</a>
+    <a href="/admin">관리자</a>
+  </nav>
+</header>
+
 <!-- 전체화면 카메라 -->
 <div class="scan-stage">
   <video id="video" autoplay muted playsinline></video>
-  <div class="scan-frame"><div class="box"></div></div>
+  <div class="scan-frame">
+    <div class="box">
+      <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+    </div>
+  </div>
   <div class="scan-offline hidden" id="cameraOffline">
     <span class="icon">📷</span>
     <span id="cameraOfflineMsg">카메라를 시작하는 중입니다…</span>
@@ -21,22 +33,15 @@
   </div>
 </div>
 
-<!-- 떠 있는 상단: 브랜드 / 관리자 -->
-<header class="scan-top">
-  <a class="brand scan-chip" href="/"><img src="/api/logo" class="brand-logo" alt="BDO"> Rollbook</a>
-  <a class="scan-chip scan-link" href="/admin">관리자</a>
-</header>
+<!-- 기록 중인 출석부 배너 -->
+<div class="sheet-banner" id="sheetBanner"></div>
 
-<!-- 떠 있는 하단: 안내 + 상태 -->
+<!-- 하단 안내 -->
 <div class="scan-bottom">
   <div class="scan-info">
     <div class="scan-info-title">QR 출석 체크</div>
-    <div class="scan-info-sub">개인 QR 코드를 화면 가운데에 비추면 자동으로 출석 처리됩니다</div>
-    <div class="scan-meta">
-      <span class="stag" id="camState">카메라 준비 중</span>
-      <span class="stag who hidden" id="sheetState"></span>
-    </div>
-    <p class="hint" id="sheetHint" style="margin:0;"></p>
+    <div class="scan-info-sub">개인 QR 코드를 사각형 안에 비추면 자동으로 출석 처리됩니다</div>
+    <span class="stag" id="camState">카메라 준비 중</span>
   </div>
 </div>
 
