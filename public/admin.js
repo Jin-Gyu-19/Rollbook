@@ -338,10 +338,12 @@
   // ═════════════════════════════════════════════════════
   // QR 코드 탭 — qr-code-styling + 로고 삽입
   // ═════════════════════════════════════════════════════
+  const DEFAULT_LOGO = '/bdo-logo.svg'; // 기본은 BDO 로고
+  const storedLogo = localStorage.getItem('rollbook-logo');
   const qrState = {
     dot: 'square',
     color: '#111827',
-    logo: localStorage.getItem('rollbook-logo') || '',
+    logo: storedLogo === 'none' ? '' : (storedLogo || DEFAULT_LOGO),
   };
   let qr = null;
 
@@ -421,6 +423,7 @@
     const has = Boolean(qrState.logo);
     $('logoThumb').classList.toggle('hidden', !has);
     $('btnClearLogo').classList.toggle('hidden', !has);
+    $('btnDefaultLogo').classList.toggle('hidden', qrState.logo === DEFAULT_LOGO);
     if (has) $('logoThumb').src = qrState.logo;
   }
 
@@ -439,6 +442,14 @@
 
   $('btnClearLogo').addEventListener('click', () => {
     qrState.logo = '';
+    $('logoFile').value = '';
+    try { localStorage.setItem('rollbook-logo', 'none'); } catch {}
+    updateLogoUi();
+    renderQr();
+  });
+
+  $('btnDefaultLogo').addEventListener('click', () => {
+    qrState.logo = DEFAULT_LOGO;
     $('logoFile').value = '';
     try { localStorage.removeItem('rollbook-logo'); } catch {}
     updateLogoUi();
