@@ -338,12 +338,13 @@
   // ═════════════════════════════════════════════════════
   // QR 코드 탭 — qr-code-styling + 로고 삽입
   // ═════════════════════════════════════════════════════
-  const DEFAULT_LOGO = '/bdo-logo.svg'; // 기본은 BDO 로고
-  const storedLogo = localStorage.getItem('rollbook-logo');
+  // 회사 로고는 서버(D1)에 저장되어 상단바·스캐너·QR 모두에 적용된다
+  let logoVer = 0;
+  const logoUrl = () => `/api/logo?v=${logoVer}`;
   const qrState = {
     dot: 'square',
     color: '#111827',
-    logo: storedLogo === 'none' ? '' : (storedLogo || DEFAULT_LOGO),
+    useLogo: localStorage.getItem('rollbook-qr-logo') !== 'none', // QR 에 로고 포함 여부
   };
   let qr = null;
 
@@ -379,7 +380,7 @@
       },
       cornersDotOptions: { type: qrState.dot === 'square' ? 'square' : 'dot', color: qrState.color },
       backgroundOptions: { color: '#FFFFFF' },
-      image: qrState.logo || undefined,
+      image: qrState.useLogo ? logoUrl() : undefined,
       imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.35, hideBackgroundDots: true },
     };
 
@@ -420,38 +421,50 @@
   bindSeg('qrColorSeg', 'color');
 
   function updateLogoUi() {
-    const has = Boolean(qrState.logo);
-    $('logoThumb').classList.toggle('hidden', !has);
-    $('btnClearLogo').classList.toggle('hidden', !has);
-    $('btnDefaultLogo').classList.toggle('hidden', qrState.logo === DEFAULT_LOGO);
-    if (has) $('logoThumb').src = qrState.logo;
+    $('logoThumb').classList.toggle('hidden', !qrState.useLogo);
+    if (qrState.useLogo) $('logoThumb').src = logoUrl();
+    $('btnClearLogo').classList.toggle('hidden', !qrState.useLogo);
+    $('btnDefaultLogo').classList.toggle('hidden', qrState.useLogo);
   }
 
+  // 로고 업로드 → 서버 저장 → 모든 화면에 즉시 반영
   $('logoFile').addEventListener('change', () => {
     const file = $('logoFile').files[0];
     if (!file) return;
+    if (file.size > 1024 * 1024) {
+      toast('로고 파일은 1MB 이하로 올려 주세요', true);
+      $('logoFile').value = '';
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => {
-      qrState.logo = reader.result;
-      try { localStorage.setItem('rollbook-logo', qrState.logo); } catch { /* 큰 파일이면 저장 생략 */ }
-      updateLogoUi();
-      renderQr();
+    reader.onload = async () => {
+      try {
+        await api('/api/logo', { method: 'POST', body: JSON.stringify({ dataUrl: reader.result }) });
+        logoVer = Date.now();
+        qrState.useLogo = true;
+        try { localStorage.removeItem('rollbook-qr-logo'); } catch {}
+        document.querySelectorAll('.brand-logo').forEach((el) => { el.src = logoUrl(); });
+        toast('로고가 저장되었습니다 — 모든 화면에 적용됩니다');
+        updateLogoUi();
+        renderQr();
+      } catch (e) {
+        toast(e.message, true);
+      }
     };
     reader.readAsDataURL(file);
   });
 
   $('btnClearLogo').addEventListener('click', () => {
-    qrState.logo = '';
+    qrState.useLogo = false;
     $('logoFile').value = '';
-    try { localStorage.setItem('rollbook-logo', 'none'); } catch {}
+    try { localStorage.setItem('rollbook-qr-logo', 'none'); } catch {}
     updateLogoUi();
     renderQr();
   });
 
   $('btnDefaultLogo').addEventListener('click', () => {
-    qrState.logo = DEFAULT_LOGO;
-    $('logoFile').value = '';
-    try { localStorage.removeItem('rollbook-logo'); } catch {}
+    qrState.useLogo = true;
+    try { localStorage.removeItem('rollbook-qr-logo'); } catch {}
     updateLogoUi();
     renderQr();
   });

@@ -36,6 +36,10 @@ async function ensureSchema(db) {
       checked_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       UNIQUE(sheet_id, member_id)
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )`),
   ]);
   schemaReady = true;
 }
@@ -80,6 +84,41 @@ async function route(request, env, pathname) {
   const db = env.DB;
   const method = request.method;
   const seg = pathname.split('/').filter(Boolean); // ['api', ...]
+
+  // ── 브랜드 로고 (D1 저장, 없으면 기본 SVG) ───────────
+  if (pathname === '/api/logo') {
+    if (method === 'GET') {
+      const row = await db.prepare("SELECT value FROM settings WHERE key = 'brand_logo'").first();
+      const m = row?.value?.match(/^data:([^;,]+);base64,(.+)$/s);
+      if (m) {
+        const bin = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+        return new Response(bin, {
+          headers: { 'content-type': m[1], 'cache-control': 'no-store' },
+        });
+      }
+      const fallback = await env.ASSETS.fetch(new URL('/bdo-logo.svg', request.url));
+      const headers = new Headers(fallback.headers);
+      headers.set('cache-control', 'no-store');
+      return new Response(fallback.body, { status: fallback.status, headers });
+    }
+    if (method === 'POST') {
+      const body = await readBody(request);
+      const dataUrl = body?.dataUrl ?? '';
+      if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(dataUrl)) {
+        return err('이미지 파일(data URL)만 저장할 수 있습니다.');
+      }
+      if (dataUrl.length > 2_000_000) return err('로고 파일이 너무 큽니다. 1MB 이하로 올려 주세요.');
+      await db
+        .prepare("INSERT INTO settings (key, value) VALUES ('brand_logo', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .bind(dataUrl)
+        .run();
+      return json({ ok: true });
+    }
+    if (method === 'DELETE') {
+      await db.prepare("DELETE FROM settings WHERE key = 'brand_logo'").run();
+      return json({ ok: true });
+    }
+  }
 
   // ── 상태 ──────────────────────────────────────────────
   if (pathname === '/api/status' && method === 'GET') {
