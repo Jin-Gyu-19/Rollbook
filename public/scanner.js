@@ -33,6 +33,51 @@
       .catch(() => {});
   }
 
+  // ── 사운드 (Web Audio 합성 — 파일 불필요) ────────────
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    return audioCtx;
+  }
+  // 자동재생 정책 대비: 화면을 한 번이라도 만지면 오디오 활성화
+  document.addEventListener('pointerdown', ensureAudio);
+
+  function tone(ctx, freq, start, dur, peak, type) {
+    const t0 = ctx.currentTime + start;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type || 'sine';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(ctx.destination);
+    o.start(t0);
+    o.stop(t0 + dur + 0.05);
+  }
+
+  function playSound(kind) {
+    const ctx = ensureAudio();
+    if (!ctx || ctx.state !== 'running') return;
+    if (kind === 'ok') {
+      // 띵–동 (하강 차임)
+      tone(ctx, 880, 0, 0.5, 0.3);
+      tone(ctx, 1760, 0, 0.25, 0.08);      // 배음으로 맑게
+      tone(ctx, 659.25, 0.22, 0.7, 0.3);
+      tone(ctx, 1318.5, 0.22, 0.3, 0.08);
+    } else if (kind === 'warn') {
+      // 이미 출석: 짧은 삑삑
+      tone(ctx, 523.25, 0, 0.14, 0.2);
+      tone(ctx, 523.25, 0.2, 0.14, 0.2);
+    } else {
+      // 오류: 낮은 부저
+      tone(ctx, 196, 0, 0.4, 0.18, 'square');
+    }
+  }
+
   // ── 기록 중인 출석부 배너 ────────────────────────────
   const esc = (s) =>
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -182,6 +227,7 @@
   }
 
   function showResult(kind, name, msg) {
+    playSound(kind);
     const marks = { ok: '✓', warn: '!', err: '✕' };
     resultIcon.className = `result-icon ${kind}`;
     resultIcon.textContent = marks[kind];
