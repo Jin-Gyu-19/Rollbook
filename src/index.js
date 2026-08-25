@@ -96,7 +96,7 @@ async function route(request, env, pathname) {
           headers: { 'content-type': m[1], 'cache-control': 'no-store' },
         });
       }
-      const fallback = await env.ASSETS.fetch(new URL('/bdo-logo.svg', request.url));
+      const fallback = await env.ASSETS.fetch(new URL('/bdo-logo.png', request.url));
       const headers = new Headers(fallback.headers);
       headers.set('cache-control', 'no-store');
       return new Response(fallback.body, { status: fallback.status, headers });
