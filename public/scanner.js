@@ -7,7 +7,14 @@
   const offlineMsg = document.getElementById('cameraOfflineMsg');
   const btnRetry = document.getElementById('btnRetryCamera');
   const camState = document.getElementById('camState');
+  const scanPill = document.getElementById('scanPill');
   const sheetBanner = document.getElementById('sheetBanner');
+
+  // 하단 상태 알약: kind = '' | 'ok' | 'err'
+  function setCam(text, kind) {
+    camState.textContent = text;
+    scanPill.className = 'scan-pill' + (kind ? ` ${kind}` : '');
+  }
   const modal = document.getElementById('resultModal');
   const resultIcon = document.getElementById('resultIcon');
   const resultName = document.getElementById('resultName');
@@ -116,8 +123,7 @@
     offline.classList.remove('hidden');
     btnRetry.classList.add('hidden');
     offlineMsg.textContent = '카메라를 시작하는 중입니다…';
-    camState.textContent = '카메라 준비 중';
-    camState.className = 'stag';
+    setCam('카메라 준비 중…', '');
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -129,12 +135,10 @@
       const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
       video.classList.toggle('mirror', settings.facingMode !== 'environment');
       offline.classList.add('hidden');
-      camState.textContent = '스캔 대기 중';
-      camState.className = 'stag ok';
+      setCam('QR 코드를 사각형 안에 비춰 주세요', 'ok');
       requestAnimationFrame(tick);
     } catch (e) {
-      camState.textContent = '카메라 사용 불가';
-      camState.className = 'stag err';
+      setCam('카메라를 사용할 수 없습니다 — 권한을 확인해 주세요', 'err');
       offlineMsg.textContent = '카메라를 켤 수 없습니다. 브라우저의 카메라 권한을 허용해 주세요.';
       btnRetry.classList.remove('hidden');
     }
@@ -200,8 +204,7 @@
     lastCodeAt = t;
 
     busy = true;
-    camState.textContent = '확인 중…';
-    camState.className = 'stag';
+    setCam('확인 중…', '');
     try {
       const r = await fetch('/api/checkin', {
         method: 'POST',
@@ -238,8 +241,7 @@
     modalTimer = setTimeout(() => {
       modal.classList.remove('show');
       busy = false;
-      camState.textContent = '스캔 대기 중';
-      camState.className = 'stag ok';
+      setCam('QR 코드를 사각형 안에 비춰 주세요', 'ok');
     }, MODAL_MS);
   }
 

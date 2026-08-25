@@ -15,8 +15,7 @@
 
 /* ── 스캐너 화면 (전체화면 카메라) ───────────────────── */
 .scan-full { overflow: hidden; height: 100dvh; }
-.scan-full .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; }
-.scan-stage { position: fixed; left: 0; right: 0; top: 60px; bottom: 0; background: #111827; z-index: 0; }
+.scan-stage { position: fixed; inset: 0; background: #111827; z-index: 0; }
 .scan-stage video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .scan-stage video.mirror { transform: scaleX(-1); } /* 전면 카메라 거울 모드 */
 .scan-frame {
@@ -40,12 +39,30 @@
 }
 .scan-offline .icon { font-size: 40px; opacity: .8; }
 
-/* 기록 중인 출석부 배너 */
-.sheet-banner {
-  position: fixed; top: 78px; left: 0; right: 0; z-index: 5;
-  display: flex; justify-content: center; padding: 0 18px; pointer-events: none;
+/* 떠 있는 상단 줄: 로고 · 출석부 배너 · 관리자 */
+.scan-top {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 6;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: calc(16px + env(safe-area-inset-top)) 18px 0;
+  pointer-events: none; flex-wrap: wrap;
 }
+.scan-top a { pointer-events: auto; }
+.scan-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #fff; border-radius: 14px; padding: 9px 16px;
+  box-shadow: var(--shadow-sm); text-decoration: none;
+  font-weight: 800; font-size: 15px; color: var(--text); white-space: nowrap;
+}
+.scan-chip .brand-logo { height: 22px; }
+.scan-link { font-size: 13.5px; font-weight: 600; color: var(--muted); transition: color .15s, box-shadow .15s; }
+.scan-link:hover { color: var(--primary); box-shadow: var(--shadow-md); }
+
+/* 기록 중인 출석부 배너 (상단 중앙) */
+.sheet-banner { flex: 1; display: flex; justify-content: center; min-width: 0; }
 .sheet-banner a { pointer-events: auto; }
+@media (max-width: 640px) {
+  .sheet-banner { order: 3; flex-basis: 100%; margin-top: 10px; }
+}
 .sheet-card {
   background: #fff; border: 1px solid var(--line); border-radius: 16px;
   box-shadow: var(--shadow-sm); padding: 10px 18px;
@@ -62,24 +79,23 @@
 }
 .mini-btn:hover { background: var(--primary-dark); }
 
+/* 하단 상태 알약 (토스트 스타일) */
 .scan-bottom {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
   display: flex; justify-content: center;
-  padding: 0 18px calc(20px + env(safe-area-inset-bottom));
+  padding: 0 18px calc(26px + env(safe-area-inset-bottom));
   pointer-events: none;
 }
-.scan-info {
-  pointer-events: auto; background: #fff; border: 1px solid var(--line);
-  border-radius: 20px; box-shadow: var(--shadow-sm); padding: 15px 26px 14px;
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  text-align: center; max-width: 480px;
+.scan-pill {
+  display: inline-flex; align-items: center; gap: 9px;
+  background: var(--text); color: #fff; font-size: 13.5px; font-weight: 600;
+  padding: 11px 20px; border-radius: 999px; box-shadow: var(--shadow-md);
+  transition: background .15s;
 }
-.scan-info-title { font-size: 16px; font-weight: 800; letter-spacing: -.015em; }
-.scan-info-sub { font-size: 13px; color: var(--muted); }
-
-/* 관리자 → 출석 체크 이동 버튼 */
-.topbar .nav a.nav-cta { background: var(--primary); color: #fff; }
-.topbar .nav a.nav-cta:hover { background: var(--primary-dark); color: #fff; box-shadow: 0 4px 14px rgba(79, 70, 229, .3); }
+.scan-pill .dot { width: 8px; height: 8px; border-radius: 999px; background: #9CA3AF; flex: none; }
+.scan-pill.ok .dot { background: #34D399; }
+.scan-pill.err { background: var(--danger); }
+.scan-pill.err .dot { background: #fff; }
 
 /* ── 출석 완료 모달 ──────────────────────────────────── */
 .result-modal {
