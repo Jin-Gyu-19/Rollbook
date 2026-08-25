@@ -9,9 +9,6 @@ REM  필요한 것: Git + Node.js LTS
 REM ═══════════════════════════════════════════════════════════
 chcp 65001 >nul
 
-REM 브라우저 오프너 모드: 서버가 응답할 때까지 기다렸다가 사이트를 연다
-if /i "%~1"=="--open" goto opener
-
 REM 이 파일 자신도 업데이트로 덮어써질 수 있으므로, 임시 복사본에서 재실행
 if /i not "%~1"=="--relaunched" (
   copy /y "%~f0" "%TEMP%\rollbook-update.bat" >nul
@@ -134,29 +131,11 @@ echo   - 관리자     : http://localhost:8787/admin
 echo   - 종료하려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
 echo.
 
-REM 서버가 뜨는 것을 기다렸다가 브라우저를 여는 백그라운드 창 실행
-start "" /min "%TEMP%\rollbook-update.bat" --open
+REM 서버가 뜨면 브라우저를 여는 백그라운드 작업 (창 없이 이 창 안에서 실행)
+start "" /b powershell -NoProfile -Command "for($i=0;$i -lt 90;$i++){ try { $null = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://localhost:8787/api/status; Start-Process 'http://localhost:8787'; break } catch { Start-Sleep -Seconds 1 } }" >nul 2>nul
 
 call npx wrangler dev
 pause
-exit /b 0
-
-REM ── 오프너: 서버 응답 대기 후 브라우저 열기 ───────────────
-:opener
-where curl >nul 2>nul
-if errorlevel 1 (
-  timeout /t 8 /nobreak >nul
-  start "" http://localhost:8787
-  exit /b 0
-)
-for /l %%i in (1,1,90) do (
-  curl -s -o nul http://localhost:8787/api/status 2>nul
-  if not errorlevel 1 (
-    start "" http://localhost:8787
-    exit /b 0
-  )
-  timeout /t 1 /nobreak >nul
-)
 exit /b 0
 
 :fetchfail
