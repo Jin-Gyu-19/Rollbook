@@ -68,6 +68,9 @@
       });
       video.srcObject = stream;
       await video.play();
+      // 전면 카메라면 미리보기만 거울 모드로 (인식은 원본 영상 사용)
+      const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
+      video.classList.toggle('mirror', settings.facingMode !== 'environment');
       offline.classList.add('hidden');
       camState.textContent = '스캔 대기 중';
       camState.className = 'stag ok';
