@@ -103,19 +103,49 @@ if not exist "node_modules\.bin\wrangler.cmd" (
   exit /b 1
 )
 
-REM 로딩 페이지를 먼저 연다 — 서버가 켜지면 페이지가 스스로 사이트로 이동
-start "" "%WORKDIR%loading.html"
+echo.
+echo  서버를 시작하는 중입니다... (창을 닫지 마세요)
+start "" /b cmd /c "npx --yes wrangler dev --port 8787"
+
+set /a WAITED=0
+:waitsrv
+if %WAITED% geq 120 goto waitfail
+timeout /t 1 /nobreak >nul
+call :probe
+if errorlevel 1 (
+  set /a WAITED+=1
+  goto waitsrv
+)
 
 echo.
-echo  서버를 시작합니다. 브라우저의 "시작 중" 화면이 곧 사이트로 바뀝니다.
-echo   - 출석 체크: %SITE%   ·  관리자: %SITE%/admin
-echo   - 종료: 이 창을 닫거나 Ctrl+C
+echo  [완료] 서버가 켜졌습니다. 브라우저를 엽니다.
+start "" %SITE%
 echo.
-call npx --yes wrangler dev --port 8787
+echo  ┌─────────────────────────────────────────────────┐
+echo  │  실행 중 — 이 창을 닫으면 서버도 함께 꺼집니다  │
+echo  └─────────────────────────────────────────────────┘
+echo    출석 체크: %SITE%
+echo    관리자   : %SITE%/admin
 echo.
-echo  서버가 종료되었습니다. 위에 오류가 보이면 캡처해서 알려주세요.
-pause
+pause >nul
 exit /b 0
+
+:waitfail
+echo.
+echo  [오류] 2분 안에 서버가 응답하지 않았습니다.
+echo  위쪽에 표시된 오류 내용을 캡처해서 알려주세요.
+pause
+exit /b 1
+
+REM 서버 응답 확인 (curl 이 없으면 PowerShell 로)
+:probe
+where curl >nul 2>nul
+if errorlevel 1 goto probe_ps
+curl -s -o nul -m 2 %SITE%/api/status 2>nul
+exit /b
+:probe_ps
+powershell -NoProfile -Command "try { $null = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%SITE%/api/status'; exit 0 } catch { exit 1 }" >nul 2>nul
+exit /b
 
 :fetchfail
 echo.
