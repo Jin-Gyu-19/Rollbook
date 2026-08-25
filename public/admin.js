@@ -119,13 +119,12 @@
             <tr>
               <td>${esc(s.sheet_date)}</td>
               <td><b>${esc(s.title)}</b></td>
-              <td>${s.is_active ? '<span class="stag ok">사용 중</span>' : '<span class="stag">보관</span>'}</td>
+              <td>${s.is_active ? '<span class="stag ok">기록 중</span>' : '<span class="stag">보관</span>'}</td>
               <td style="font-variant-numeric:tabular-nums;">${s.attended} / ${memberCount}명</td>
               <td class="right"><span class="row-actions" style="justify-content:flex-end;">
+                <button class="small primary" data-act="scan" data-id="${s.id}">📷 출석 체크</button>
                 <button class="small" data-act="view" data-id="${s.id}">현황</button>
-                ${s.is_active
-                  ? `<button class="small ghost" data-act="deactivate" data-id="${s.id}">사용 해제</button>`
-                  : `<button class="small" data-act="activate" data-id="${s.id}">사용</button>`}
+                ${s.is_active ? `<button class="small ghost" data-act="deactivate" data-id="${s.id}">기록 중지</button>` : ''}
                 <button class="small ghost" data-act="edit" data-id="${s.id}">수정</button>
                 <button class="small danger" data-act="del" data-id="${s.id}">삭제</button>
               </span></td>
@@ -140,16 +139,16 @@
     const id = Number(b.dataset.id);
     const sheet = sheetsCache.find((s) => s.id === id);
     try {
-      if (b.dataset.act === 'view') {
+      if (b.dataset.act === 'scan') {
+        // 이 출석부로 기록 시작 + 촬영 화면 열기
+        await api(`/api/sheets/${id}/activate`, { method: 'POST' });
+        location.href = '/';
+      } else if (b.dataset.act === 'view') {
         switchTab('status');
         await loadStatusTab(id);
-      } else if (b.dataset.act === 'activate') {
-        await api(`/api/sheets/${id}/activate`, { method: 'POST' });
-        toast('스캐너가 이 출석부에 기록합니다');
-        loadSheets();
       } else if (b.dataset.act === 'deactivate') {
         await api(`/api/sheets/${id}/deactivate`, { method: 'POST' });
-        toast('사용 해제되었습니다');
+        toast('기록을 중지했습니다');
         loadSheets();
       } else if (b.dataset.act === 'edit') {
         openEdit('출석부 수정', `
@@ -188,11 +187,20 @@
     }
     const chosen = preferId ?? (Number(sel.value) || (sheets.find((s) => s.is_active)?.id ?? sheets[0].id));
     sel.innerHTML = sheets
-      .map((s) => `<option value="${s.id}" ${s.id === chosen ? 'selected' : ''}>${esc(s.sheet_date)} · ${esc(s.title)}${s.is_active ? ' (사용 중)' : ''}</option>`)
+      .map((s) => `<option value="${s.id}" ${s.id === chosen ? 'selected' : ''}>${esc(s.sheet_date)} · ${esc(s.title)}${s.is_active ? ' (기록 중)' : ''}</option>`)
       .join('');
     await renderStatus(chosen);
   }
   $('statusSheetSel').addEventListener('change', () => renderStatus(Number($('statusSheetSel').value)));
+
+  // 여러 PC 에서 동시에 쓸 때 실시간으로 보이도록 5초마다 자동 새로고침
+  setInterval(() => {
+    if (document.hidden) return;
+    if ($('tab-status').classList.contains('hidden')) return;
+    if (!$('editModal').classList.contains('hidden')) return;
+    const id = Number($('statusSheetSel').value);
+    if (id) renderStatus(id);
+  }, 5000);
 
   async function renderStatus(sheetId) {
     const body = $('statusBody');

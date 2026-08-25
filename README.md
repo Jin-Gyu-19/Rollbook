@@ -30,7 +30,16 @@ Windows 에서 `update.bat` 을 더블클릭하면 클라우드(GitHub)의 최�
 
 처음 받을 때는 GitHub 에서 `update.bat` 파일 하나만 내려받아 원하는 폴더에 두고 실행하면 됩니다.
 
-## 배포 (Cloudflare)
+## 여러 PC 에서 함께 쓰기 (`deploy.bat`)
+
+`update.bat` 로 실행하는 로컬 서버는 **PC마다 데이터가 따로** 저장되는 테스트용입니다.
+여러 PC 에서 같은 출석부를 함께 쓰려면 `deploy.bat` 을 더블클릭해 Cloudflare 에 배포하세요.
+
+- Cloudflare 계정(무료)으로 로그인 → D1 생성 → 배포까지 자동으로 진행됩니다
+- 끝나면 나오는 주소(`https://rollbook.<계정>.workers.dev`)를 **각 PC 브라우저에서 열기만 하면** 됩니다 — 설치 불필요, HTTPS 라 카메라도 바로 동작
+- 코드를 수정한 뒤 다시 `deploy.bat` 을 실행하면 같은 주소로 갱신됩니다
+
+## 배포 (수동, CLI)
 
 ```bash
 npm install
@@ -39,7 +48,7 @@ npx wrangler login
 # 1) D1 데이터베이스 생성 → 출력된 database_id 를 wrangler.jsonc 에 붙여넣기
 npm run db:create
 
-# 2) 스키마 적용
+# 2) 스키마 적용 (Worker 가 자동 생성하므로 생략 가능)
 npm run db:migrate        # 원격(프로덕션)
 npm run db:migrate:local  # 로컬 개발용
 
