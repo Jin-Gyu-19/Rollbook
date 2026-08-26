@@ -51,11 +51,12 @@ echo  최신 버전 확인 중...
 git fetch origin "%BRANCH%"
 if errorlevel 1 goto fetchfail
 git reset --hard "origin/%BRANCH%" >nul
-git log -1 --format="  최신 변경: %%s"
+git --no-pager log -1 --format="  최신 변경: %%s"
 
 :serve
 REM 서버가 이미 켜져 있으면 브라우저만 열고 끝
-powershell -NoProfile -Command "try { $null = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%SITE%/api/status'; exit 0 } catch { exit 1 }" >nul 2>nul
+echo  서버 상태 확인 중...
+call :probe
 if not errorlevel 1 (
   echo  서버가 이미 실행 중입니다. 브라우저를 엽니다.
   start "" %SITE%
