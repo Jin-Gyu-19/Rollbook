@@ -65,28 +65,28 @@
 .glass {
   position: relative;
   background: linear-gradient(120deg,
-    rgba(255, 255, 255, .34) 0%,
-    rgba(255, 255, 255, .10) 35%,
-    rgba(255, 255, 255, .06) 62%,
-    rgba(255, 255, 255, .24) 100%);
-  -webkit-backdrop-filter: blur(26px) saturate(1.9) brightness(1.08);
-  backdrop-filter: blur(26px) saturate(1.9) brightness(1.08);
-  border: 1px solid rgba(255, 255, 255, .38);
+    rgba(255, 255, 255, .14) 0%,
+    rgba(255, 255, 255, .04) 35%,
+    rgba(255, 255, 255, .02) 62%,
+    rgba(255, 255, 255, .10) 100%);
+  -webkit-backdrop-filter: blur(26px) saturate(1.85) brightness(1.03);
+  backdrop-filter: blur(26px) saturate(1.85) brightness(1.03);
+  border: 1px solid rgba(255, 255, 255, .24);
   box-shadow:
-    inset 0 1.5px 0 rgba(255, 255, 255, .6),   /* 위쪽 광원 하이라이트 */
-    inset 0 -8px 14px rgba(0, 0, 0, .10),      /* 아래 안쪽 음영 = 볼록한 곡면 */
-    inset 0 -1px 1px rgba(255, 255, 255, .16), /* 바닥 모서리 반사 */
-    inset 2px 0 3px rgba(255, 255, 255, .18),
-    inset -2px 0 3px rgba(255, 255, 255, .13),
-    0 10px 36px rgba(0, 0, 0, .3);             /* 유리가 떠 있는 그림자 */
+    inset 0 1px 0 rgba(255, 255, 255, .38),    /* 위쪽 광원 하이라이트 */
+    inset 0 -8px 14px rgba(0, 0, 0, .08),      /* 아래 안쪽 음영 = 볼록한 곡면 */
+    inset 0 -1px 1px rgba(255, 255, 255, .1),  /* 바닥 모서리 반사 */
+    inset 2px 0 3px rgba(255, 255, 255, .1),
+    inset -2px 0 3px rgba(255, 255, 255, .07),
+    0 10px 36px rgba(0, 0, 0, .26);            /* 유리가 떠 있는 그림자 */
   color: #fff;
   text-shadow: 0 1px 2px rgba(0, 0, 0, .3);
 }
 .glass::before {
   content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background:
-    radial-gradient(55% 40% at 8% -8%, rgba(210, 225, 255, .3), rgba(255, 255, 255, 0) 70%),   /* 좌상단 모서리 빛 (푸른빛) */
-    radial-gradient(45% 35% at 94% 108%, rgba(255, 215, 230, .16), rgba(255, 255, 255, 0) 70%); /* 우하단 색 분산 (분홍빛) */
+    radial-gradient(55% 40% at 8% -8%, rgba(210, 225, 255, .16), rgba(255, 255, 255, 0) 70%),   /* 좌상단 모서리 빛 (푸른빛) */
+    radial-gradient(45% 35% at 94% 108%, rgba(255, 215, 230, .09), rgba(255, 255, 255, 0) 70%); /* 우하단 색 분산 (분홍빛) */
 }
 @supports not (backdrop-filter: blur(1px)) {
   .glass { background: rgba(17, 24, 39, .6); }
@@ -108,8 +108,8 @@
 .sheet-card .sheet-title { font-size: 15.5px; font-weight: 800; letter-spacing: -.015em; }
 .sheet-card .sheet-date { font-size: 13px; color: rgba(255, 255, 255, .78); font-variant-numeric: tabular-nums; }
 .sheet-card .stag.ok {
-  background: rgba(52, 211, 153, .34); border: 1px solid rgba(255, 255, 255, .25);
-  color: #ECFDF5; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35);
+  background: rgba(52, 211, 153, .26); border: 1px solid rgba(255, 255, 255, .18);
+  color: #ECFDF5; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25);
 }
 .sheet-card.warn {
   background: linear-gradient(120deg,
