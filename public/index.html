@@ -34,6 +34,15 @@
   <a class="scan-chip scan-link glass" href="/admin">관리자</a>
 </header>
 
+<!-- 우측: 실시간 출석부 패널 -->
+<aside class="scan-panel glass" id="attPanel">
+  <div class="scan-panel-head">
+    <span class="scan-panel-title">출석부</span>
+    <span class="scan-panel-count" id="panelCount"></span>
+  </div>
+  <div class="scan-panel-list" id="panelList"></div>
+</aside>
+
 <!-- 하단: 상태 알약 -->
 <div class="scan-bottom">
   <div class="scan-pill" id="scanPill"><span class="dot"></span><span id="camState">카메라 준비 중…</span></div>

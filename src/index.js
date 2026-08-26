@@ -135,6 +135,30 @@ async function route(request, env, pathname) {
     return json({ activeSheet: active ?? null });
   }
 
+  // ── 스캐너 우측 출석부 패널: 활성 출석부의 최근 기록 ──
+  if (pathname === '/api/recent' && method === 'GET') {
+    const sheet = await db
+      .prepare('SELECT id, title, sheet_date FROM sheets WHERE is_active = 1 LIMIT 1')
+      .first();
+    if (!sheet) return json({ sheet: null, entries: [], attended: 0, total: 0 });
+    const { results: entries } = await db
+      .prepare(`
+        SELECT m.name, m.title, m.dept, a.checked_at
+        FROM attendance a JOIN members m ON m.id = a.member_id
+        WHERE a.sheet_id = ?
+        ORDER BY a.checked_at DESC
+        LIMIT 30
+      `)
+      .bind(sheet.id)
+      .all();
+    const attended = await db
+      .prepare('SELECT COUNT(*) AS n FROM attendance WHERE sheet_id = ?')
+      .bind(sheet.id)
+      .first();
+    const total = await db.prepare('SELECT COUNT(*) AS n FROM members').first();
+    return json({ sheet, entries, attended: attended?.n ?? 0, total: total?.n ?? 0 });
+  }
+
   // ── 출석 체크 (스캐너) ────────────────────────────────
   if (pathname === '/api/checkin' && method === 'POST') {
     const body = await readBody(request);

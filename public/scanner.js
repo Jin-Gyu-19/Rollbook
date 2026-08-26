@@ -118,6 +118,51 @@
   refreshStatus();
   setInterval(refreshStatus, 15000);
 
+  // ── 우측 실시간 출석부 패널 ──────────────────────────
+  const attPanel = document.getElementById('attPanel');
+  const panelList = document.getElementById('panelList');
+  const panelCount = document.getElementById('panelCount');
+  let latestCheckedAt = ''; // 이보다 새 기록이면 하이라이트
+
+  function fmtClock(iso) {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  async function loadRecent() {
+    try {
+      const r = await fetch('/api/recent');
+      const d = await r.json();
+      if (!d.sheet) {
+        panelCount.textContent = '';
+        panelList.innerHTML = '<div class="att-empty">사용 중인 출석부가 없습니다</div>';
+        return;
+      }
+      panelCount.textContent = `${d.attended} / ${d.total}명`;
+      if (!d.entries.length) {
+        panelList.innerHTML = '<div class="att-empty">아직 출석한 사람이 없습니다<br>첫 번째 주인공이 되어 보세요!</div>';
+        latestCheckedAt = '';
+        return;
+      }
+      const prevLatest = latestCheckedAt;
+      panelList.innerHTML = d.entries.map((e, i) => `
+        <div class="att-row${prevLatest && e.checked_at > prevLatest ? ' new' : ''}">
+          <span class="att-no">${d.attended - i}</span>
+          <span class="att-check">✓</span>
+          <span class="att-who">
+            <div class="att-name">${esc(e.name)}${e.title ? `<small>${esc(e.title)}</small>` : ''}</div>
+            ${e.dept ? `<div class="att-dept">${esc(e.dept)}</div>` : ''}
+          </span>
+          <span class="att-time">${fmtClock(e.checked_at)}</span>
+        </div>`).join('');
+      latestCheckedAt = d.entries[0].checked_at;
+    } catch {
+      /* 다음 주기에 재시도 */
+    }
+  }
+  loadRecent();
+  setInterval(loadRecent, 5000);
+
   // ── 카메라 ───────────────────────────────────────────
   async function startCamera() {
     offline.classList.remove('hidden');
@@ -214,6 +259,7 @@
       const data = await r.json().catch(() => ({}));
       if (data.status === 'ok') {
         showResult('ok', `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`, '출석이 완료되었습니다.');
+        loadRecent(); // 우측 출석부에 바로 반영
       } else if (data.status === 'already') {
         showResult('warn', `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`, '이미 출석 처리되었습니다.');
       } else if (data.status === 'no_sheet') {
