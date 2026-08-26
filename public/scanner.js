@@ -213,9 +213,9 @@
       });
       const data = await r.json().catch(() => ({}));
       if (data.status === 'ok') {
-        showResult('ok', `${data.member.name}님`, '출석이 완료되었습니다.');
+        showResult('ok', `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`, '출석이 완료되었습니다.');
       } else if (data.status === 'already') {
-        showResult('warn', `${data.member.name}님`, '이미 출석 처리되었습니다.');
+        showResult('warn', `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`, '이미 출석 처리되었습니다.');
       } else if (data.status === 'no_sheet') {
         showResult('err', '출석부 없음', '사용 중인 출석부가 없습니다. 관리자에게 문의해 주세요.');
         refreshStatus();

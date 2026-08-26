@@ -18,6 +18,7 @@ async function ensureSchema(db) {
     db.prepare(`CREATE TABLE IF NOT EXISTS members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
       dept TEXT NOT NULL DEFAULT '',
       code TEXT NOT NULL UNIQUE,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -41,6 +42,12 @@ async function ensureSchema(db) {
       value TEXT NOT NULL
     )`),
   ]);
+  // 기존 DB 에 직함 컬럼이 없으면 추가
+  try {
+    await db.prepare("ALTER TABLE members ADD COLUMN title TEXT NOT NULL DEFAULT ''").run();
+  } catch {
+    /* 이미 있으면 무시 */
+  }
   schemaReady = true;
 }
 
@@ -136,7 +143,7 @@ async function route(request, env, pathname) {
     if (code.startsWith('ROLLBOOK:')) code = code.slice('ROLLBOOK:'.length);
 
     const member = await db
-      .prepare('SELECT id, name, dept FROM members WHERE code = ?')
+      .prepare('SELECT id, name, title, dept FROM members WHERE code = ?')
       .bind(code)
       .first();
     if (!member) return json({ status: 'unknown' }, 404);
@@ -153,7 +160,7 @@ async function route(request, env, pathname) {
     if (existing) {
       return json({
         status: 'already',
-        member: { name: member.name, dept: member.dept },
+        member: { name: member.name, title: member.title, dept: member.dept },
         sheet: { title: sheet.title },
         checked_at: existing.checked_at,
       });
@@ -166,7 +173,7 @@ async function route(request, env, pathname) {
       .run();
     return json({
       status: 'ok',
-      member: { name: member.name, dept: member.dept },
+      member: { name: member.name, title: member.title, dept: member.dept },
       sheet: { title: sheet.title },
       checked_at: checkedAt,
     });
@@ -175,7 +182,7 @@ async function route(request, env, pathname) {
   // ── 명단 (members) ────────────────────────────────────
   if (pathname === '/api/members' && method === 'GET') {
     const { results } = await db
-      .prepare('SELECT id, name, dept, code, created_at FROM members ORDER BY name, id')
+      .prepare('SELECT id, name, title, dept, code, created_at FROM members ORDER BY name, id')
       .all();
     return json({ members: results });
   }
@@ -183,6 +190,7 @@ async function route(request, env, pathname) {
   if (pathname === '/api/members' && method === 'POST') {
     const body = await readBody(request);
     const name = (body?.name ?? '').trim();
+    const title = (body?.title ?? '').trim();
     const dept = (body?.dept ?? '').trim();
     if (!name) return err('이름을 입력해 주세요.');
 
@@ -191,11 +199,11 @@ async function route(request, env, pathname) {
       try {
         const code = newMemberCode();
         const r = await db
-          .prepare('INSERT INTO members (name, dept, code) VALUES (?, ?, ?)')
-          .bind(name, dept, code)
+          .prepare('INSERT INTO members (name, title, dept, code) VALUES (?, ?, ?, ?)')
+          .bind(name, title, dept, code)
           .run();
         const member = await db
-          .prepare('SELECT id, name, dept, code, created_at FROM members WHERE id = ?')
+          .prepare('SELECT id, name, title, dept, code, created_at FROM members WHERE id = ?')
           .bind(r.meta.last_row_id)
           .first();
         return json({ member }, 201);
@@ -220,12 +228,13 @@ async function route(request, env, pathname) {
     let skipped = 0;
     for (const m of list) {
       const name = String(m?.name ?? '').trim();
+      const title = String(m?.title ?? '').trim();
       const dept = String(m?.dept ?? '').trim();
       if (!name) { skipped++; continue; }
       const key = `${name}|${dept}`;
       if (seen.has(key)) { skipped++; continue; }
       seen.add(key);
-      stmts.push(db.prepare('INSERT INTO members (name, dept, code) VALUES (?, ?, ?)').bind(name, dept, newMemberCode()));
+      stmts.push(db.prepare('INSERT INTO members (name, title, dept, code) VALUES (?, ?, ?, ?)').bind(name, title, dept, newMemberCode()));
       added++;
     }
     if (stmts.length) await db.batch(stmts);
@@ -239,11 +248,12 @@ async function route(request, env, pathname) {
     if (method === 'PUT') {
       const body = await readBody(request);
       const name = (body?.name ?? '').trim();
+      const title = (body?.title ?? '').trim();
       const dept = (body?.dept ?? '').trim();
       if (!name) return err('이름을 입력해 주세요.');
-      await db.prepare('UPDATE members SET name = ?, dept = ? WHERE id = ?').bind(name, dept, id).run();
+      await db.prepare('UPDATE members SET name = ?, title = ?, dept = ? WHERE id = ?').bind(name, title, dept, id).run();
       const member = await db
-        .prepare('SELECT id, name, dept, code, created_at FROM members WHERE id = ?')
+        .prepare('SELECT id, name, title, dept, code, created_at FROM members WHERE id = ?')
         .bind(id)
         .first();
       return member ? json({ member }) : err('회원을 찾을 수 없습니다.', 404);
@@ -305,7 +315,7 @@ async function route(request, env, pathname) {
       if (!sheet) return err('출석부를 찾을 수 없습니다.', 404);
       const { results } = await db
         .prepare(`
-          SELECT m.id AS member_id, m.name, m.dept, a.checked_at
+          SELECT m.id AS member_id, m.name, m.title, m.dept, a.checked_at
           FROM members m
           LEFT JOIN attendance a ON a.member_id = m.id AND a.sheet_id = ?
           ORDER BY m.name, m.id

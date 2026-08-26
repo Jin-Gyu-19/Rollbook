@@ -232,11 +232,12 @@
       </div>
       <div class="step-track" style="margin-bottom:18px;"><div class="step-fill" style="width:${pct}%"></div></div>
       <table>
-        <thead><tr><th>이름</th><th>부서</th><th>상태</th><th>출석 시각</th><th class="right">편집</th></tr></thead>
+        <thead><tr><th>이름</th><th>직함</th><th>부서</th><th>상태</th><th>출석 시각</th><th class="right">편집</th></tr></thead>
         <tbody>
           ${rows.map((r) => `
             <tr>
               <td><b>${esc(r.name)}</b></td>
+              <td>${esc(r.title)}</td>
               <td>${esc(r.dept)}</td>
               <td>${r.checked_at ? '<span class="stag ok">출석</span>' : '<span class="stag err">미출석</span>'}</td>
               <td class="muted" style="font-variant-numeric:tabular-nums;">${fmtTime(r.checked_at)}</td>
@@ -274,9 +275,14 @@
     try {
       await api('/api/members', {
         method: 'POST',
-        body: JSON.stringify({ name: $('memberName').value, dept: $('memberDept').value }),
+        body: JSON.stringify({
+          name: $('memberName').value,
+          title: $('memberTitle').value,
+          dept: $('memberDept').value,
+        }),
       });
       $('memberName').value = '';
+      $('memberTitle').value = '';
       toast('추가되었습니다 — QR 코드가 발급되었습니다');
       loadMembers();
     } catch (e) {
@@ -294,11 +300,12 @@
     }
     holder.innerHTML = `
       <table>
-        <thead><tr><th>이름</th><th>부서</th><th>QR 코드 값</th><th class="right">관리</th></tr></thead>
+        <thead><tr><th>이름</th><th>직함</th><th>부서</th><th>QR 코드 값</th><th class="right">관리</th></tr></thead>
         <tbody>
           ${members.map((m) => `
             <tr>
               <td><b>${esc(m.name)}</b></td>
+              <td>${esc(m.title)}</td>
               <td>${esc(m.dept)}</td>
               <td><span class="member-code">${esc(m.code)}</span></td>
               <td class="right"><span class="row-actions" style="justify-content:flex-end;">
@@ -360,9 +367,14 @@
       return ['부서', '소속', '팀', '본부', '부서명', '소속부서', 'department', 'dept', 'team']
         .some((h) => w.toLowerCase() === h) || w.includes('부서') || w.includes('소속');
     };
+    const isTitleHeader = (v) => {
+      const w = v.replace(/\s/g, '').toLowerCase();
+      return ['직함', '직급', '직위', '직책', '호칭', 'title', 'position', 'rank', 'grade'].includes(w);
+    };
 
     // 1) 앞 20행에서 헤더 행 탐색
     let nameCol = -1;
+    let titleCol = -1;
     let deptCol = -1;
     let startRow = 0;
     let headerFound = false;
@@ -371,7 +383,9 @@
         if (isNameHeader(grid[i][j])) {
           nameCol = j;
           for (let k = 0; k < grid[i].length; k++) {
-            if (k !== j && isDeptHeader(grid[i][k])) { deptCol = k; break; }
+            if (k === j) continue;
+            if (deptCol < 0 && isDeptHeader(grid[i][k])) deptCol = k;
+            if (titleCol < 0 && isTitleHeader(grid[i][k])) titleCol = k;
           }
           startRow = i + 1;
           headerFound = true;
@@ -393,7 +407,12 @@
       const KO_TITLE = /^(사원|주임|대리|과장|차장|부장|팀장|실장|본부장|지점장|이사|상무|전무|부사장|사장|회장|책임|선임|수석|위원|파트너|매니저|프로|컨설턴트|회계사|세무사|연구원|인턴|담당|주니어|시니어|어쏘시에이트|어소시에이트|시니어어쏘시에이트|시니어어소시에이트|디렉터)$/;
       const EN_TITLE = /^(senior|junior|sr\.?|jr\.?)?\s*(manager|associate|partner|director|staff|consultant|accountant|auditor|intern|analyst|assistant|ceo|cfo|coo)$/i;
       const isTitle = (v) => KO_TITLE.test(v.replace(/\s/g, '')) || EN_TITLE.test(v.replace(/\s+/g, ' ').trim());
-      deptCol = colRatio(nameCol + 1, isTitle) > 0.5 ? nameCol + 2 : nameCol + 1;
+      if (colRatio(nameCol + 1, isTitle) > 0.5) {
+        titleCol = nameCol + 1;
+        deptCol = nameCol + 2;
+      } else {
+        deptCol = nameCol + 1;
+      }
     }
 
     const members = [];
@@ -401,6 +420,7 @@
     for (let i = startRow; i < grid.length; i++) {
       const r = grid[i];
       const name = (r[nameCol] || '').trim();
+      const title = titleCol >= 0 ? (r[titleCol] || '').trim() : '';
       let dept = deptCol >= 0 ? (r[deptCol] || '').trim() : '';
       if (!name) continue;
       if (/^\d+$/.test(name)) continue;              // 숫자만 = 연번
@@ -408,16 +428,16 @@
       if (name.length > 20) continue;                // 제목·문장 줄
       if (headerFound && !dept && lastDept) dept = lastDept; // 병합 셀: 위 값 이어받기
       if (dept) lastDept = dept;
-      members.push({ name, dept });
+      members.push({ name, title, dept });
     }
     return members;
   }
 
   $('btnTemplate').addEventListener('click', () => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['이름', '부서'],
-      ['홍길동', '감사1본부'],
-      ['김철수', '디지털본부'],
+      ['이름', '직함', '부서'],
+      ['홍길동', '과장', '감사1본부'],
+      ['김철수', 'MANAGER', '디지털본부'],
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '명단');
@@ -436,11 +456,12 @@
       } else if (b.dataset.act === 'edit') {
         openEdit('인원 수정', `
           <label>이름 <input id="efName" value="${esc(m.name)}"></label>
+          <label>직함 <input id="efTitle" value="${esc(m.title)}"></label>
           <label>부서 <input id="efDept" value="${esc(m.dept)}"></label>`,
           async () => {
             await api(`/api/members/${id}`, {
               method: 'PUT',
-              body: JSON.stringify({ name: $('efName').value, dept: $('efDept').value }),
+              body: JSON.stringify({ name: $('efName').value, title: $('efTitle').value, dept: $('efDept').value }),
             });
             toast('저장되었습니다');
             loadMembers();
@@ -485,7 +506,7 @@
       return;
     }
     $('btnDownloadQr').disabled = false;
-    owner.innerHTML = `<b>${esc(m.name)}${m.dept ? ` · ${esc(m.dept)}` : ''}</b><code>${esc(m.code)}</code>`;
+    owner.innerHTML = `<b>${esc(m.name)}${m.title ? ` ${esc(m.title)}` : ''}${m.dept ? ` · ${esc(m.dept)}` : ''}</b><code>${esc(m.code)}</code>`;
 
     holder.innerHTML = '';
     qr = new QRCodeStyling(buildQrOptions(m, 480));
@@ -524,7 +545,7 @@
     } else {
       const chosen = preferId ?? (Number(sel.value) || membersCache[0].id);
       sel.innerHTML = membersCache
-        .map((m) => `<option value="${m.id}" ${m.id === chosen ? 'selected' : ''}>${esc(m.name)}${m.dept ? ` (${esc(m.dept)})` : ''}</option>`)
+        .map((m) => `<option value="${m.id}" ${m.id === chosen ? 'selected' : ''}>${esc(m.name)}${m.title ? ` ${esc(m.title)}` : ''}${m.dept ? ` (${esc(m.dept)})` : ''}</option>`)
         .join('');
     }
     updateLogoUi();
