@@ -85,9 +85,8 @@
 .glass::before {
   content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background:
-    radial-gradient(130% 70% at 18% -12%, rgba(210, 225, 255, .55), rgba(255, 255, 255, 0) 55%), /* 광원 (푸른빛) */
-    radial-gradient(90% 55% at 88% 115%, rgba(255, 215, 230, .22), rgba(255, 255, 255, 0) 58%),  /* 반대편 색 분산 (분홍빛) */
-    linear-gradient(100deg, rgba(255, 255, 255, 0) 42%, rgba(255, 255, 255, .28) 50%, rgba(255, 255, 255, 0) 58%); /* 대각선 광택 */
+    radial-gradient(55% 40% at 8% -8%, rgba(210, 225, 255, .3), rgba(255, 255, 255, 0) 70%),   /* 좌상단 모서리 빛 (푸른빛) */
+    radial-gradient(45% 35% at 94% 108%, rgba(255, 215, 230, .16), rgba(255, 255, 255, 0) 70%); /* 우하단 색 분산 (분홍빛) */
 }
 @supports not (backdrop-filter: blur(1px)) {
   .glass { background: rgba(17, 24, 39, .6); }
