@@ -171,7 +171,7 @@
     setCam('카메라 준비 중…', '');
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } },
         audio: false,
       });
       video.srcObject = stream;
@@ -194,30 +194,31 @@
   });
 
   // ── 스캔 루프 ────────────────────────────────────────
-  // 작은 QR 도 잡히도록 두 전략을 번갈아 쓴다:
-  //  A) 전체 화면을 640px 로 축소해 디코딩 (크고 가까운 코드)
-  //  B) 중앙 프레임 영역을 원본 해상도로 잘라 디코딩 (작거나 먼 코드)
-  let cropPass = false;
+  // 작은 QR 도 잡히도록 세 전략을 순환한다:
+  //  0) 전체 화면을 640px 로 축소 (크고 가까운 코드)
+  //  1) 중앙 60% 를 고화질(최대 1000px)로 (중간 크기)
+  //  2) 중앙 32% 를 원본 화질 그대로 (아주 작은 코드 — 디지털 돋보기)
+  let passIdx = 0;
   async function tick(now) {
     if (!stream || !stream.active) return;
     requestAnimationFrame(tick);
     if (busy || video.readyState !== video.HAVE_ENOUGH_DATA) return;
     if (now - lastDecodeAt < DECODE_INTERVAL) return;
     lastDecodeAt = now;
-    cropPass = !cropPass;
+    passIdx = (passIdx + 1) % 3;
 
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     if (!vw || !vh) return;
 
     let sx = 0, sy = 0, sw = vw, sh = vh, target = 640;
-    if (cropPass) {
-      // 화면 중앙의 스캔 프레임 영역 (짧은 변의 60%) 을 원본 해상도로
-      const side = Math.floor(Math.min(vw, vh) * 0.6);
+    if (passIdx > 0) {
+      const ratio = passIdx === 1 ? 0.6 : 0.32;
+      const side = Math.floor(Math.min(vw, vh) * ratio);
       sx = Math.floor((vw - side) / 2);
       sy = Math.floor((vh - side) / 2);
       sw = sh = side;
-      target = 800;
+      target = 1000;
     }
     const scale = Math.min(target / sw, 1);
     canvas.width = Math.round(sw * scale);
