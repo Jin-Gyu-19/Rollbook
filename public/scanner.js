@@ -160,10 +160,8 @@
         <div class="att-row${e.checked_at === glowCheckedAt ? ' new' : ''}">
           <span class="att-no">${d.attended - i}</span>
           <span class="att-check">✓</span>
-          <span class="att-who">
-            <div class="att-name">${esc(e.name)}${e.title ? `<small>${esc(e.title)}</small>` : ''}</div>
-            ${e.dept ? `<div class="att-dept">${esc(e.dept)}</div>` : ''}
-          </span>
+          <span class="att-name">${esc(e.name)}${e.title ? `<small>${esc(e.title)}</small>` : ''}</span>
+          <span class="att-dept">${esc(e.dept)}</span>
           <span class="att-time">${fmtClock(e.checked_at)}</span>
         </div>`).join('');
       latestCheckedAt = top;
