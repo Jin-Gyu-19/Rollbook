@@ -99,14 +99,14 @@
       bannerKey = key;
       if (activeSheet) {
         sheetBanner.innerHTML = `
-          <div class="sheet-card">
+          <div class="sheet-card glass">
             <span class="stag ok">기록 중</span>
             <span class="sheet-title">${esc(activeSheet.title)}</span>
             <span class="sheet-date">${esc(activeSheet.sheet_date)}</span>
           </div>`;
       } else {
         sheetBanner.innerHTML = `
-          <div class="sheet-card warn">
+          <div class="sheet-card glass warn">
             <span>⚠️ 사용 중인 출석부가 없어 지금은 출석이 기록되지 않습니다</span>
             <a class="mini-btn" href="/admin">관리자에서 설정</a>
           </div>`;
