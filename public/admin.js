@@ -380,12 +380,17 @@
       }
     }
 
-    // 2) 헤더가 없으면: 첫 열이 대부분 숫자(연번)면 한 칸 밀기
+    // 2) 헤더가 없으면: 첫 열이 대부분 숫자(연번)면 한 칸 밀고,
+    //    이름 다음 열이 직함(대리·과장 등)으로 보이면 부서는 그 다음 열로
     if (!headerFound) {
-      const col0 = grid.filter((r) => r.some(Boolean)).map((r) => r[0] || '');
-      const numeric = col0.filter((v) => /^\d+$/.test(v)).length;
-      nameCol = numeric / Math.max(col0.length, 1) > 0.6 ? 1 : 0;
-      deptCol = nameCol + 1;
+      const dataRows = grid.filter((r) => r.some(Boolean));
+      const colRatio = (idx, test) => {
+        const vals = dataRows.map((r) => r[idx] || '').filter(Boolean);
+        return vals.filter(test).length / Math.max(vals.length, 1);
+      };
+      nameCol = colRatio(0, (v) => /^\d+$/.test(v)) > 0.6 ? 1 : 0;
+      const TITLE_RE = /^(사원|주임|주니어|대리|과장|차장|부장|팀장|실장|본부장|지점장|이사|상무|전무|부사장|사장|회장|책임|선임|수석|위원|파트너|매니저|프로|컨설턴트|회계사|세무사|연구원|인턴)$/;
+      deptCol = colRatio(nameCol + 1, (v) => TITLE_RE.test(v)) > 0.5 ? nameCol + 2 : nameCol + 1;
     }
 
     const members = [];
