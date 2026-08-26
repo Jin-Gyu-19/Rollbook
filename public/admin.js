@@ -311,6 +311,62 @@
       </table>`;
   }
 
+  // ── 엑셀 일괄 등록 ───────────────────────────────────
+  $('excelFile').addEventListener('change', async () => {
+    const file = $('excelFile').files[0];
+    if (!file) return;
+    let rows = [];
+    try {
+      const buf = await file.arrayBuffer();
+      if (/\.csv$/i.test(file.name)) {
+        // 한글 CSV: UTF-8 로 읽고 깨지면 EUC-KR 재시도
+        let text = new TextDecoder('utf-8').decode(buf);
+        if (text.includes('�')) text = new TextDecoder('euc-kr').decode(buf);
+        rows = text.split(/\r?\n/).map((l) => l.split(',').map((s) => s.trim()));
+      } else {
+        const wb = XLSX.read(buf);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      }
+    } catch (e) {
+      toast(`파일을 읽지 못했습니다: ${e.message}`, true);
+      $('excelFile').value = '';
+      return;
+    }
+
+    const members = [];
+    for (const r of rows) {
+      const name = String(r?.[0] ?? '').trim();
+      const dept = String(r?.[1] ?? '').trim();
+      if (!name) continue;
+      if (name === '이름') continue; // 제목 줄
+      members.push({ name, dept });
+    }
+    $('excelFile').value = '';
+    if (!members.length) {
+      toast('파일에서 등록할 인원을 찾지 못했습니다', true);
+      return;
+    }
+    try {
+      const r = await api('/api/members/bulk', { method: 'POST', body: JSON.stringify({ members }) });
+      toast(`${r.added}명 등록 완료${r.skipped ? ` · ${r.skipped}건 건너뜀(중복/빈 줄)` : ''}`);
+      loadMembers();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  $('btnTemplate').addEventListener('click', () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['이름', '부서'],
+      ['홍길동', '감사1본부'],
+      ['김철수', '디지털본부'],
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '명단');
+    XLSX.writeFile(wb, 'rollbook-명단양식.xlsx');
+  });
+
   $('memberList').addEventListener('click', async (e) => {
     const b = e.target.closest('button[data-act]');
     if (!b) return;
@@ -374,12 +430,19 @@
     $('btnDownloadQr').disabled = false;
     owner.innerHTML = `<b>${esc(m.name)}${m.dept ? ` · ${esc(m.dept)}` : ''}</b><code>${esc(m.code)}</code>`;
 
-    const options = {
-      width: 480,
-      height: 480,
+    holder.innerHTML = '';
+    qr = new QRCodeStyling(buildQrOptions(m, 480));
+    qr.append(holder);
+  }
+
+  // 현재 디자인 설정으로 QR 옵션 구성 (미리보기·일괄 다운로드 공용)
+  function buildQrOptions(m, size) {
+    return {
+      width: size,
+      height: size,
       type: 'canvas',
       data: `ROLLBOOK:${m.code}`,
-      margin: 8,
+      margin: Math.round(size / 60),
       qrOptions: { errorCorrectionLevel: 'H' },
       dotsOptions: { type: qrState.dot, color: qrState.color },
       cornersSquareOptions: {
@@ -391,10 +454,6 @@
       image: qrState.useLogo ? logoUrl() : undefined,
       imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.35, hideBackgroundDots: true },
     };
-
-    holder.innerHTML = '';
-    qr = new QRCodeStyling(options);
-    qr.append(holder);
   }
 
   async function loadQrTab(preferId) {
@@ -481,6 +540,43 @@
     const m = currentMember();
     if (!qr || !m) return;
     qr.download({ name: `rollbook-qr-${m.name}`, extension: 'png' });
+  });
+
+  // 전체 QR 을 ZIP 으로 일괄 다운로드 (현재 디자인·로고 적용, 인쇄용 720px)
+  $('btnDownloadAll').addEventListener('click', async () => {
+    if (!membersCache.length) {
+      const { members } = await api('/api/members').catch(() => ({ members: [] }));
+      membersCache = members;
+    }
+    if (!membersCache.length) {
+      toast('등록된 인원이 없습니다', true);
+      return;
+    }
+    const btn = $('btnDownloadAll');
+    btn.disabled = true;
+    try {
+      const zip = new JSZip();
+      for (let i = 0; i < membersCache.length; i++) {
+        const m = membersCache[i];
+        btn.textContent = `생성 중… ${i + 1}/${membersCache.length}`;
+        const q = new QRCodeStyling(buildQrOptions(m, 720));
+        const blob = await q.getRawData('png');
+        const safeName = `${m.name}${m.dept ? `_${m.dept}` : ''}`.replace(/[\\/:*?"<>|]/g, '_');
+        zip.file(`${safeName}_${m.code}.png`, blob);
+      }
+      btn.textContent = '압축 중…';
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'rollbook-qr.zip';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      toast(`QR 코드 ${membersCache.length}개를 내려받았습니다`);
+    } catch (e) {
+      toast(e.message, true);
+    }
+    btn.disabled = false;
+    btn.textContent = '전체 내려받기 (ZIP)';
   });
 
   // ── 초기 로드 ────────────────────────────────────────

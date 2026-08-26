@@ -78,6 +78,15 @@
     </div>
 
     <div class="card">
+      <h2>엑셀로 일괄 등록</h2>
+      <div class="form-row">
+        <input type="file" id="excelFile" accept=".xlsx,.xls,.csv" style="flex:1; min-width:220px; margin:0; width:auto;">
+        <span class="actions"><button class="ghost" id="btnTemplate">양식 내려받기</button></span>
+      </div>
+      <p class="hint">1열 이름, 2열 부서 순서로 작성하세요. 첫 줄에 제목(이름/부서)이 있어도 됩니다. 이미 등록된 같은 이름·부서는 건너뜁니다.</p>
+    </div>
+
+    <div class="card">
       <h2>명단</h2>
       <div id="memberList"></div>
     </div>
@@ -93,6 +102,7 @@
           <div class="qr-canvas-holder" id="qrHolder"></div>
           <div class="qr-owner" id="qrOwner"></div>
           <button class="primary" id="btnDownloadQr">PNG 내려받기</button>
+          <button id="btnDownloadAll">전체 내려받기 (ZIP)</button>
         </div>
         <div>
           <label>대상
@@ -143,6 +153,8 @@
 <div class="toast" id="toast"></div>
 
 <script src="/vendor/qr-code-styling.js"></script>
+<script src="/vendor/xlsx.min.js"></script>
+<script src="/vendor/jszip.min.js"></script>
 <script src="/admin.js"></script>
 </body>
 </html>

@@ -206,6 +206,32 @@ async function route(request, env, pathname) {
     return err('코드 생성에 실패했습니다. 다시 시도해 주세요.', 500);
   }
 
+  // 엑셀 업로드 일괄 등록 — 같은 이름+부서가 이미 있으면 건너뜀
+  if (pathname === '/api/members/bulk' && method === 'POST') {
+    const body = await readBody(request);
+    const list = Array.isArray(body?.members) ? body.members : [];
+    if (!list.length) return err('등록할 인원이 없습니다.');
+    if (list.length > 1000) return err('한 번에 1,000명까지 등록할 수 있습니다.');
+
+    const { results: existing } = await db.prepare('SELECT name, dept FROM members').all();
+    const seen = new Set(existing.map((m) => `${m.name}|${m.dept}`));
+    const stmts = [];
+    let added = 0;
+    let skipped = 0;
+    for (const m of list) {
+      const name = String(m?.name ?? '').trim();
+      const dept = String(m?.dept ?? '').trim();
+      if (!name) { skipped++; continue; }
+      const key = `${name}|${dept}`;
+      if (seen.has(key)) { skipped++; continue; }
+      seen.add(key);
+      stmts.push(db.prepare('INSERT INTO members (name, dept, code) VALUES (?, ?, ?)').bind(name, dept, newMemberCode()));
+      added++;
+    }
+    if (stmts.length) await db.batch(stmts);
+    return json({ added, skipped });
+  }
+
   if (seg[1] === 'members' && seg.length === 3) {
     const id = Number(seg[2]);
     if (!Number.isInteger(id)) return err('잘못된 ID 입니다.');
