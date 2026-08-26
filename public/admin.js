@@ -592,7 +592,7 @@
         const d = 150 / lum;
         R *= d; G *= d; B *= d;
       }
-      return `rgb(${R | 0},${G | 0},${B | 0})`;
+      return [R | 0, G | 0, B | 0];
     };
   }
 
@@ -629,8 +629,15 @@
   }
 
   async function buildPatternCanvas(m, size) {
-    // qr-code-styling 내부의 QR 행렬만 빌려 온다 (H 보정, 미리보기와 동일 데이터)
-    const helper = new QRCodeStyling({ data: `ROLLBOOK:${m.code}`, qrOptions: { errorCorrectionLevel: 'H' } });
+    // qr-code-styling 내부의 QR 행렬만 빌려 온다 (H 보정, 미리보기와 동일 데이터).
+    // 자동 버전(25×25)은 칸이 적어 로고 글자가 뭉개지므로 버전 8(49×49)로
+    // 올려 해상도를 확보한다 — 데이터가 넘치면 자동 버전으로 되돌아간다.
+    let helper;
+    try {
+      helper = new QRCodeStyling({ data: `ROLLBOOK:${m.code}`, qrOptions: { typeNumber: 8, errorCorrectionLevel: 'H' } });
+    } catch {
+      helper = new QRCodeStyling({ data: `ROLLBOOK:${m.code}`, qrOptions: { errorCorrectionLevel: 'H' } });
+    }
     const grid = helper._qr;
     if (!grid) throw new Error('QR 코드를 생성하지 못했습니다');
     const count = grid.getModuleCount();
@@ -656,9 +663,17 @@
 
     for (let r = 0; r < count; r++) {
       for (let c = 0; c < count; c++) {
-        if (isFinder(r, c) || !grid.isDark(r, c)) continue;
-        ctx.fillStyle = (sampler && sampler(r, c)) || qrState.color;
-        drawPatternDot(ctx, margin + c * mod, margin + r * mod, mod);
+        if (isFinder(r, c)) continue;
+        const logoColor = sampler ? sampler(r, c) : null;
+        if (grid.isDark(r, c)) {
+          ctx.fillStyle = logoColor ? `rgb(${logoColor[0]},${logoColor[1]},${logoColor[2]})` : qrState.color;
+          drawPatternDot(ctx, margin + c * mod, margin + r * mod, mod);
+        } else if (logoColor) {
+          // 흰 칸에도 아주 연한 로고 색을 깔아 글자를 면으로 채운다.
+          // 흰색 75% 혼합이면 밝은 모듈로 안전하게 남는다 (jsQR 검증 완료)
+          ctx.fillStyle = `rgb(${(logoColor[0] * 0.25 + 191.25) | 0},${(logoColor[1] * 0.25 + 191.25) | 0},${(logoColor[2] * 0.25 + 191.25) | 0})`;
+          ctx.fillRect(margin + c * mod, margin + r * mod, mod + 0.35, mod + 0.35);
+        }
       }
     }
     drawPatternFinder(ctx, margin, margin, mod);
