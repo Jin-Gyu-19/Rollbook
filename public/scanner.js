@@ -122,7 +122,9 @@
   const attPanel = document.getElementById('attPanel');
   const panelList = document.getElementById('panelList');
   const panelCount = document.getElementById('panelCount');
-  let latestCheckedAt = ''; // 이보다 새 기록이면 하이라이트
+  let latestCheckedAt = ''; // 마지막으로 본 최신 기록
+  let glowCheckedAt = null; // 지금 네온 글로우 중인 기록 (10초 or 다음 출석까지)
+  let glowTimer = null;
 
   function fmtClock(iso) {
     const d = new Date(iso);
@@ -144,9 +146,18 @@
         latestCheckedAt = '';
         return;
       }
-      const prevLatest = latestCheckedAt;
+      // 새 출석이 생기면 글로우가 그 사람에게 넘어가고, 없으면 10초 후 꺼진다
+      const top = d.entries[0].checked_at;
+      if (latestCheckedAt && top > latestCheckedAt) {
+        glowCheckedAt = top;
+        clearTimeout(glowTimer);
+        glowTimer = setTimeout(() => {
+          glowCheckedAt = null;
+          panelList.querySelectorAll('.att-row.new').forEach((el) => el.classList.remove('new'));
+        }, 10000);
+      }
       panelList.innerHTML = d.entries.map((e, i) => `
-        <div class="att-row${prevLatest && e.checked_at > prevLatest ? ' new' : ''}">
+        <div class="att-row${e.checked_at === glowCheckedAt ? ' new' : ''}">
           <span class="att-no">${d.attended - i}</span>
           <span class="att-check">✓</span>
           <span class="att-who">
@@ -155,7 +166,7 @@
           </span>
           <span class="att-time">${fmtClock(e.checked_at)}</span>
         </div>`).join('');
-      latestCheckedAt = d.entries[0].checked_at;
+      latestCheckedAt = top;
     } catch {
       /* 다음 주기에 재시도 */
     }
