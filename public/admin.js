@@ -389,8 +389,11 @@
         return vals.filter(test).length / Math.max(vals.length, 1);
       };
       nameCol = colRatio(0, (v) => /^\d+$/.test(v)) > 0.6 ? 1 : 0;
-      const TITLE_RE = /^(사원|주임|주니어|대리|과장|차장|부장|팀장|실장|본부장|지점장|이사|상무|전무|부사장|사장|회장|책임|선임|수석|위원|파트너|매니저|프로|컨설턴트|회계사|세무사|연구원|인턴)$/;
-      deptCol = colRatio(nameCol + 1, (v) => TITLE_RE.test(v)) > 0.5 ? nameCol + 2 : nameCol + 1;
+      // 직함 판별: 한글 직함(공백 무시) + 영문 직함(대소문자·Senior/Junior 조합 허용)
+      const KO_TITLE = /^(사원|주임|대리|과장|차장|부장|팀장|실장|본부장|지점장|이사|상무|전무|부사장|사장|회장|책임|선임|수석|위원|파트너|매니저|프로|컨설턴트|회계사|세무사|연구원|인턴|담당|주니어|시니어|어쏘시에이트|어소시에이트|시니어어쏘시에이트|시니어어소시에이트|디렉터)$/;
+      const EN_TITLE = /^(senior|junior|sr\.?|jr\.?)?\s*(manager|associate|partner|director|staff|consultant|accountant|auditor|intern|analyst|assistant|ceo|cfo|coo)$/i;
+      const isTitle = (v) => KO_TITLE.test(v.replace(/\s/g, '')) || EN_TITLE.test(v.replace(/\s+/g, ' ').trim());
+      deptCol = colRatio(nameCol + 1, isTitle) > 0.5 ? nameCol + 2 : nameCol + 1;
     }
 
     const members = [];
