@@ -334,14 +334,7 @@
       return;
     }
 
-    const members = [];
-    for (const r of rows) {
-      const name = String(r?.[0] ?? '').trim();
-      const dept = String(r?.[1] ?? '').trim();
-      if (!name) continue;
-      if (name === '이름') continue; // 제목 줄
-      members.push({ name, dept });
-    }
+    const members = extractMembers(rows);
     $('excelFile').value = '';
     if (!members.length) {
       toast('파일에서 등록할 인원을 찾지 못했습니다', true);
@@ -355,6 +348,62 @@
       toast(e.message, true);
     }
   });
+
+  // 다양한 형태의 명단 엑셀에서 이름/부서를 알아서 찾아낸다:
+  //  - 제목 줄 위 몇 줄이 있어도, 헤더가 이름/성명·부서/소속/팀 등이어도 인식
+  //  - 헤더가 없고 첫 열이 연번(숫자)이면 한 칸 밀어서 인식
+  function extractMembers(rows) {
+    const grid = rows.map((r) => (Array.isArray(r) ? r : []).map((c) => String(c ?? '').trim()));
+    const isNameHeader = (v) => ['이름', '성명', '성함', 'name'].includes(v.replace(/\s/g, '').toLowerCase());
+    const isDeptHeader = (v) => {
+      const w = v.replace(/\s/g, '');
+      return ['부서', '소속', '팀', '본부', '부서명', '소속부서', 'department', 'dept', 'team']
+        .some((h) => w.toLowerCase() === h) || w.includes('부서') || w.includes('소속');
+    };
+
+    // 1) 앞 20행에서 헤더 행 탐색
+    let nameCol = -1;
+    let deptCol = -1;
+    let startRow = 0;
+    let headerFound = false;
+    for (let i = 0; i < Math.min(grid.length, 20) && !headerFound; i++) {
+      for (let j = 0; j < grid[i].length; j++) {
+        if (isNameHeader(grid[i][j])) {
+          nameCol = j;
+          for (let k = 0; k < grid[i].length; k++) {
+            if (k !== j && isDeptHeader(grid[i][k])) { deptCol = k; break; }
+          }
+          startRow = i + 1;
+          headerFound = true;
+          break;
+        }
+      }
+    }
+
+    // 2) 헤더가 없으면: 첫 열이 대부분 숫자(연번)면 한 칸 밀기
+    if (!headerFound) {
+      const col0 = grid.filter((r) => r.some(Boolean)).map((r) => r[0] || '');
+      const numeric = col0.filter((v) => /^\d+$/.test(v)).length;
+      nameCol = numeric / Math.max(col0.length, 1) > 0.6 ? 1 : 0;
+      deptCol = nameCol + 1;
+    }
+
+    const members = [];
+    let lastDept = '';
+    for (let i = startRow; i < grid.length; i++) {
+      const r = grid[i];
+      const name = (r[nameCol] || '').trim();
+      let dept = deptCol >= 0 ? (r[deptCol] || '').trim() : '';
+      if (!name) continue;
+      if (/^\d+$/.test(name)) continue;              // 숫자만 = 연번
+      if (isNameHeader(name)) continue;              // 반복된 헤더 줄
+      if (name.length > 20) continue;                // 제목·문장 줄
+      if (headerFound && !dept && lastDept) dept = lastDept; // 병합 셀: 위 값 이어받기
+      if (dept) lastDept = dept;
+      members.push({ name, dept });
+    }
+    return members;
+  }
 
   $('btnTemplate').addEventListener('click', () => {
     const ws = XLSX.utils.aoa_to_sheet([
