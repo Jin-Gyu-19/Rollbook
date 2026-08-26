@@ -48,6 +48,20 @@ async function ensureSchema(db) {
   } catch {
     /* 이미 있으면 무시 */
   }
+
+  // 테스트용 인원 5명 자동 등록 (DB당 1회만 — 명단에서 삭제해도 다시 생기지 않음)
+  const seeded = await db.prepare("SELECT value FROM settings WHERE key = 'seeded_test'").first();
+  if (!seeded) {
+    await db.batch([
+      db.prepare(`INSERT OR IGNORE INTO members (name, title, dept, code) VALUES
+        ('김민준', '사원', '감사1본부', 'RB-TEST-0001'),
+        ('이서연', '대리', '감사1본부', 'RB-TEST-0002'),
+        ('박지훈', '과장', '디지털본부', 'RB-TEST-0003'),
+        ('최수아', 'MANAGER', '세무본부', 'RB-TEST-0004'),
+        ('정도윤', '파트너', '어드바이저리', 'RB-TEST-0005')`),
+      db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('seeded_test', '1')"),
+    ]);
+  }
   schemaReady = true;
 }
 
