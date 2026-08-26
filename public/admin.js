@@ -483,12 +483,16 @@
   // 회사 로고는 서버(D1)에 저장되어 상단바·스캐너·QR 모두에 적용된다
   let logoVer = 0;
   const logoUrl = () => `/api/logo?v=${logoVer}`;
+  // 로고 스타일: center(가운데 로고) · pattern(점에 새기기) · none
+  const storedLogoMode = localStorage.getItem('rollbook-qr-logo');
   const qrState = {
     dot: 'square',
     color: '#111827',
-    useLogo: localStorage.getItem('rollbook-qr-logo') !== 'none', // QR 에 로고 포함 여부
+    logoMode: storedLogoMode === 'none' || storedLogoMode === 'pattern' ? storedLogoMode : 'center',
   };
   let qr = null;
+  let patternCanvas = null; // '점에 새기기' 미리보기 캔버스 (다운로드에 재사용)
+  let renderSeq = 0;
 
   function currentMember() {
     const id = Number($('qrMemberSel').value);
@@ -509,8 +513,158 @@
     owner.innerHTML = `<b>${esc(m.name)}${m.title ? ` ${esc(m.title)}` : ''}${m.dept ? ` · ${esc(m.dept)}` : ''}</b><code>${esc(m.code)}</code>`;
 
     holder.innerHTML = '';
-    qr = new QRCodeStyling(buildQrOptions(m, 480));
-    qr.append(holder);
+    qr = null;
+    patternCanvas = null;
+    if (qrState.logoMode === 'pattern') {
+      const seq = ++renderSeq;
+      buildPatternCanvas(m, 480)
+        .then((canvas) => {
+          if (seq !== renderSeq) return;
+          canvas.style.maxWidth = '100%';
+          holder.innerHTML = '';
+          holder.appendChild(canvas);
+          patternCanvas = canvas;
+        })
+        .catch((e) => {
+          if (seq === renderSeq) toast(e.message, true);
+        });
+    } else {
+      qr = new QRCodeStyling(buildQrOptions(m, 480));
+      qr.append(holder);
+    }
+  }
+
+  // ── '점에 새기기' 렌더러 ──────────────────────────────
+  // 로고를 QR 중앙 위에 겹치지 않고, 어두운 모듈 중 로고가 지나가는
+  // 자리만 로고 색으로 칠해 점 무늬 안에 로고가 새겨진 것처럼 보이게 한다.
+  // 모듈 자체는 전부 어둡게 유지되므로 오류 보정을 소모하지 않는다.
+  let logoImgCache = { ver: -1, promise: null };
+  function loadLogoImage() {
+    if (logoImgCache.ver !== logoVer || !logoImgCache.promise) {
+      logoImgCache = {
+        ver: logoVer,
+        promise: new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('로고 이미지를 불러오지 못했습니다'));
+          img.src = logoUrl();
+        }),
+      };
+    }
+    return logoImgCache.promise;
+  }
+
+  // 로고를 모듈 격자에 맞춰 3×3 슈퍼샘플링 — (row, col) → 색상 | null
+  function makeLogoSampler(img, count) {
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return null;
+    const S = 3;
+    const off = document.createElement('canvas');
+    off.width = count * S;
+    off.height = count * S;
+    const octx = off.getContext('2d', { willReadFrequently: true });
+    const area = count * S * 0.75; // 세 모서리 파인더 패턴을 피하는 중앙 영역
+    const k = Math.min(area / w, area / h);
+    const dw = w * k;
+    const dh = h * k;
+    octx.imageSmoothingEnabled = true;
+    octx.imageSmoothingQuality = 'high';
+    octx.drawImage(img, (count * S - dw) / 2, (count * S - dh) / 2, dw, dh);
+    const px = octx.getImageData(0, 0, count * S, count * S).data;
+    return (r, c) => {
+      let sr = 0, sg = 0, sb = 0, sa = 0;
+      for (let dy = 0; dy < S; dy++) {
+        for (let dx = 0; dx < S; dx++) {
+          const i = ((r * S + dy) * count * S + (c * S + dx)) * 4;
+          const a = px[i + 3] / 255;
+          sr += px[i] * a;
+          sg += px[i + 1] * a;
+          sb += px[i + 2] * a;
+          sa += a;
+        }
+      }
+      if (sa < S * S * 0.35) return null; // 모듈의 1/3 이상 덮일 때만 로고 색 적용
+      let R = sr / sa, G = sg / sa, B = sb / sa;
+      const lum = 0.299 * R + 0.587 * G + 0.114 * B;
+      if (lum > 210) return null; // 로고의 흰 배경 부분은 일반 점으로
+      if (lum > 150) { // 스캐너가 어두운 모듈로 읽도록 밝은 색은 눌러 준다
+        const d = 150 / lum;
+        R *= d; G *= d; B *= d;
+      }
+      return `rgb(${R | 0},${G | 0},${B | 0})`;
+    };
+  }
+
+  function drawPatternDot(ctx, x, y, s) {
+    ctx.beginPath();
+    if (qrState.dot === 'dots') {
+      // 이웃과 맞닿는 반지름 — 더 작으면 jsQR 가 어두운 면적 부족으로 못 읽는다
+      ctx.arc(x + s / 2, y + s / 2, s / 2, 0, Math.PI * 2);
+    } else if (qrState.dot === 'rounded' && ctx.roundRect) {
+      ctx.roundRect(x + s * 0.04, y + s * 0.04, s * 0.92, s * 0.92, s * 0.32);
+    } else if (qrState.dot === 'classy-rounded' && ctx.roundRect) {
+      // 0.3 이하일 때만 jsQR 가 안정적으로 읽는다 (0.42↑는 디코드 실패 확인)
+      ctx.roundRect(x, y, s + 0.2, s + 0.2, [s * 0.3, 0, s * 0.3, 0]);
+    } else {
+      ctx.rect(x, y, s + 0.35, s + 0.35); // 미세한 이음새 방지 여유
+    }
+    ctx.fill();
+  }
+
+  function drawPatternFinder(ctx, x, y, s) {
+    const rounded = qrState.dot !== 'square' && !!ctx.roundRect;
+    ctx.fillStyle = qrState.color;
+    ctx.strokeStyle = qrState.color;
+    ctx.lineWidth = s;
+    ctx.beginPath();
+    if (rounded) ctx.roundRect(x + s / 2, y + s / 2, s * 6, s * 6, s * 2);
+    else ctx.rect(x + s / 2, y + s / 2, s * 6, s * 6);
+    ctx.stroke();
+    ctx.beginPath();
+    if (rounded && qrState.dot === 'dots') ctx.arc(x + s * 3.5, y + s * 3.5, s * 1.5, 0, Math.PI * 2);
+    else if (rounded) ctx.roundRect(x + s * 2, y + s * 2, s * 3, s * 3, s);
+    else ctx.rect(x + s * 2, y + s * 2, s * 3, s * 3);
+    ctx.fill();
+  }
+
+  async function buildPatternCanvas(m, size) {
+    // qr-code-styling 내부의 QR 행렬만 빌려 온다 (H 보정, 미리보기와 동일 데이터)
+    const helper = new QRCodeStyling({ data: `ROLLBOOK:${m.code}`, qrOptions: { errorCorrectionLevel: 'H' } });
+    const grid = helper._qr;
+    if (!grid) throw new Error('QR 코드를 생성하지 못했습니다');
+    const count = grid.getModuleCount();
+
+    let sampler = null;
+    try {
+      sampler = makeLogoSampler(await loadLogoImage(), count);
+    } catch {
+      // 로고를 못 불러오면 로고 없이 일반 점으로 그린다
+    }
+
+    const margin = Math.round(size / 60);
+    const mod = (size - margin * 2) / count;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, size, size);
+
+    const isFinder = (r, c) =>
+      (r < 7 && c < 7) || (r < 7 && c >= count - 7) || (r >= count - 7 && c < 7);
+
+    for (let r = 0; r < count; r++) {
+      for (let c = 0; c < count; c++) {
+        if (isFinder(r, c) || !grid.isDark(r, c)) continue;
+        ctx.fillStyle = (sampler && sampler(r, c)) || qrState.color;
+        drawPatternDot(ctx, margin + c * mod, margin + r * mod, mod);
+      }
+    }
+    drawPatternFinder(ctx, margin, margin, mod);
+    drawPatternFinder(ctx, margin + (count - 7) * mod, margin, mod);
+    drawPatternFinder(ctx, margin, margin + (count - 7) * mod, mod);
+    return canvas;
   }
 
   // 현재 디자인 설정으로 QR 옵션 구성 (미리보기·일괄 다운로드 공용)
@@ -529,7 +683,7 @@
       },
       cornersDotOptions: { type: qrState.dot === 'square' ? 'square' : 'dot', color: qrState.color },
       backgroundOptions: { color: '#FFFFFF' },
-      image: qrState.useLogo ? logoUrl() : undefined,
+      image: qrState.logoMode === 'center' ? logoUrl() : undefined,
       imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.35, hideBackgroundDots: true },
     };
   }
@@ -565,11 +719,23 @@
   bindSeg('qrDotSeg', 'dot');
   bindSeg('qrColorSeg', 'color');
 
+  $('qrLogoSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    qrState.logoMode = b.dataset.v;
+    try {
+      if (qrState.logoMode === 'center') localStorage.removeItem('rollbook-qr-logo');
+      else localStorage.setItem('rollbook-qr-logo', qrState.logoMode);
+    } catch {}
+    updateLogoUi();
+    renderQr();
+  });
+
   function updateLogoUi() {
-    $('logoThumb').classList.toggle('hidden', !qrState.useLogo);
-    if (qrState.useLogo) $('logoThumb').src = logoUrl();
-    $('btnClearLogo').classList.toggle('hidden', !qrState.useLogo);
-    $('btnDefaultLogo').classList.toggle('hidden', qrState.useLogo);
+    $('qrLogoSeg').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === qrState.logoMode));
+    const showThumb = qrState.logoMode !== 'none';
+    $('logoThumb').classList.toggle('hidden', !showThumb);
+    if (showThumb) $('logoThumb').src = logoUrl();
   }
 
   // 로고 업로드 → 서버 저장 → 모든 화면에 즉시 반영
@@ -586,8 +752,10 @@
       try {
         await api('/api/logo', { method: 'POST', body: JSON.stringify({ dataUrl: reader.result }) });
         logoVer = Date.now();
-        qrState.useLogo = true;
-        try { localStorage.removeItem('rollbook-qr-logo'); } catch {}
+        if (qrState.logoMode === 'none') {
+          qrState.logoMode = 'center';
+          try { localStorage.removeItem('rollbook-qr-logo'); } catch {}
+        }
         document.querySelectorAll('.brand-logo').forEach((el) => { el.src = logoUrl(); });
         toast('로고가 저장되었습니다 — 모든 화면에 적용됩니다');
         updateLogoUi();
@@ -599,25 +767,18 @@
     reader.readAsDataURL(file);
   });
 
-  $('btnClearLogo').addEventListener('click', () => {
-    qrState.useLogo = false;
-    $('logoFile').value = '';
-    try { localStorage.setItem('rollbook-qr-logo', 'none'); } catch {}
-    updateLogoUi();
-    renderQr();
-  });
-
-  $('btnDefaultLogo').addEventListener('click', () => {
-    qrState.useLogo = true;
-    try { localStorage.removeItem('rollbook-qr-logo'); } catch {}
-    updateLogoUi();
-    renderQr();
-  });
-
   $('btnDownloadQr').addEventListener('click', () => {
     const m = currentMember();
-    if (!qr || !m) return;
-    qr.download({ name: `rollbook-qr-${m.name}`, extension: 'png' });
+    if (!m) return;
+    if (qrState.logoMode === 'pattern') {
+      if (!patternCanvas) return;
+      const a = document.createElement('a');
+      a.href = patternCanvas.toDataURL('image/png');
+      a.download = `rollbook-qr-${m.name}.png`;
+      a.click();
+    } else if (qr) {
+      qr.download({ name: `rollbook-qr-${m.name}`, extension: 'png' });
+    }
   });
 
   // 전체 QR 을 ZIP 으로 일괄 다운로드 (현재 디자인·로고 적용, 인쇄용 720px)
@@ -637,8 +798,14 @@
       for (let i = 0; i < membersCache.length; i++) {
         const m = membersCache[i];
         btn.textContent = `생성 중… ${i + 1}/${membersCache.length}`;
-        const q = new QRCodeStyling(buildQrOptions(m, 720));
-        const blob = await q.getRawData('png');
+        let blob;
+        if (qrState.logoMode === 'pattern') {
+          const canvas = await buildPatternCanvas(m, 720);
+          blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+        } else {
+          const q = new QRCodeStyling(buildQrOptions(m, 720));
+          blob = await q.getRawData('png');
+        }
         const safeName = `${m.name}${m.dept ? `_${m.dept}` : ''}`.replace(/[\\/:*?"<>|]/g, '_');
         zip.file(`${safeName}_${m.code}.png`, blob);
       }
