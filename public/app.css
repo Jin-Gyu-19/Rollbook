@@ -28,9 +28,16 @@
   text-shadow: 0 2px 12px rgba(17, 24, 39, .5);
 }
 .scan-frame .box {
-  position: relative; width: min(56vmin, 420px); aspect-ratio: 1 / 1;
-  border-radius: 24px;
+  /* 명찰 비율 (가로 15 : 세로 20) 의 세로형 프레임 */
+  position: relative; height: min(64vmin, 480px); aspect-ratio: 3 / 4;
+  border-radius: 18px;
   box-shadow: 0 0 0 9999px rgba(17, 24, 39, .32);
+}
+/* 명찰 목걸이 구멍 표시 — 프레임이 명찰임을 직관적으로 */
+.scan-frame .slot {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  width: 32%; height: 9px; border-radius: 999px;
+  border: 2.5px solid rgba(255, 255, 255, .8);
 }
 .scan-frame .c { position: absolute; width: 44px; height: 44px; border: 4px solid rgba(255, 255, 255, .95); }
 .scan-frame .c.tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 22px; }

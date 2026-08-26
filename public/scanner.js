@@ -191,7 +191,7 @@
       const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
       video.classList.toggle('mirror', settings.facingMode !== 'environment');
       offline.classList.add('hidden');
-      setCam('QR 코드를 사각형 안에 비춰 주세요', 'ok');
+      setCam('명찰을 테두리 안에 맞춰 주세요', 'ok');
       requestAnimationFrame(tick);
     } catch (e) {
       setCam('카메라를 사용할 수 없습니다 — 권한을 확인해 주세요', 'err');
@@ -205,10 +205,10 @@
   });
 
   // ── 스캔 루프 ────────────────────────────────────────
-  // 작은 QR 도 잡히도록 세 전략을 순환한다:
+  // 세 전략을 순환한다:
   //  0) 전체 화면을 640px 로 축소 (크고 가까운 코드)
-  //  1) 중앙 60% 를 고화질(최대 1000px)로 (중간 크기)
-  //  2) 중앙 32% 를 원본 화질 그대로 (아주 작은 코드 — 디지털 돋보기)
+  //  1) 명찰 프레임 영역(세로형 3:4)을 고화질로 — 명찰 안 QR 이 어디 있든 인식
+  //  2) 중앙 40% 정사각형을 원본 화질로 (아주 작은 코드 — 디지털 돋보기)
   let passIdx = 0;
   async function tick(now) {
     if (!stream || !stream.active) return;
@@ -224,11 +224,18 @@
 
     let sx = 0, sy = 0, sw = vw, sh = vh, target = 640;
     if (passIdx > 0) {
-      const ratio = passIdx === 1 ? 0.6 : 0.32;
-      const side = Math.floor(Math.min(vw, vh) * ratio);
-      sx = Math.floor((vw - side) / 2);
-      sy = Math.floor((vh - side) / 2);
-      sw = sh = side;
+      const minSide = Math.min(vw, vh);
+      let cw, ch;
+      if (passIdx === 1) {
+        ch = Math.floor(minSide * 0.8);       // 명찰 프레임 높이
+        cw = Math.floor(ch * 0.75);           // 3:4 비율
+      } else {
+        cw = ch = Math.floor(minSide * 0.4);  // 중앙 정밀 스캔
+      }
+      sx = Math.floor((vw - cw) / 2);
+      sy = Math.floor((vh - ch) / 2);
+      sw = cw;
+      sh = ch;
       target = 1000;
     }
     const scale = Math.min(target / sw, 1);
@@ -299,7 +306,7 @@
     modalTimer = setTimeout(() => {
       modal.classList.remove('show');
       busy = false;
-      setCam('QR 코드를 사각형 안에 비춰 주세요', 'ok');
+      setCam('명찰을 테두리 안에 맞춰 주세요', 'ok');
     }, MODAL_MS);
   }
 
