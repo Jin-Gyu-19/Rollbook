@@ -123,21 +123,34 @@
 }
 .mini-btn:hover { background: var(--primary-dark); }
 
-/* 우측 실시간 출석부 패널 */
+/* 우측 실시간 출석부 패널 (화면 높이 꽉 차게) */
 .scan-panel {
-  position: fixed; right: 18px; top: 88px;
-  bottom: calc(92px + env(safe-area-inset-bottom));
-  width: 330px; z-index: 5;
+  position: fixed; right: 18px;
+  top: calc(16px + env(safe-area-inset-top));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  width: 330px; z-index: 6;
   border-radius: 24px; padding: 16px 6px 10px 18px;
   display: flex; flex-direction: column;
 }
 .scan-panel-head {
-  display: flex; align-items: baseline; justify-content: space-between;
-  padding: 0 14px 10px 2px; flex: none;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 14px 11px 2px; flex: none;
   border-bottom: 1px solid rgba(255, 255, 255, .18);
 }
 .scan-panel-title { font-size: 16px; font-weight: 800; letter-spacing: -.015em; }
+.scan-panel-tools { display: flex; align-items: center; gap: 10px; }
 .scan-panel-count { font-size: 13px; color: rgba(255, 255, 255, .8); font-variant-numeric: tabular-nums; }
+.panel-admin {
+  font-size: 12px; font-weight: 600; color: #fff; text-decoration: none;
+  background: rgba(255, 255, 255, .13); border: 1px solid rgba(255, 255, 255, .24);
+  padding: 4px 12px; border-radius: 999px; transition: filter .15s;
+}
+.panel-admin:hover { filter: brightness(1.35); }
+/* 넓은 화면: 관리자는 패널 안에만, 상단 요소는 패널 왼쪽 공간에 배치 */
+@media (min-width: 981px) {
+  .scan-top { right: 366px; }
+  .scan-top .scan-link { display: none; }
+}
 .scan-panel-list { flex: 1; overflow-y: auto; padding-right: 8px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; }
 .scan-panel-list::-webkit-scrollbar { width: 4px; }
 .scan-panel-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .25); border-radius: 999px; }
@@ -146,10 +159,17 @@
   padding: 9px 4px 9px 2px; border-bottom: 1px solid rgba(255, 255, 255, .1);
 }
 .att-row:last-child { border-bottom: 0; }
-.att-row.new { animation: att-in 1.6s ease-out both; }
-@keyframes att-in {
-  0% { background: rgba(52, 211, 153, .38); }
-  100% { background: transparent; }
+/* 방금 출석: 형광 테두리가 3번 반짝 */
+.att-row.new { border-radius: 12px; animation: att-glow .8s ease-in-out 3; }
+@keyframes att-glow {
+  0%, 100% {
+    box-shadow: inset 0 0 0 1.5px rgba(74, 222, 128, .25);
+    background: rgba(52, 211, 153, .08);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px rgba(110, 255, 190, .95), 0 0 16px rgba(74, 255, 170, .55);
+    background: rgba(52, 211, 153, .24);
+  }
 }
 .att-no { flex: none; width: 26px; font-size: 12px; color: rgba(255, 255, 255, .55); font-variant-numeric: tabular-nums; text-align: right; }
 .att-check { flex: none; width: 18px; height: 18px; border-radius: 999px; background: rgba(52, 211, 153, .3); color: #ECFDF5; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
