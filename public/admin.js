@@ -564,8 +564,8 @@
     off.width = count * S;
     off.height = count * S;
     const octx = off.getContext('2d', { willReadFrequently: true });
-    const area = count * S * 0.75; // 세 모서리 파인더 패턴을 피하는 중앙 영역
-    const k = Math.min(area / w, area / h);
+    // 가로는 QR 좌우 끝까지 꽉 채우고, 세로만 모서리 파인더 패턴을 피하도록 제한
+    const k = Math.min((count * S) / w, ((count - 16) * S) / h);
     const dw = w * k;
     const dh = h * k;
     octx.imageSmoothingEnabled = true;
