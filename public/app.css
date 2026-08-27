@@ -142,7 +142,19 @@
   width: 430px; z-index: 6;
   border-radius: 24px; padding: 18px 8px 12px 20px;
   display: flex; flex-direction: column;
+  /* 검정 반투명 유리 */
+  background: linear-gradient(165deg, rgba(8, 12, 20, .62), rgba(8, 12, 20, .46));
+  border-color: rgba(255, 255, 255, .15);
 }
+.scan-panel::before { display: none; } /* 흰 광택 레이어 제거 (다크 유리) */
+.scan-panel-headL { min-width: 0; }
+.scan-panel-sub {
+  font-size: 15px; color: rgba(255, 255, 255, .72); margin-top: 3px;
+  display: flex; align-items: center; gap: 7px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.scan-panel-sub .rec-dot { width: 9px; height: 9px; border-radius: 999px; background: #34D399; flex: none; box-shadow: 0 0 8px rgba(52, 211, 153, .8); }
+.scan-panel-sub.off .rec-dot { background: #F59E0B; box-shadow: none; }
 .scan-panel-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 14px 11px 2px; flex: none;
@@ -157,10 +169,12 @@
   padding: 6px 15px; border-radius: 999px; transition: filter .15s;
 }
 .panel-admin:hover { filter: brightness(1.35); }
-/* 넓은 화면: 관리자는 패널 안에만, 상단 요소는 패널 왼쪽 공간에 배치 */
+/* 넓은 화면: 관리자는 패널 안에만, 프레임·안내는 패널 왼쪽 공간 기준으로 중앙 배치 */
 @media (min-width: 981px) {
   .scan-top { right: 466px; }
   .scan-top .scan-link { display: none; }
+  .scan-frame { right: 466px; }
+  .scan-bottom { right: 466px; }
 }
 .scan-panel-list { flex: 1; overflow-y: auto; padding-right: 8px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; }
 .scan-panel-list::-webkit-scrollbar { width: 4px; }
@@ -210,6 +224,9 @@
 .scan-pill.ok .dot { background: #34D399; }
 .scan-pill.err { background: var(--danger); }
 .scan-pill.err .dot { background: #fff; }
+@media (min-width: 981px) {
+  .scan-bottom { right: 466px; } /* 패널 왼쪽 공간 기준 중앙 */
+}
 
 /* ── 출석 완료 모달 ──────────────────────────────────── */
 .result-modal {

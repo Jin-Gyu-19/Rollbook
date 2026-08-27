@@ -8,7 +8,6 @@
   const btnRetry = document.getElementById('btnRetryCamera');
   const camState = document.getElementById('camState');
   const scanPill = document.getElementById('scanPill');
-  const sheetBanner = document.getElementById('sheetBanner');
 
   // 하단 상태 알약: kind = '' | 'ok' | 'err'
   function setCam(text, kind) {
@@ -85,43 +84,15 @@
     }
   }
 
-  // ── 기록 중인 출석부 배너 ────────────────────────────
   const esc = (s) =>
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-  let bannerKey = null; // 같은 내용이면 다시 그리지 않음 (애니메이션 반복 방지)
-  async function refreshStatus() {
-    try {
-      const r = await fetch('/api/status');
-      const { activeSheet } = await r.json();
-      const key = activeSheet ? `${activeSheet.id}:${activeSheet.title}:${activeSheet.sheet_date}` : 'none';
-      if (key === bannerKey) return;
-      bannerKey = key;
-      if (activeSheet) {
-        sheetBanner.innerHTML = `
-          <div class="sheet-card glass">
-            <span class="stag ok">기록 중</span>
-            <span class="sheet-title">${esc(activeSheet.title)}</span>
-            <span class="sheet-date">${esc(activeSheet.sheet_date)}</span>
-          </div>`;
-      } else {
-        sheetBanner.innerHTML = `
-          <div class="sheet-card glass warn">
-            <span>⚠️ 사용 중인 출석부가 없어 지금은 출석이 기록되지 않습니다</span>
-            <a class="mini-btn" href="/admin">관리자에서 설정</a>
-          </div>`;
-      }
-    } catch {
-      /* 다음 주기에 재시도 */
-    }
-  }
-  refreshStatus();
-  setInterval(refreshStatus, 15000);
 
   // ── 우측 실시간 출석부 패널 ──────────────────────────
   const attPanel = document.getElementById('attPanel');
   const panelList = document.getElementById('panelList');
   const panelCount = document.getElementById('panelCount');
+  const panelSheetTitle = document.getElementById('panelSheetTitle');
+  const panelSheetSub = document.getElementById('panelSheetSub');
   let latestCheckedAt = ''; // 마지막으로 본 최신 기록
   let glowCheckedAt = null; // 지금 네온 글로우 중인 기록 (10초 or 다음 출석까지)
   let glowTimer = null;
@@ -136,10 +107,16 @@
       const r = await fetch('/api/recent');
       const d = await r.json();
       if (!d.sheet) {
+        panelSheetTitle.textContent = '출석부';
+        panelSheetSub.className = 'scan-panel-sub off';
+        panelSheetSub.innerHTML = '<span class="rec-dot"></span>사용 중인 출석부 없음';
         panelCount.textContent = '';
-        panelList.innerHTML = '<div class="att-empty">사용 중인 출석부가 없습니다</div>';
+        panelList.innerHTML = '<div class="att-empty">관리자에서 출석부를 만들고<br>"출석 체크"를 눌러 주세요<br><br><a class="mini-btn" href="/admin">관리자로 이동</a></div>';
         return;
       }
+      panelSheetTitle.textContent = d.sheet.title;
+      panelSheetSub.className = 'scan-panel-sub';
+      panelSheetSub.innerHTML = `<span class="rec-dot"></span>기록 중 · ${esc(d.sheet.sheet_date)}`;
       panelCount.textContent = `${d.attended} / ${d.total}명`;
       if (!d.entries.length) {
         panelList.innerHTML = '<div class="att-empty">아직 출석한 사람이 없습니다<br>첫 번째 주인공이 되어 보세요!</div>';
@@ -281,7 +258,7 @@
         showResult('warn', `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`, '이미 출석 처리되었습니다.');
       } else if (data.status === 'no_sheet') {
         showResult('err', '출석부 없음', '사용 중인 출석부가 없습니다. 관리자에게 문의해 주세요.');
-        refreshStatus();
+        loadRecent();
       } else if (data.status === 'unknown') {
         showResult('err', '알 수 없는 QR', '등록되지 않은 QR 코드입니다.');
       } else {

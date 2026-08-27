@@ -28,17 +28,19 @@
   </div>
 </div>
 
-<!-- 떠 있는 상단: 로고 · 출석부 배너 · 관리자 -->
+<!-- 떠 있는 상단: 로고 · 관리자(좁은 화면용) -->
 <header class="scan-top">
   <a class="scan-chip" href="/"><img src="/api/logo" class="brand-logo" alt="BDO"> Rollbook</a>
-  <div class="sheet-banner" id="sheetBanner"></div>
   <a class="scan-chip scan-link glass" href="/admin">관리자</a>
 </header>
 
-<!-- 우측: 실시간 출석부 패널 -->
+<!-- 우측: 실시간 출석부 패널 (기록 중 출석부 정보 포함) -->
 <aside class="scan-panel glass" id="attPanel">
   <div class="scan-panel-head">
-    <span class="scan-panel-title">출석부</span>
+    <div class="scan-panel-headL">
+      <div class="scan-panel-title" id="panelSheetTitle">출석부</div>
+      <div class="scan-panel-sub" id="panelSheetSub"></div>
+    </div>
     <span class="scan-panel-tools">
       <span class="scan-panel-count" id="panelCount"></span>
       <a class="panel-admin" href="/admin">관리자</a>
