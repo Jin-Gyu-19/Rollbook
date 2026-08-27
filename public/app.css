@@ -170,11 +170,11 @@
 }
 .panel-admin:hover { filter: brightness(1.35); }
 /* 넓은 화면: 관리자는 패널 안에만. 프레임은 화면 정중앙 —
-   패널과 겹칠 만큼 좁은 화면에서만 프레임이 자동으로 작아진다 */
+   패널과 겹칠 만큼 좁은 화면에서는 크기를 유지한 채 왼쪽으로 밀어 겹침만 피한다 */
 @media (min-width: 981px) {
   .scan-top { right: 466px; }
   .scan-top .scan-link { display: none; }
-  .scan-frame .box { width: min(63vmin, 525px, calc(100vw - 940px)); }
+  .scan-frame .box { margin-right: max(0px, calc(min(63vmin, 525px) + 948px - 100vw)); }
 }
 .scan-panel-list { flex: 1; overflow-y: auto; padding-right: 8px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; }
 .scan-panel-list::-webkit-scrollbar { width: 4px; }
