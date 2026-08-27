@@ -32,8 +32,8 @@
   font-size: 19px; opacity: .9;
 }
 .scan-frame .box {
-  /* 명찰 비율 (가로 15 : 세로 20) 의 세로형 프레임 — 화면을 크게 채워 QR 이 크게 잡히도록 */
-  position: relative; height: min(84vmin, 700px); aspect-ratio: 3 / 4;
+  /* 명찰 비율 (가로 15 : 세로 20) 의 세로형 프레임 — 화면 정중앙, 크게 */
+  position: relative; width: min(63vmin, 525px); aspect-ratio: 3 / 4;
   border-radius: 18px;
   box-shadow: 0 0 0 9999px rgba(17, 24, 39, .32);
 }
@@ -169,12 +169,12 @@
   padding: 6px 15px; border-radius: 999px; transition: filter .15s;
 }
 .panel-admin:hover { filter: brightness(1.35); }
-/* 넓은 화면: 관리자는 패널 안에만, 프레임·안내는 패널 왼쪽 공간 기준으로 중앙 배치 */
+/* 넓은 화면: 관리자는 패널 안에만. 프레임은 화면 정중앙 —
+   패널과 겹칠 만큼 좁은 화면에서만 프레임이 자동으로 작아진다 */
 @media (min-width: 981px) {
   .scan-top { right: 466px; }
   .scan-top .scan-link { display: none; }
-  .scan-frame { right: 466px; }
-  .scan-bottom { right: 466px; }
+  .scan-frame .box { width: min(63vmin, 525px, calc(100vw - 940px)); }
 }
 .scan-panel-list { flex: 1; overflow-y: auto; padding-right: 8px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; }
 .scan-panel-list::-webkit-scrollbar { width: 4px; }
@@ -224,9 +224,6 @@
 .scan-pill.ok .dot { background: #34D399; }
 .scan-pill.err { background: var(--danger); }
 .scan-pill.err .dot { background: #fff; }
-@media (min-width: 981px) {
-  .scan-bottom { right: 466px; } /* 패널 왼쪽 공간 기준 중앙 */
-}
 
 /* ── 출석 완료 모달 ──────────────────────────────────── */
 .result-modal {
