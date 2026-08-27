@@ -225,10 +225,10 @@
       const minSide = Math.min(vw, vh);
       let cw, ch;
       if (passIdx === 1) {
-        ch = Math.floor(minSide * 0.8);       // 명찰 프레임 높이
+        ch = Math.floor(minSide * 0.95);      // 명찰 프레임 높이 (화면 거의 전체)
         cw = Math.floor(ch * 0.75);           // 3:4 비율
       } else {
-        cw = ch = Math.floor(minSide * 0.4);  // 중앙 정밀 스캔
+        cw = ch = Math.floor(minSide * 0.45); // 중앙 정밀 스캔
       }
       sx = Math.floor((vw - cw) / 2);
       sy = Math.floor((vh - ch) / 2);
