@@ -211,7 +211,8 @@
     const vh = video.videoHeight;
     if (!vw || !vh) return;
 
-    let sx = 0, sy = 0, sw = vw, sh = vh, target = 640;
+    // 소형(20~25mm) 인쇄 QR 은 모듈당 3.5px 이상 필요해서 처리 해상도가 곧 인식 거리다
+    let sx = 0, sy = 0, sw = vw, sh = vh, target = 960;
     if (passIdx > 0) {
       const minSide = Math.min(vw, vh);
       let cw, ch;
@@ -225,7 +226,7 @@
       sy = Math.floor((vh - ch) / 2);
       sw = cw;
       sh = ch;
-      target = 1000;
+      target = 1440;
     }
     const scale = Math.min(target / sw, 1);
     canvas.width = Math.round(sw * scale);

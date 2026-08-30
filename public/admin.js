@@ -632,10 +632,10 @@
   // qr-code-styling 내부의 QR 행렬만 빌려 온다 (H 보정, 미리보기와 동일 데이터).
   // 자동 버전(25×25)은 칸이 적어 로고 글자가 뭉개지므로 버전 8(49×49)로
   // 올려 해상도를 확보한다 — 데이터가 넘치면 자동 버전으로 되돌아간다.
-  function makeQrGrid(code) {
+  function makeQrGrid(code, typeNumber = 8) {
     let helper;
     try {
-      helper = new QRCodeStyling({ data: `ROLLBOOK:${code}`, qrOptions: { typeNumber: 8, errorCorrectionLevel: 'H' } });
+      helper = new QRCodeStyling({ data: `ROLLBOOK:${code}`, qrOptions: { typeNumber, errorCorrectionLevel: 'H' } });
     } catch {
       helper = new QRCodeStyling({ data: `ROLLBOOK:${code}`, qrOptions: { errorCorrectionLevel: 'H' } });
     }
@@ -692,7 +692,9 @@
   // 흰 점을 뚫는다. 로고 밖 어두운 모듈은 성긴 점으로 그린다.
   // 성긴 점은 jsQR 가 못 읽으므로 이 스타일은 ZXing 내장 스캐너 전제.
   async function buildPosterCanvas(m, size) {
-    const grid = makeQrGrid(m.code);
+    // 로고가 원본 이미지 그대로라 격자 해상도가 필요 없으므로 버전 5(37칸)로
+    // 낮춰 모듈을 키운다 — 소형 인쇄에서 인식 거리가 v8 대비 약 1.36배
+    const grid = makeQrGrid(m.code, 5);
     const count = grid.getModuleCount();
 
     let img = null;
