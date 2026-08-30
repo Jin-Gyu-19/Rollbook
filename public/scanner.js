@@ -14,6 +14,19 @@
     camState.textContent = text;
     scanPill.className = 'scan-pill' + (kind ? ` ${kind}` : '');
   }
+
+  // 카메라가 실제로 주는 해상도 진단 표시 — 소형 QR 인식 거리는 해상도에 비례한다
+  const camRes = document.getElementById('camRes');
+  function showCamRes(settings) {
+    const w = settings.width, h = settings.height;
+    if (!w || !h) {
+      camRes.textContent = '';
+      return;
+    }
+    const low = Math.min(w, h) < 1080; // 1080p 미만이면 소형(25mm) QR 인식이 어렵다
+    camRes.textContent = `${w}×${h}${low ? ' · 해상도 낮음' : ''}`;
+    camRes.classList.toggle('low', low);
+  }
   const modal = document.getElementById('resultModal');
   const resultIcon = document.getElementById('resultIcon');
   const resultName = document.getElementById('resultName');
@@ -179,6 +192,7 @@
       // 전면 카메라면 미리보기만 거울 모드로 (인식은 원본 영상 사용)
       const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
       video.classList.toggle('mirror', settings.facingMode !== 'environment');
+      showCamRes(settings);
       offline.classList.add('hidden');
       setCam('명찰을 테두리 안에 맞춰 주세요', 'ok');
       requestAnimationFrame(tick);
