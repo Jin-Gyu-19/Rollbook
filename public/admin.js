@@ -488,7 +488,7 @@
   const qrState = {
     dot: 'square',
     color: '#111827',
-    logoMode: storedLogoMode === 'none' || storedLogoMode === 'pattern' ? storedLogoMode : 'center',
+    logoMode: ['none', 'pattern', 'poster'].includes(storedLogoMode) ? storedLogoMode : 'center',
   };
   let qr = null;
   let patternCanvas = null; // '점에 새기기' 미리보기 캔버스 (다운로드에 재사용)
@@ -515,9 +515,10 @@
     holder.innerHTML = '';
     qr = null;
     patternCanvas = null;
-    if (qrState.logoMode === 'pattern') {
+    if (qrState.logoMode === 'pattern' || qrState.logoMode === 'poster') {
       const seq = ++renderSeq;
-      buildPatternCanvas(m, 480)
+      const build = qrState.logoMode === 'poster' ? buildPosterCanvas : buildPatternCanvas;
+      build(m, 480)
         .then((canvas) => {
           if (seq !== renderSeq) return;
           canvas.style.maxWidth = '100%';
@@ -612,8 +613,8 @@
     ctx.fill();
   }
 
-  function drawPatternFinder(ctx, x, y, s) {
-    const rounded = qrState.dot !== 'square' && !!ctx.roundRect;
+  function drawPatternFinder(ctx, x, y, s, forceRounded) {
+    const rounded = (forceRounded || qrState.dot !== 'square') && !!ctx.roundRect;
     ctx.fillStyle = qrState.color;
     ctx.strokeStyle = qrState.color;
     ctx.lineWidth = s;
@@ -628,18 +629,22 @@
     ctx.fill();
   }
 
-  async function buildPatternCanvas(m, size) {
-    // qr-code-styling 내부의 QR 행렬만 빌려 온다 (H 보정, 미리보기와 동일 데이터).
-    // 자동 버전(25×25)은 칸이 적어 로고 글자가 뭉개지므로 버전 8(49×49)로
-    // 올려 해상도를 확보한다 — 데이터가 넘치면 자동 버전으로 되돌아간다.
+  // qr-code-styling 내부의 QR 행렬만 빌려 온다 (H 보정, 미리보기와 동일 데이터).
+  // 자동 버전(25×25)은 칸이 적어 로고 글자가 뭉개지므로 버전 8(49×49)로
+  // 올려 해상도를 확보한다 — 데이터가 넘치면 자동 버전으로 되돌아간다.
+  function makeQrGrid(code) {
     let helper;
     try {
-      helper = new QRCodeStyling({ data: `ROLLBOOK:${m.code}`, qrOptions: { typeNumber: 8, errorCorrectionLevel: 'H' } });
+      helper = new QRCodeStyling({ data: `ROLLBOOK:${code}`, qrOptions: { typeNumber: 8, errorCorrectionLevel: 'H' } });
     } catch {
-      helper = new QRCodeStyling({ data: `ROLLBOOK:${m.code}`, qrOptions: { errorCorrectionLevel: 'H' } });
+      helper = new QRCodeStyling({ data: `ROLLBOOK:${code}`, qrOptions: { errorCorrectionLevel: 'H' } });
     }
-    const grid = helper._qr;
-    if (!grid) throw new Error('QR 코드를 생성하지 못했습니다');
+    if (!helper._qr) throw new Error('QR 코드를 생성하지 못했습니다');
+    return helper._qr;
+  }
+
+  async function buildPatternCanvas(m, size) {
+    const grid = makeQrGrid(m.code);
     const count = grid.getModuleCount();
 
     let sampler = null;
@@ -679,6 +684,75 @@
     drawPatternFinder(ctx, margin, margin, mod);
     drawPatternFinder(ctx, margin + (count - 7) * mod, margin, mod);
     drawPatternFinder(ctx, margin, margin + (count - 7) * mod, mod);
+    return canvas;
+  }
+
+  // ── '포스터' 렌더러 (버거킹 스타일) ───────────────────
+  // 로고 원본 이미지를 매끈하게 그대로 얹고, 로고 위의 밝은 모듈 자리에
+  // 흰 점을 뚫는다. 로고 밖 어두운 모듈은 성긴 점으로 그린다.
+  // 성긴 점은 jsQR 가 못 읽으므로 이 스타일은 ZXing 내장 스캐너 전제.
+  async function buildPosterCanvas(m, size) {
+    const grid = makeQrGrid(m.code);
+    const count = grid.getModuleCount();
+
+    let img = null;
+    let sampler = null;
+    try {
+      img = await loadLogoImage();
+      sampler = makeLogoSampler(img, count);
+    } catch {
+      // 로고를 못 불러오면 점만 그린다
+    }
+
+    const margin = Math.round(size / 60);
+    const mod = (size - margin * 2) / count;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, size, size);
+
+    // 로고 원본을 샘플러와 같은 배치(가로 꽉 채움, 세로는 파인더 회피)로 그린다
+    if (img && sampler) {
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      const k = Math.min(count / w, (count - 16) / h); // 모듈 단위 배율
+      const dw = w * k * mod;
+      const dh = h * k * mod;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, margin + (count * mod - dw) / 2, margin + (count * mod - dh) / 2, dw, dh);
+    }
+
+    const isFinder = (r, c) =>
+      (r < 7 && c < 7) || (r < 7 && c >= count - 7) || (r >= count - 7 && c < 7);
+
+    for (let r = 0; r < count; r++) {
+      for (let c = 0; c < count; c++) {
+        if (isFinder(r, c)) continue;
+        const x = margin + c * mod;
+        const y = margin + r * mod;
+        const ink = sampler ? sampler(r, c) : null;
+        ctx.beginPath();
+        if (grid.isDark(r, c)) {
+          // 로고 잉크 위는 잉크 색 점으로 중심을 보강(글자 가장자리에 걸친 모듈 대비),
+          // 로고 밖은 성긴 점
+          ctx.fillStyle = ink ? `rgb(${ink[0]},${ink[1]},${ink[2]})` : qrState.color;
+          ctx.arc(x + mod / 2, y + mod / 2, mod * 0.35, 0, Math.PI * 2);
+        } else if (ink) {
+          // 로고 잉크 위 밝은 모듈: 흰 구멍
+          ctx.fillStyle = '#FFFFFF';
+          ctx.arc(x + mod / 2, y + mod / 2, mod * 0.4, 0, Math.PI * 2);
+        } else {
+          continue;
+        }
+        ctx.fill();
+      }
+    }
+    drawPatternFinder(ctx, margin, margin, mod, true);
+    drawPatternFinder(ctx, margin + (count - 7) * mod, margin, mod, true);
+    drawPatternFinder(ctx, margin, margin + (count - 7) * mod, mod, true);
     return canvas;
   }
 
@@ -785,7 +859,7 @@
   $('btnDownloadQr').addEventListener('click', () => {
     const m = currentMember();
     if (!m) return;
-    if (qrState.logoMode === 'pattern') {
+    if (qrState.logoMode === 'pattern' || qrState.logoMode === 'poster') {
       if (!patternCanvas) return;
       const a = document.createElement('a');
       a.href = patternCanvas.toDataURL('image/png');
@@ -814,8 +888,9 @@
         const m = membersCache[i];
         btn.textContent = `생성 중… ${i + 1}/${membersCache.length}`;
         let blob;
-        if (qrState.logoMode === 'pattern') {
-          const canvas = await buildPatternCanvas(m, 720);
+        if (qrState.logoMode === 'pattern' || qrState.logoMode === 'poster') {
+          const build = qrState.logoMode === 'poster' ? buildPosterCanvas : buildPatternCanvas;
+          const canvas = await build(m, 720);
           blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
         } else {
           const q = new QRCodeStyling(buildQrOptions(m, 720));

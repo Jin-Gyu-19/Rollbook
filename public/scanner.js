@@ -40,6 +40,20 @@
       .catch(() => {});
   }
 
+  // ZXing-WASM: jsQR 보다 훨씬 관대한 2차 디코더 (포스터 스타일 QR 도 읽는다)
+  let zxingReady = false;
+  if (window.ZXingWASM?.readBarcodes) {
+    try {
+      ZXingWASM.prepareZXingModule({
+        overrides: { locateFile: () => '/vendor/zxing_reader.wasm' },
+        fireImmediately: true, // 스캔 첫 프레임 전에 WASM 미리 로드
+      });
+      zxingReady = true;
+    } catch {
+      /* 로드 실패 시 jsQR 만 사용 */
+    }
+  }
+
   // ── 사운드 (Web Audio 합성 — 파일 불필요) ────────────
   let audioCtx = null;
   function ensureAudio() {
@@ -234,10 +248,20 @@
         detector = null; // 실패 시 jsQR 로 전환
       }
     }
-    if (text === null && typeof jsQR === 'function') {
+    if (text === null && (zxingReady || typeof jsQR === 'function')) {
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-      if (found) text = found.data;
+      if (zxingReady) {
+        try {
+          const found = await ZXingWASM.readBarcodes(img, { formats: ['QRCode'], tryHarder: true });
+          if (found.length && found[0].isValid) text = found[0].text;
+        } catch {
+          zxingReady = false; // WASM 실패 시 이후 jsQR 만 사용
+        }
+      }
+      if (text === null && typeof jsQR === 'function') {
+        const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+        if (found) text = found.data;
+      }
     }
     if (text) onCode(text.trim());
   }
