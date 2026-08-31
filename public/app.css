@@ -234,20 +234,20 @@
 }
 .result-modal.show { opacity: 1; pointer-events: auto; }
 .result-body {
-  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-md);
-  padding: 34px 40px; max-width: 380px; width: 100%; text-align: center;
+  background: #fff; border-radius: 32px; box-shadow: var(--shadow-md);
+  padding: 56px 72px; max-width: 680px; width: 100%; text-align: center;
   transform: translateY(10px); transition: transform .3s cubic-bezier(.22, .7, .3, 1);
 }
 .result-modal.show .result-body { transform: none; }
 .result-icon {
-  width: 62px; height: 62px; border-radius: 999px; margin: 0 auto 14px;
-  display: flex; align-items: center; justify-content: center; font-size: 30px;
+  width: 116px; height: 116px; border-radius: 999px; margin: 0 auto 26px;
+  display: flex; align-items: center; justify-content: center; font-size: 56px;
 }
 .result-icon.ok { background: var(--ok-bg); color: var(--ok-fg); }
 .result-icon.warn { background: var(--warn-bg); color: var(--warn-fg); }
 .result-icon.err { background: var(--err-bg); color: var(--err-fg); }
-.result-name { font-size: 23px; font-weight: 800; letter-spacing: -.03em; margin-bottom: 4px; }
-.result-msg { font-size: 15px; color: var(--muted); }
+.result-name { font-size: 46px; font-weight: 800; letter-spacing: -.03em; margin-bottom: 10px; }
+.result-msg { font-size: 28px; color: var(--muted); }
 
 /* ── 관리자: 통계 타일 ───────────────────────────────── */
 .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 4px 0 16px; }
