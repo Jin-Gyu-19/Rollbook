@@ -14,6 +14,19 @@
     camState.textContent = text;
     scanPill.className = 'scan-pill' + (kind ? ` ${kind}` : '');
   }
+
+  // 카메라가 실제로 주는 해상도 진단 표시 — 소형 QR 인식 거리는 해상도에 비례한다
+  const camRes = document.getElementById('camRes');
+  function showCamRes(settings) {
+    const w = settings.width, h = settings.height;
+    if (!w || !h) {
+      camRes.textContent = '';
+      return;
+    }
+    const low = Math.min(w, h) < 1080; // 1080p 미만이면 소형(25mm) QR 인식이 어렵다
+    camRes.textContent = `${w}×${h}${low ? ' · 해상도 낮음' : ''}`;
+    camRes.classList.toggle('low', low);
+  }
   const modal = document.getElementById('resultModal');
   const resultIcon = document.getElementById('resultIcon');
   const resultName = document.getElementById('resultName');
@@ -37,6 +50,20 @@
         if (formats.includes('qr_code')) detector = new BarcodeDetector({ formats: ['qr_code'] });
       })
       .catch(() => {});
+  }
+
+  // ZXing-WASM: jsQR 보다 훨씬 관대한 2차 디코더 (포스터 스타일 QR 도 읽는다)
+  let zxingReady = false;
+  if (window.ZXingWASM?.readBarcodes) {
+    try {
+      ZXingWASM.prepareZXingModule({
+        overrides: { locateFile: () => '/vendor/zxing_reader.wasm' },
+        fireImmediately: true, // 스캔 첫 프레임 전에 WASM 미리 로드
+      });
+      zxingReady = true;
+    } catch {
+      /* 로드 실패 시 jsQR 만 사용 */
+    }
   }
 
   // ── 사운드 (Web Audio 합성 — 파일 불필요) ────────────
@@ -165,6 +192,7 @@
       // 전면 카메라면 미리보기만 거울 모드로 (인식은 원본 영상 사용)
       const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
       video.classList.toggle('mirror', settings.facingMode !== 'environment');
+      showCamRes(settings);
       offline.classList.add('hidden');
       setCam('명찰을 테두리 안에 맞춰 주세요', 'ok');
       requestAnimationFrame(tick);
@@ -197,7 +225,8 @@
     const vh = video.videoHeight;
     if (!vw || !vh) return;
 
-    let sx = 0, sy = 0, sw = vw, sh = vh, target = 640;
+    // 소형(20~25mm) 인쇄 QR 은 모듈당 3.5px 이상 필요해서 처리 해상도가 곧 인식 거리다
+    let sx = 0, sy = 0, sw = vw, sh = vh, target = 960;
     if (passIdx > 0) {
       const minSide = Math.min(vw, vh);
       let cw, ch;
@@ -211,7 +240,7 @@
       sy = Math.floor((vh - ch) / 2);
       sw = cw;
       sh = ch;
-      target = 1000;
+      target = 1440;
     }
     const scale = Math.min(target / sw, 1);
     canvas.width = Math.round(sw * scale);
@@ -227,10 +256,20 @@
         detector = null; // 실패 시 jsQR 로 전환
       }
     }
-    if (text === null && typeof jsQR === 'function') {
+    if (text === null && (zxingReady || typeof jsQR === 'function')) {
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-      if (found) text = found.data;
+      if (zxingReady) {
+        try {
+          const found = await ZXingWASM.readBarcodes(img, { formats: ['QRCode'], tryHarder: true });
+          if (found.length && found[0].isValid) text = found[0].text;
+        } catch {
+          zxingReady = false; // WASM 실패 시 이후 jsQR 만 사용
+        }
+      }
+      if (text === null && typeof jsQR === 'function') {
+        const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+        if (found) text = found.data;
+      }
     }
     if (text) onCode(text.trim());
   }

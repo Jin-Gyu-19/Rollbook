@@ -221,6 +221,9 @@
   transition: background .15s;
 }
 .scan-pill .dot { width: 8px; height: 8px; border-radius: 999px; background: #9CA3AF; flex: none; }
+.scan-pill .cam-res { font-weight: 500; font-size: 11.5px; opacity: .65; }
+.scan-pill .cam-res:empty { display: none; }
+.scan-pill .cam-res.low { color: #FCA5A5; opacity: 1; }
 .scan-pill.ok .dot { background: #34D399; }
 .scan-pill.err { background: var(--danger); }
 .scan-pill.err .dot { background: #fff; }

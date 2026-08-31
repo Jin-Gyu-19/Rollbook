@@ -51,7 +51,7 @@
 
 <!-- 하단: 상태 알약 -->
 <div class="scan-bottom">
-  <div class="scan-pill" id="scanPill"><span class="dot"></span><span id="camState">카메라 준비 중…</span></div>
+  <div class="scan-pill" id="scanPill"><span class="dot"></span><span id="camState">카메라 준비 중…</span><span class="cam-res" id="camRes"></span></div>
 </div>
 
 <!-- 출석 결과 모달 -->
@@ -65,6 +65,7 @@
 
 <canvas id="frame" class="hidden"></canvas>
 
+<script src="/vendor/zxing-reader.js"></script>
 <script src="/vendor/jsqr.js"></script>
 <script src="/scanner.js"></script>
 </body>
