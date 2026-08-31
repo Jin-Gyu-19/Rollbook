@@ -28,9 +28,10 @@
     camRes.classList.toggle('low', low);
   }
   const modal = document.getElementById('resultModal');
-  const resultIcon = document.getElementById('resultIcon');
+  const resultTop = document.getElementById('resultTop');
   const resultName = document.getElementById('resultName');
   const resultMsg = document.getElementById('resultMsg');
+  const resultStamp = document.getElementById('resultStamp');
 
   const MODAL_MS = 1200;        // 인식 완료 모달: 1초 정도 후 자동 닫힘
   const SAME_CODE_COOLDOWN = 4000; // 같은 코드 연속 인식 방지
@@ -290,31 +291,49 @@
         body: JSON.stringify({ code }),
       });
       const data = await r.json().catch(() => ({}));
+      const who = data.member
+        ? `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`
+        : '';
       if (data.status === 'ok') {
-        showResult('ok', `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`, '출석이 완료되었습니다.');
+        showResult('ok', {
+          top: `${data.sheet.title} · ${fmtClock(data.checked_at)} 출석`,
+          name: who,
+          msg: data.member.dept || '출석이 완료되었습니다.',
+          stamp: '출석',
+        });
         loadRecent(); // 우측 출석부에 바로 반영
       } else if (data.status === 'already') {
-        showResult('warn', `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`, '이미 출석 처리되었습니다.');
+        showResult('warn', {
+          top: `${data.sheet.title} · ${fmtClock(data.checked_at)} 에 이미 출석`,
+          name: who,
+          msg: '이미 출석 처리되어 있습니다.',
+          stamp: '이미\n출석',
+        });
       } else if (data.status === 'no_sheet') {
-        showResult('err', '출석부 없음', '사용 중인 출석부가 없습니다. 관리자에게 문의해 주세요.');
+        showResult('err', { name: '출석부 없음', msg: '사용 중인 출석부가 없습니다. 관리자에게 문의해 주세요.', stamp: '오류' });
         loadRecent();
       } else if (data.status === 'unknown') {
-        showResult('err', '알 수 없는 QR', '등록되지 않은 QR 코드입니다.');
+        showResult('err', { name: '알 수 없는 QR', msg: '등록되지 않은 QR 코드입니다.', stamp: '오류' });
       } else {
-        showResult('err', '오류', data.error || '출석 처리 중 오류가 발생했습니다.');
+        showResult('err', { name: '오류', msg: data.error || '출석 처리 중 오류가 발생했습니다.', stamp: '오류' });
       }
     } catch {
-      showResult('err', '연결 오류', '네트워크 연결을 확인해 주세요.');
+      showResult('err', { name: '연결 오류', msg: '네트워크 연결을 확인해 주세요.', stamp: '오류' });
     }
   }
 
-  function showResult(kind, name, msg) {
+  function showResult(kind, { top = '', name = '', msg = '', stamp = '출석' } = {}) {
     playSound(kind);
-    const marks = { ok: '✓', warn: '!', err: '✕' };
-    resultIcon.className = `result-icon ${kind}`;
-    resultIcon.textContent = marks[kind];
+    resultTop.textContent = top;
+    resultTop.style.display = top ? '' : 'none';
     resultName.textContent = name;
     resultMsg.textContent = msg;
+    resultStamp.className = `result-stamp ${kind}`;
+    resultStamp.textContent = stamp;
+    // 도장 애니메이션을 매번 다시 재생
+    resultStamp.style.animation = 'none';
+    void resultStamp.offsetWidth;
+    resultStamp.style.animation = '';
     modal.classList.add('show');
     clearTimeout(modalTimer);
     modalTimer = setTimeout(() => {
