@@ -185,6 +185,19 @@
   loadRecent();
   setInterval(loadRecent, 5000);
 
+  // 로그아웃 — 이 PC 를 다른 QR 로 다시 로그인시킬 때
+  document.getElementById('btnLogout')?.addEventListener('click', async () => {
+    if (!confirm('이 컴퓨터에서 로그아웃할까요?\n다시 쓰려면 로그인 QR 을 비춰야 합니다.')) return;
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+    } catch { /* 무시 */ }
+    location.href = '/login';
+  });
+
   // ── 카메라 ───────────────────────────────────────────
   async function startCamera() {
     offline.classList.remove('hidden');

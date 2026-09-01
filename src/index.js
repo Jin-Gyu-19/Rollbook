@@ -113,6 +113,16 @@ async function ensureSchema(db) {
 
   // 비밀번호·접속코드 로그인은 QR 로그인으로 대체 — 남아 있던 값 정리
   await db.prepare("DELETE FROM settings WHERE key IN ('admin_pw', 'scanner_code')").run();
+
+  // 예전 방식(비밀번호·접속코드)으로 만들어진 세션은 한 번 모두 끊는다.
+  // 이걸 안 하면 업데이트 후에도 예전 쿠키로 로그인 화면 없이 들어가진다.
+  const purged = await db.prepare("SELECT value FROM settings WHERE key = 'auth_qr_only_purged'").first();
+  if (!purged) {
+    await db.batch([
+      db.prepare('DELETE FROM sessions'),
+      db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('auth_qr_only_purged', '1')"),
+    ]);
+  }
   schemaReady = true;
 }
 
@@ -264,7 +274,8 @@ async function lockGuard(db, request) {
 // 경로별 필요한 권한: null = 공개, 'scanner' = 스캐너 코드 이상, 'admin' = 관리자만
 function requiredRole(pathname, method) {
   if (pathname === '/login' || pathname === '/login.html') return null;
-  if (pathname === '/app.css' || pathname === '/bdo-design.css' || pathname === '/bdo-logo.png' || pathname === '/favicon.ico') return null;
+  // 화면을 그리는 데 필요한 정적 파일(글꼴·스타일·이미지)은 로그인 화면에서도 열려야 한다
+  if (/\.(css|woff2?|ttf|otf|eot|png|jpe?g|gif|svg|ico|webp)$/i.test(pathname)) return null;
   if (pathname.startsWith('/vendor/')) return null;
   if (pathname === '/api/logo' && method === 'GET') return null;
   if (pathname.startsWith('/api/auth/')) return null;

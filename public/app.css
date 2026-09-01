@@ -157,16 +157,24 @@
 .scan-panel-sub.off .rec-dot { background: #F59E0B; box-shadow: none; }
 .scan-panel-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 14px 11px 2px; flex: none;
+  gap: 10px; padding: 0 14px 11px 2px; flex: none;
   border-bottom: 1px solid rgba(255, 255, 255, .18);
 }
-.scan-panel-title { font-size: 24px; font-weight: 800; letter-spacing: -.015em; }
-.scan-panel-tools { display: flex; align-items: center; gap: 12px; }
-.scan-panel-count { font-size: 19px; color: rgba(255, 255, 255, .85); font-variant-numeric: tabular-nums; }
+.scan-panel-title {
+  font-size: 24px; font-weight: 800; letter-spacing: -.015em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.scan-panel-tools { display: flex; align-items: center; gap: 7px; flex: none; }
+.scan-panel-count {
+  font-size: 19px; color: rgba(255, 255, 255, .85);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 .panel-admin {
-  font-size: 15px; font-weight: 600; color: #fff; text-decoration: none;
+  font-size: 14px; font-weight: 600; color: #fff; text-decoration: none;
   background: rgba(255, 255, 255, .13); border: 1px solid rgba(255, 255, 255, .24);
-  padding: 6px 15px; border-radius: 999px; transition: filter .15s;
+  padding: 6px 12px; border-radius: 999px; transition: filter .15s;
+  font-family: inherit; cursor: pointer; line-height: normal;
+  white-space: nowrap; flex: none;
 }
 .panel-admin:hover { filter: brightness(1.35); }
 /* 넓은 화면: 관리자는 패널 안에만. 프레임은 화면 정중앙 —

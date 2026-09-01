@@ -372,7 +372,11 @@
   async function init() {
     try {
       const s = await (await fetch('/api/auth/state')).json();
-      if (s.role) return go(s.role);
+      // 이미 로그인돼 있으면 원래 화면으로. 단 ?switch=1 이면 로그아웃하고 다시 스캔
+      if (s.role) {
+        if (!new URLSearchParams(location.search).has('switch')) return go(s.role);
+        await post('/api/auth/logout', {});
+      }
       if (s.lockedMinutes) {
         locked = true;
         show('scanView');
