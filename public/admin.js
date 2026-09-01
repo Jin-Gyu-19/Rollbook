@@ -745,8 +745,8 @@
     octx.imageSmoothingQuality = 'high';
     octx.drawImage(logo, dx, dy, dw, dh);
 
-    // 로고 안쪽에서는 점 사이 틈을 없애 글자가 덩어리로 보이게 한다.
-    // 그래서 '꽉 찬 사각형' 으로 그린 QR 을 따로 만들어 어두운 칸 판정에 쓴다.
+    // 로고 안쪽 글자가 끊겨 보이지 않도록, 같은 점 모양을 조금 크게 그린 판을 만들어
+    // 어두운 칸 판정에 쓴다. 점 모양은 그대로라 바깥쪽과 인상이 같다.
     const solid = document.createElement('canvas');
     solid.width = size;
     solid.height = size;
@@ -754,10 +754,11 @@
     sctx.fillStyle = '#FFFFFF';
     sctx.fillRect(0, 0, size, size);
     sctx.fillStyle = '#000000';
+    const grow = mod * 0.16; // 이웃한 점끼리 살짝 맞물리는 정도
     for (let r = 0; r < count; r++) {
       for (let c = 0; c < count; c++) {
         if (isFinder(r, c) || !grid.isDark(r, c)) continue;
-        sctx.fillRect(margin + c * mod, margin + r * mod, mod + 0.5, mod + 0.5);
+        drawPatternDot(sctx, margin + c * mod - grow, margin + r * mod - grow, mod + grow * 2);
       }
     }
 
