@@ -350,6 +350,33 @@ async function route(request, env, pathname) {
     );
   }
 
+  // 최초 1회: 이미 가지고 있는 관리자 QR 을 이 시스템에 등록해서 그대로 쓴다
+  // (아직 아무도 등록하지 않은 시스템에서만 가능 — 등록이 끝나면 거부)
+  if (pathname === '/api/auth/claim' && method === 'POST') {
+    if (await getSetting(db, 'recovery_code')) return err('이미 초기 설정이 끝났습니다.', 409);
+    const body = await readBody(request);
+    const payload = String(body?.payload ?? '').trim();
+    if (!/^ROLLBOOK-LOGIN:RBL-[A-Z2-9]{16,48}$/.test(payload)) {
+      return err('관리자 로그인 QR 이 아닙니다.', 400);
+    }
+    const token = payload.slice('ROLLBOOK-LOGIN:'.length);
+    const admin = await db
+      .prepare('SELECT id, name FROM members WHERE is_admin = 1 ORDER BY id LIMIT 1')
+      .first();
+    if (!admin) return err('관리자로 지정된 인원이 없습니다.', 500);
+    // 다른 사람이 같은 토큰을 쓰고 있으면 거부
+    const taken = await db.prepare('SELECT id FROM members WHERE login_token = ? AND id != ?').bind(token, admin.id).first();
+    if (taken) return err('이미 다른 사람이 쓰고 있는 QR 입니다.', 409);
+
+    const recovery = newRecoveryCode();
+    await db.batch([
+      db.prepare('UPDATE members SET login_token = ? WHERE id = ?').bind(token, admin.id),
+      db.prepare("INSERT INTO settings (key, value) VALUES ('recovery_code', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(await hashPassword(recovery)),
+    ]);
+    const cookie = await createSession(db, 'admin', request);
+    return jsonWithCookie({ ok: true, role: 'admin', name: admin.name, recovery_code: recovery, claimed: true }, cookie);
+  }
+
   // 비상 복구 로그인 — QR 을 잃어버렸을 때만 쓰는 복구 코드
   if (pathname === '/api/auth/recovery' && method === 'POST') {
     const locked = await lockGuard(db, request);

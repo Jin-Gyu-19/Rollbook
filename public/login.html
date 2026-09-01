@@ -69,6 +69,7 @@
     <p class="qr-state" id="qrState"></p>
     <p class="login-hint" id="hintText">관리자 QR 로 로그인하면 관리 화면으로, 스캐너 PC QR 로 로그인하면 출석 촬영 화면으로 들어갑니다.</p>
     <button class="login-link" id="btnRecovery">QR 을 잃어버렸을 때</button>
+    <button class="login-link hidden" id="btnIssueNew">가진 QR 이 없어요 — 새로 발급받기</button>
   </div>
 
   <!-- 비상 복구 코드 -->
@@ -82,21 +83,19 @@
     <button class="login-link" id="btnBackToScan">QR 스캔으로 돌아가기</button>
   </div>
 
-  <!-- 최초 1회: 관리자 QR + 복구 코드 발급 -->
+  <!-- 최초 1회: 발급 결과 (가진 QR 등록 or 새 QR 발급) -->
   <div id="setupView" class="hidden">
-    <div id="setupIntro">
-      <p class="login-hint" style="margin-bottom:16px;">처음 사용합니다. 관리자 로그인 QR 과 비상 복구 코드를 발급합니다. 발급 후 QR 이미지를 저장하거나 인쇄해서 보관해 주세요.</p>
-      <button class="primary" id="btnSetup" style="width:100%; padding:12px;">관리자 QR 발급받기</button>
-      <p class="login-err" id="setupErr"></p>
-    </div>
-    <div id="setupResult" class="hidden">
-      <div class="issued-qr" id="setupQrHolder"></div>
-      <button class="primary" id="btnDownloadQr" style="margin-bottom:8px;">QR 이미지 내려받기</button>
-      <button id="btnDownloadQrPdf" style="width:100%; padding:10px; margin-bottom:10px;">인쇄용 PDF 내려받기 (30·40·50mm)</button>
+    <div id="setupResult">
+      <div class="issued-qr hidden" id="setupQrHolder"></div>
+      <div id="setupDownloads">
+        <button class="primary" id="btnDownloadQr" style="margin-bottom:8px;">QR 이미지 내려받기</button>
+        <button id="btnDownloadQrPdf" style="width:100%; padding:10px; margin-bottom:10px;">인쇄용 PDF 내려받기 (30·40·50mm)</button>
+      </div>
+      <p class="login-hint" id="setupLead" style="margin-top:0;"></p>
       <div class="code-box" id="setupRecoveryCode"></div>
-      <div class="warn-box">
-        이 QR 과 복구 코드는 <b>지금만 볼 수 있습니다.</b> QR 은 내려받아 보관하고, 복구 코드는 따로 적어 두세요.
-        QR 을 잃어버렸을 때 복구 코드로만 다시 들어올 수 있습니다.
+      <div class="warn-box" id="setupWarn">
+        이 복구 코드는 <b>지금만 볼 수 있습니다.</b> 따로 적어 두세요 —
+        QR 을 잃어버렸을 때 이 코드로만 다시 들어올 수 있습니다.
       </div>
       <button class="primary" id="btnSetupDone" style="width:100%; padding:12px; margin-top:14px;">저장했습니다 — 시작하기</button>
     </div>
@@ -193,7 +192,7 @@
     video.srcObject = stream;
     await video.play();
     $('camOff').style.display = 'none';
-    setState('로그인 QR 을 사각형 안에 맞춰 주세요');
+    setState(setupMode ? '등록할 관리자 QR 을 사각형 안에 맞춰 주세요' : '로그인 QR 을 사각형 안에 맞춰 주세요');
     scanLoop(video);
   }
 
@@ -205,7 +204,19 @@
       const value = await decodeFrame(video, detector);
       if (!scanning) break;
       if (value) {
-        if (value.startsWith('ROLLBOOK-LOGIN:') || value.startsWith('ROLLBOOK-SCANNER:')) {
+        // 초기 설정 중이면 비춘 관리자 QR 을 이 시스템에 등록한다
+        if (setupMode && value.startsWith('ROLLBOOK-LOGIN:')) {
+          setState('등록하는 중…');
+          try {
+            const d = await post('/api/auth/claim', { payload: value });
+            stopCamera();
+            showClaimed(d);
+            return;
+          } catch (e) {
+            setState(e.message, 'err');
+            await sleep(1800);
+          }
+        } else if (value.startsWith('ROLLBOOK-LOGIN:') || value.startsWith('ROLLBOOK-SCANNER:')) {
           setState('확인 중…');
           try {
             const d = await post('/api/auth/qr-login', { payload: value });
@@ -267,6 +278,7 @@
   });
 
   // ── 최초 설정 ────────────────────────────────────────
+  let setupMode = false; // true 면 스캔한 QR 을 이 시스템에 등록한다
   let setupRole = null;
   let qrBlobUrl = null;
   let qrCanvas = null;
@@ -322,12 +334,27 @@
     doc.save(filename.replace(/[\\/:*?"<>|]/g, '_'));
   }
 
-  $('btnSetup').addEventListener('click', async () => {
-    $('setupErr').textContent = '';
-    $('btnSetup').disabled = true;
+  // 가지고 있던 QR 을 등록한 경우 — QR 은 이미 손에 있으니 복구 코드만 보여 준다
+  function showClaimed(d) {
+    setupMode = false;
+    setupRole = d.role;
+    qrOwner = d.name || '관리자';
+    $('setupDownloads').classList.add('hidden');
+    $('setupLead').textContent = `${qrOwner}님의 QR 이 이 시스템에 등록되었습니다. 앞으로 그 QR 로 로그인하세요.`;
+    $('setupRecoveryCode').textContent = d.recovery_code;
+    show('setupView');
+    $('subText').textContent = 'QR 등록 완료 — 복구 코드를 적어 두세요';
+  }
+
+  // 가진 QR 이 없을 때 — 새 QR 과 복구 코드를 발급받는다
+  async function issueNew() {
+    setState('발급하는 중…');
     try {
       const d = await post('/api/auth/setup', {});
+      setupMode = false;
+      stopCamera();
       setupRole = d.role;
+      qrOwner = d.name || '관리자';
       $('setupRecoveryCode').textContent = d.recovery_code;
       const qr = new QRCodeStyling({
         width: 640, height: 640, type: 'canvas',
@@ -343,15 +370,18 @@
       qrBlobUrl = await qr.getRawData('png').then((b) => URL.createObjectURL(b));
       await sleep(400); // 로고가 얹힐 때까지
       qrCanvas = $('setupQrHolder').querySelector('canvas');
-      qrOwner = d.name || '관리자';
+      $('setupQrHolder').classList.remove('hidden');
       $('btnDownloadQr').dataset.name = `관리자로그인_${qrOwner}.png`;
-      $('setupIntro').classList.add('hidden');
-      $('setupResult').classList.remove('hidden');
+      $('setupLead').textContent = `${qrOwner}님의 로그인 QR 이 발급되었습니다. 내려받아 보관하세요.`;
+      show('setupView');
       $('subText').textContent = '발급된 QR 과 복구 코드를 보관해 주세요';
     } catch (err) {
-      $('setupErr').textContent = err.message;
-      $('btnSetup').disabled = false;
+      setState(err.message, 'err');
     }
+  }
+
+  $('btnIssueNew').addEventListener('click', () => {
+    if (confirm('가지고 있는 QR 없이 새로 발급받을까요?\n이미 받아 둔 QR 이 있다면 그것을 카메라에 비추는 편이 좋습니다.')) issueNew();
   });
 
   $('btnDownloadQr').addEventListener('click', () => {
@@ -385,12 +415,15 @@
         setState('5회 이상 실패해서 잠금 상태입니다', 'err');
         return;
       }
-      if (!s.setup) {
-        show('setupView');
-        $('subText').textContent = '처음 사용합니다 — 관리자 QR 을 발급받으세요';
-        return;
-      }
       show('scanView');
+      if (!s.setup) {
+        // 아직 아무도 등록하지 않은 시스템 — 가진 QR 을 비추면 그 QR 로 등록된다
+        setupMode = true;
+        $('subText').textContent = '처음 사용합니다 — 받아 두신 관리자 QR 을 비춰 주세요';
+        $('hintText').textContent = '비추신 QR 이 이 시스템의 관리자 QR 로 등록됩니다. 여러 PC 를 쓸 때도 같은 QR 을 쓰면 됩니다.';
+        $('btnRecovery').classList.add('hidden');
+        $('btnIssueNew').classList.remove('hidden');
+      }
       startCamera();
     } catch {
       setState('서버에 연결할 수 없습니다. 잠시 후 새로고침해 주세요.', 'err');
