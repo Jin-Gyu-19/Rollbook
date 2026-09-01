@@ -794,23 +794,17 @@
     return canvas;
   }
 
+  // 로고를 통짜로 얹는 방식 — QR 은 또렷하게 그리고 로고 자리만 비운다.
+  // 가려진 칸은 오류 보정(H, 30%)으로 복원되므로 로고 폭을 이 값 이하로 제한한다.
+  const POSTER_LOGO_W = 0.60;
+
   async function buildPosterCanvas(m, size) {
-    // 로고가 원본 이미지 그대로라 격자 해상도가 필요 없으므로 버전 5(37칸)로
-    // 낮춰 모듈을 키운다 — 소형 인쇄에서 인식 거리가 v8 대비 약 1.36배
+    // 로고가 원본 그대로 얹히므로 격자를 낮춰(버전 5) 칸을 키운다 — 소형 인쇄에 유리
     const grid = makeQrGrid(m.code, 5);
     const count = grid.getModuleCount();
-
-    let img = null;
-    let sampler = null;
-    try {
-      img = await loadLogoImage();
-      sampler = makeLogoSampler(img, count);
-    } catch {
-      // 로고를 못 불러오면 점만 그린다
-    }
-
     const margin = Math.round(size / 60);
     const mod = (size - margin * 2) / count;
+
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
@@ -818,46 +812,57 @@
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, size, size);
 
-    // 로고 원본을 샘플러와 같은 배치(가로 꽉 채움, 세로는 파인더 회피)로 그린다
-    if (img && sampler) {
-      const w = img.naturalWidth || img.width;
-      const h = img.naturalHeight || img.height;
-      const k = Math.min(count / w, (count - 16) / h); // 모듈 단위 배율
-      const dw = w * k * mod;
-      const dh = h * k * mod;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, margin + (count * mod - dw) / 2, margin + (count * mod - dh) / 2, dw, dh);
-    }
-
+    // 1) 평범한 QR 을 또렷하게 (고른 점 모양 그대로)
     const isFinder = (r, c) =>
       (r < 7 && c < 7) || (r < 7 && c >= count - 7) || (r >= count - 7 && c < 7);
-
+    ctx.fillStyle = qrState.color;
     for (let r = 0; r < count; r++) {
       for (let c = 0; c < count; c++) {
-        if (isFinder(r, c)) continue;
-        const x = margin + c * mod;
-        const y = margin + r * mod;
-        const ink = sampler ? sampler(r, c) : null;
-        ctx.beginPath();
-        if (grid.isDark(r, c)) {
-          // 로고 잉크 위는 잉크 색 점으로 중심을 보강(글자 가장자리에 걸친 모듈 대비),
-          // 로고 밖은 성긴 점
-          ctx.fillStyle = ink ? `rgb(${ink[0]},${ink[1]},${ink[2]})` : qrState.color;
-          ctx.arc(x + mod / 2, y + mod / 2, mod * 0.35, 0, Math.PI * 2);
-        } else if (ink) {
-          // 로고 잉크 위 밝은 모듈: 흰 구멍
-          ctx.fillStyle = '#FFFFFF';
-          ctx.arc(x + mod / 2, y + mod / 2, mod * 0.4, 0, Math.PI * 2);
-        } else {
-          continue;
-        }
-        ctx.fill();
+        if (isFinder(r, c) || !grid.isDark(r, c)) continue;
+        drawPatternDot(ctx, margin + c * mod, margin + r * mod, mod);
       }
     }
-    drawPatternFinder(ctx, margin, margin, mod, true);
-    drawPatternFinder(ctx, margin + (count - 7) * mod, margin, mod, true);
-    drawPatternFinder(ctx, margin, margin + (count - 7) * mod, mod, true);
+    drawPatternFinder(ctx, margin, margin, mod);
+    drawPatternFinder(ctx, margin + (count - 7) * mod, margin, mod);
+    drawPatternFinder(ctx, margin, margin + (count - 7) * mod, mod);
+
+    let logo;
+    try {
+      logo = await loadLogoImage();
+    } catch {
+      return canvas;
+    }
+    const lw = logo.naturalWidth || logo.width;
+    const lh = logo.naturalHeight || logo.height;
+    if (!lw || !lh) return canvas;
+
+    // 2) 로고 크기·위치 (가운데, 파인더는 건드리지 않는 높이로 제한)
+    const k = Math.min((count * mod * POSTER_LOGO_W) / lw, ((count - 16) * mod) / lh);
+    const dw = lw * k;
+    const dh = lh * k;
+    const dx = (size - dw) / 2;
+    const dy = (size - dh) / 2;
+
+    // 3) 로고 모양대로 흰 여백을 낸다 (글자가 점에 묻히지 않도록)
+    const sil = document.createElement('canvas');
+    sil.width = size;
+    sil.height = size;
+    const silCtx = sil.getContext('2d');
+    silCtx.drawImage(logo, dx, dy, dw, dh);
+    silCtx.globalCompositeOperation = 'source-in';
+    silCtx.fillStyle = '#FFFFFF';
+    silCtx.fillRect(0, 0, size, size);
+
+    const halo = Math.max(2, mod * 0.55);
+    for (let a = 0; a < 16; a++) {
+      const t = (a / 16) * Math.PI * 2;
+      ctx.drawImage(sil, Math.cos(t) * halo, Math.sin(t) * halo);
+    }
+
+    // 4) 로고 원본을 그대로 얹는다
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(logo, dx, dy, dw, dh);
     return canvas;
   }
 
