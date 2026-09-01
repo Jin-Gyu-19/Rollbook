@@ -1,2 +1,3 @@
 update.bat -text
 deploy.bat -text
+로그인초기화.bat -text

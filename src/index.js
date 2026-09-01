@@ -350,6 +350,24 @@ async function route(request, env, pathname) {
     );
   }
 
+  // 로그인 초기화 — 내 컴퓨터에서 직접 돌릴 때만 (인터넷에 배포된 서버에서는 불가)
+  // QR·복구 코드를 모두 잃어버렸을 때 쓰는 마지막 수단. 출석 기록과 명단은 그대로 둔다.
+  if (pathname === '/api/auth/local-reset' && method === 'POST') {
+    // 그 컴퓨터에서 localhost 로 열었을 때만 허용한다.
+    // 배포된 주소는 hostname 이 workers.dev 이고, 접속자 IP 도 공인 IP 라 통과하지 못한다.
+    const host = new URL(request.url).hostname;
+    const ip = request.headers.get('cf-connecting-ip');
+    const loopbackHost = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+    const loopbackIp = !ip || ip === '127.0.0.1' || ip === '::1';
+    if (!loopbackHost || !loopbackIp) return err('이 컴퓨터에서 직접 실행할 때만 사용할 수 있습니다.', 403);
+    await db.batch([
+      db.prepare("DELETE FROM settings WHERE key = 'recovery_code'"),
+      db.prepare('DELETE FROM sessions'),
+      db.prepare('DELETE FROM login_attempts'),
+    ]);
+    return jsonWithCookie({ ok: true }, `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  }
+
   // 최초 1회: 이미 가지고 있는 관리자 QR 을 이 시스템에 등록해서 그대로 쓴다
   // (아직 아무도 등록하지 않은 시스템에서만 가능 — 등록이 끝나면 거부)
   if (pathname === '/api/auth/claim' && method === 'POST') {
