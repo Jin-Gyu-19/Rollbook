@@ -129,6 +129,14 @@
               <button data-v="#4338CA">인디고 진함</button>
             </span>
           </label>
+          <label>배경
+            <span class="seg" id="qrBgSeg" style="display:flex; margin-top:6px;">
+              <button data-v="#FFFFFF" class="active">흰 배경</button>
+              <button data-v="#E4203C">BDO 레드</button>
+              <button data-v="#204399">BDO 남색</button>
+            </span>
+          </label>
+          <p class="hint" id="qrBgHint" style="margin-top:-4px;"></p>
           <label>로고 스타일
             <span class="seg" id="qrLogoSeg" style="display:flex; margin-top:6px;">
               <button data-v="center">가운데 로고</button>
@@ -143,7 +151,7 @@
               <input id="logoFile" type="file" accept="image/*" style="width:auto; margin:0;">
             </span>
           </label>
-          <p class="hint">여기서 올린 로고 원본이 서버에 저장되어 상단바·스캐너·QR 코드에 모두 적용됩니다. PNG·SVG(투명 배경 권장) 1MB 이하. ‘점에 새기기’는 QR 무늬 자체에 로고를 새깁니다 — 로고가 지나가는 자리의 어두운 점은 로고 색으로, 흰 칸은 아주 연한 로고 색으로 칠해 글자가 또렷이 드러납니다. ‘포스터’는 QR 을 또렷하게 그린 뒤 가운데를 비우고 <b>로고 원본을 통째로 얹는</b> 방식이라 글자가 가장 선명합니다 — 가려진 칸은 오류 보정으로 복원되며, 13~30mm 인쇄에서 인식을 확인했습니다.</p>
+          <p class="hint">여기서 올린 로고 원본이 서버에 저장되어 상단바·스캐너·QR 코드에 모두 적용됩니다. PNG·SVG(투명 배경 권장) 1MB 이하. ‘점에 새기기’는 QR 무늬 자체에 로고를 새깁니다 — 로고가 지나가는 자리의 어두운 점은 로고 색으로, 흰 칸은 아주 연한 로고 색으로 칠해 글자가 또렷이 드러납니다. ‘포스터’는 QR 을 또렷하게 그린 뒤 가운데를 비우고 <b>로고 원본을 통째로 얹는</b> 방식이라 글자가 가장 선명합니다 — 가려진 칸은 오류 보정으로 복원됩니다. 로고 폭은 QR 폭의 68% 이며, 이 크기에서는 <b>20mm 이상으로 인쇄</b>해 주세요 (실측 하한 18mm) — 13·15mm 로 작게 뽑으면 흐린 조명에서 인식이 흔들립니다. 배경을 <b>BDO 레드·남색</b>으로 고르면 점과 로고가 흰색으로 뒤집혀 인쇄되고, 로고는 올려 둔 원본의 모양 그대로 흰색으로 뽑아 씁니다.</p>
         </div>
       </div>
     </div>

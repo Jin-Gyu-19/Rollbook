@@ -526,13 +526,20 @@
   const storedLogoMode = localStorage.getItem('rollbook-qr-logo');
   const storedDot = localStorage.getItem('rollbook-qr-dot');
   const storedColor = localStorage.getItem('rollbook-qr-color');
+  const storedBg = localStorage.getItem('rollbook-qr-bg');
   const DOTS = ['square', 'rounded', 'dots', 'classy-rounded'];
   const COLORS = ['#111827', '#4F46E5', '#4338CA'];
+  const BGS = ['#FFFFFF', '#E4203C', '#204399'];
   const qrState = {
     dot: DOTS.includes(storedDot) ? storedDot : 'square',
     color: COLORS.includes(storedColor) ? storedColor : '#111827',
+    bg: BGS.includes(storedBg) ? storedBg : '#FFFFFF',
     logoMode: ['none', 'pattern', 'poster'].includes(storedLogoMode) ? storedLogoMode : 'center',
   };
+  // 색 배경일 때는 명암을 뒤집는다 — 배경이 어두운 쪽, 점이 밝은 쪽이 된다.
+  // (BDO 레드는 카메라 흑백 변환에서 255 중 93 으로 읽혀 '어두운 색'에 속한다)
+  const isDarkBg = () => qrState.bg !== '#FFFFFF';
+  const inkColor = () => (isDarkBg() ? '#FFFFFF' : qrState.color);
   let qr = null;
   let patternCanvas = null; // '점에 새기기' 미리보기 캔버스 (다운로드에 재사용)
   let renderSeq = 0;
@@ -558,8 +565,8 @@
     holder.innerHTML = '';
     qr = null;
     patternCanvas = null;
+    const seq = ++renderSeq;
     if (qrState.logoMode === 'pattern' || qrState.logoMode === 'poster') {
-      const seq = ++renderSeq;
       const build = qrState.logoMode === 'poster' ? buildPosterCanvas : buildPatternCanvas;
       build(m, 480)
         .then((canvas) => {
@@ -573,8 +580,16 @@
           if (seq === renderSeq) toast(e.message, true);
         });
     } else {
-      qr = new QRCodeStyling(buildQrOptions(m, 480));
-      qr.append(holder);
+      prepareQrAssets()
+        .then(() => {
+          if (seq !== renderSeq) return;
+          holder.innerHTML = '';
+          qr = new QRCodeStyling(buildQrOptions(m, 480));
+          qr.append(holder);
+        })
+        .catch((e) => {
+          if (seq === renderSeq) toast(e.message, true);
+        });
     }
   }
 
@@ -596,6 +611,33 @@
       };
     }
     return logoImgCache.promise;
+  }
+
+  // 색 배경에서는 로고를 흰색으로 써야 보인다. 원본의 모양(알파)만 남기고
+  // 색을 흰색으로 채운 이미지를 만들어 둔다 — 로고를 다시 그리지 않는다.
+  let whiteLogoUrl = null;
+  let whiteLogoVer = -1;
+  async function ensureWhiteLogo() {
+    if (whiteLogoUrl && whiteLogoVer === logoVer) return whiteLogoUrl;
+    const img = await loadLogoImage();
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = 'source-in';
+    g.fillStyle = '#FFFFFF';
+    g.fillRect(0, 0, w, h);
+    whiteLogoUrl = c.toDataURL('image/png');
+    whiteLogoVer = logoVer;
+    return whiteLogoUrl;
+  }
+
+  // qr-code-styling 으로 그리기 전에 필요한 이미지를 미리 준비한다
+  async function prepareQrAssets() {
+    if (isDarkBg() && qrState.logoMode === 'center') await ensureWhiteLogo().catch(() => {});
   }
 
   // 로고를 모듈 격자에 맞춰 3×3 슈퍼샘플링 — (row, col) → 색상 | null
@@ -663,8 +705,8 @@
 
   function drawPatternFinder(ctx, x, y, s, forceRounded) {
     const rounded = (forceRounded || qrState.dot !== 'square') && !!ctx.roundRect;
-    ctx.fillStyle = qrState.color;
-    ctx.strokeStyle = qrState.color;
+    ctx.fillStyle = inkColor();
+    ctx.strokeStyle = inkColor();
     ctx.lineWidth = s;
     ctx.beginPath();
     if (rounded) ctx.roundRect(x + s / 2, y + s / 2, s * 6, s * 6, s * 2);
@@ -795,12 +837,16 @@
   }
 
   // 로고를 통짜로 얹는 방식 — QR 은 또렷하게 그리고 로고 자리만 비운다.
-  // 가려진 칸은 오류 보정(H, 30%)으로 복원되므로 로고 폭을 이 값 이하로 제한한다.
-  const POSTER_LOGO_W = 0.60;
+  // 로고 폭의 한계를 정하는 것은 오류 보정이 아니라 6번째 줄·칸의 '타이밍 패턴'
+  // (리더가 칸 수를 세는 눈금자)이다. 로고 왼쪽 끝은 격자의 (1-폭)/2 지점에 오므로
+  // 격자를 키울수록 눈금자에 닿기 전까지 더 나갈 수 있다.
+  //   격자 37칸 → 폭 0.64 가 한계 / 격자 49칸 → 폭 0.75 까지 판독
+  // 여유를 두어 49칸 · 0.70 (실제 QR 폭의 68%) 으로 잡는다.
+  const POSTER_GRID_VERSION = 8; // 49 x 49
+  const POSTER_LOGO_W = 0.70;
 
   async function buildPosterCanvas(m, size) {
-    // 로고가 원본 그대로 얹히므로 격자를 낮춰(버전 5) 칸을 키운다 — 소형 인쇄에 유리
-    const grid = makeQrGrid(m.code, 5);
+    const grid = makeQrGrid(m.code, POSTER_GRID_VERSION);
     const count = grid.getModuleCount();
     const margin = Math.round(size / 60);
     const mod = (size - margin * 2) / count;
@@ -809,13 +855,13 @@
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = qrState.bg;
     ctx.fillRect(0, 0, size, size);
 
     // 1) 평범한 QR 을 또렷하게 (고른 점 모양 그대로)
     const isFinder = (r, c) =>
       (r < 7 && c < 7) || (r < 7 && c >= count - 7) || (r >= count - 7 && c < 7);
-    ctx.fillStyle = qrState.color;
+    ctx.fillStyle = inkColor();
     for (let r = 0; r < count; r++) {
       for (let c = 0; c < count; c++) {
         if (isFinder(r, c) || !grid.isDark(r, c)) continue;
@@ -843,26 +889,33 @@
     const dx = (size - dw) / 2;
     const dy = (size - dh) / 2;
 
-    // 3) 로고 모양대로 흰 여백을 낸다 (글자가 점에 묻히지 않도록)
-    const sil = document.createElement('canvas');
-    sil.width = size;
-    sil.height = size;
-    const silCtx = sil.getContext('2d');
-    silCtx.drawImage(logo, dx, dy, dw, dh);
-    silCtx.globalCompositeOperation = 'source-in';
-    silCtx.fillStyle = '#FFFFFF';
-    silCtx.fillRect(0, 0, size, size);
+    // 3) 로고 모양대로 배경색 여백을 낸다 (글자가 점에 묻히지 않도록)
+    const silhouette = (color) => {
+      const sil = document.createElement('canvas');
+      sil.width = size;
+      sil.height = size;
+      const silCtx = sil.getContext('2d');
+      silCtx.imageSmoothingEnabled = true;
+      silCtx.imageSmoothingQuality = 'high';
+      silCtx.drawImage(logo, dx, dy, dw, dh);
+      silCtx.globalCompositeOperation = 'source-in';
+      silCtx.fillStyle = color;
+      silCtx.fillRect(0, 0, size, size);
+      return sil;
+    };
 
+    const gap = silhouette(qrState.bg);
     const halo = Math.max(2, mod * 0.55);
     for (let a = 0; a < 16; a++) {
       const t = (a / 16) * Math.PI * 2;
-      ctx.drawImage(sil, Math.cos(t) * halo, Math.sin(t) * halo);
+      ctx.drawImage(gap, Math.cos(t) * halo, Math.sin(t) * halo);
     }
 
-    // 4) 로고 원본을 그대로 얹는다
+    // 4) 로고를 얹는다 — 색 배경에서는 원본 모양 그대로 흰색으로 뽑아 쓴다
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(logo, dx, dy, dw, dh);
+    if (isDarkBg()) ctx.drawImage(silhouette('#FFFFFF'), 0, 0);
+    else ctx.drawImage(logo, dx, dy, dw, dh);
     return canvas;
   }
 
@@ -875,14 +928,14 @@
       data: `ROLLBOOK:${m.code}`,
       margin: Math.round(size / 60),
       qrOptions: { errorCorrectionLevel: 'H' },
-      dotsOptions: { type: qrState.dot, color: qrState.color },
+      dotsOptions: { type: qrState.dot, color: inkColor() },
       cornersSquareOptions: {
         type: qrState.dot === 'square' ? 'square' : 'extra-rounded',
-        color: qrState.color,
+        color: inkColor(),
       },
-      cornersDotOptions: { type: qrState.dot === 'square' ? 'square' : 'dot', color: qrState.color },
-      backgroundOptions: { color: '#FFFFFF' },
-      image: qrState.logoMode === 'center' ? logoUrl() : undefined,
+      cornersDotOptions: { type: qrState.dot === 'square' ? 'square' : 'dot', color: inkColor() },
+      backgroundOptions: { color: qrState.bg },
+      image: qrState.logoMode === 'center' ? (isDarkBg() ? whiteLogoUrl : logoUrl()) : undefined,
       imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.35, hideBackgroundDots: true },
     };
   }
@@ -909,24 +962,31 @@
   function bindSeg(segId, key) {
     $(segId).addEventListener('click', (e) => {
       const b = e.target.closest('button[data-v]');
-      if (!b) return;
+      if (!b || b.disabled) return;
       $(segId).querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
       qrState[key] = b.dataset.v;
       try { localStorage.setItem(`rollbook-qr-${key}`, qrState[key]); } catch {}
+      // 색 배경에서는 점이 이미 흰색이라 '점에 새기기' 가 성립하지 않는다
+      if (key === 'bg' && isDarkBg() && qrState.logoMode === 'pattern') {
+        qrState.logoMode = 'poster';
+        try { localStorage.setItem('rollbook-qr-logo', 'poster'); } catch {}
+      }
+      updateLogoUi();
       renderQr();
     });
   }
   bindSeg('qrDotSeg', 'dot');
   bindSeg('qrColorSeg', 'color');
+  bindSeg('qrBgSeg', 'bg');
 
   // 기억해 둔 디자인을 버튼 상태에 반영
-  for (const [segId, key] of [['qrDotSeg', 'dot'], ['qrColorSeg', 'color']]) {
+  for (const [segId, key] of [['qrDotSeg', 'dot'], ['qrColorSeg', 'color'], ['qrBgSeg', 'bg']]) {
     $(segId).querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === qrState[key]));
   }
 
   $('qrLogoSeg').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-v]');
-    if (!b) return;
+    if (!b || b.disabled) return;
     qrState.logoMode = b.dataset.v;
     try {
       if (qrState.logoMode === 'center') localStorage.removeItem('rollbook-qr-logo');
@@ -938,6 +998,15 @@
 
   function updateLogoUi() {
     $('qrLogoSeg').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === qrState.logoMode));
+    // 색 배경에서는 점·로고가 흰색으로 뒤집히므로 점 색 선택과 '점에 새기기' 는 쓸 수 없다
+    const dark = isDarkBg();
+    const off = (b, disabled) => { b.disabled = disabled; b.classList.toggle('seg-off', disabled); };
+    const pat = $('qrLogoSeg').querySelector('button[data-v="pattern"]');
+    if (pat) off(pat, dark);
+    $('qrColorSeg').querySelectorAll('button').forEach((b) => off(b, dark));
+    $('qrBgHint').textContent = dark
+      ? '색 배경에서는 점과 로고가 흰색으로 뒤집혀 나옵니다 — 점 색 선택과 ‘점에 새기기’ 는 이때 쓸 수 없습니다.'
+      : '';
     const showThumb = qrState.logoMode !== 'none';
     $('logoThumb').classList.toggle('hidden', !showThumb);
     if (showThumb) $('logoThumb').src = logoUrl();
@@ -997,6 +1066,7 @@
       const build = qrState.logoMode === 'poster' ? buildPosterCanvas : buildPatternCanvas;
       return (await build(m, px)).toDataURL('image/png');
     }
+    await prepareQrAssets();
     const holder = document.createElement('div');
     new QRCodeStyling(buildQrOptions(m, px)).append(holder);
     for (let i = 0; i < 60 && !holder.querySelector('canvas'); i++) await new Promise((r) => setTimeout(r, 50));
@@ -1677,7 +1747,7 @@
         }
         if (!value && window.jsQR) {
           const img = ctx.getImageData(0, 0, w, h);
-          value = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' })?.data ?? null;
+          value = jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' })?.data ?? null;
         }
       }
       if (!qrScanning) break;
