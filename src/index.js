@@ -126,6 +126,10 @@ async function ensureSchema(db) {
   schemaReady = true;
 }
 
+// 이름 비교용 정규화 — 띄어쓰기만 다른 경우를 같은 사람으로 본다
+// (동명이인은 회사 관례대로 이름 뒤 숫자로 구분하므로 숫자는 그대로 둔다)
+const nameKey = (s) => String(s ?? '').replace(/\s+/g, '');
+
 // 회원 QR 코드 값: RB- + 랜덤 12자리
 function newMemberCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(9));
@@ -814,11 +818,12 @@ async function route(request, env, pathname) {
     if (list.length > 1000) return err('한 번에 1,000명까지 등록할 수 있습니다.');
 
     const { results: existing } = await db.prepare('SELECT id, name, title, dept FROM members').all();
-    // 이름별로 묶어 둔다 — 동명이인 판단에 쓴다
+    // 이름별로 묶어 둔다 — 띄어쓰기를 뺀 이름을 기준으로 (동명이인 판단에 쓴다)
     const byName = new Map();
     for (const m of existing) {
-      if (!byName.has(m.name)) byName.set(m.name, []);
-      byName.get(m.name).push({ ...m });
+      const k = nameKey(m.name);
+      if (!byName.has(k)) byName.set(k, []);
+      byName.get(k).push({ ...m });
     }
 
     const stmts = [];
@@ -834,7 +839,8 @@ async function route(request, env, pathname) {
       const dept = String(m?.dept ?? '').trim();
       if (!name) { skipped++; continue; }
 
-      const sameName = byName.get(name) ?? [];
+      const key = nameKey(name);
+      const sameName = byName.get(key) ?? [];
 
       // 1) 이름·부서가 모두 같으면 그 사람이 확실하다
       let target = sameName.find((x) => x.dept === dept);
@@ -854,18 +860,19 @@ async function route(request, env, pathname) {
 
       if (!target) {
         sameName.push({ id: null, name, title, dept, used: true });
-        byName.set(name, sameName);
+        byName.set(key, sameName);
         stmts.push(db.prepare('INSERT INTO members (name, title, dept, code) VALUES (?, ?, ?, ?)').bind(name, title, dept, newMemberCode()));
         added++;
         continue;
       }
 
       target.used = true;
-      if (target.title === title && target.dept === dept) { unchanged++; continue; }
-      // 최신 자료로 갱신 (QR 코드 값은 유지)
+      if (target.name === name && target.title === title && target.dept === dept) { unchanged++; continue; }
+      // 최신 자료로 갱신 — 이름 표기(띄어쓰기 등)도 새 파일 기준으로 (QR 코드 값은 유지)
       if (target.id != null) {
-        stmts.push(db.prepare('UPDATE members SET title = ?, dept = ? WHERE id = ?').bind(title, dept, target.id));
+        stmts.push(db.prepare('UPDATE members SET name = ?, title = ?, dept = ? WHERE id = ?').bind(name, title, dept, target.id));
       }
+      target.name = name;
       target.title = title;
       target.dept = dept;
       updated++;
