@@ -91,8 +91,11 @@
     </div>
 
     <div class="card">
-      <h2>명단</h2>
-      <div id="memberList"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <h2 style="margin:0;">명단 <span class="muted" id="memberCount" style="font-size:14px; font-weight:500;"></span></h2>
+        <input id="memberSearch" placeholder="이름 · 직함 · 부서 · QR 값 검색" style="width:auto; min-width:260px; margin:0;">
+      </div>
+      <div id="memberList" style="margin-top:14px;"></div>
     </div>
   </section>
 
@@ -105,8 +108,7 @@
         <div class="qr-preview">
           <div class="qr-canvas-holder" id="qrHolder"></div>
           <div class="qr-owner" id="qrOwner"></div>
-          <button class="primary" id="btnDownloadQr">PNG 내려받기</button>
-          <button id="btnDownloadAll">전체 내려받기 (ZIP)</button>
+          <button class="primary" id="btnDownloadQr">이 사람만 PNG 내려받기</button>
         </div>
         <div>
           <label>대상
@@ -144,6 +146,27 @@
           <p class="hint">여기서 올린 로고 원본이 서버에 저장되어 상단바·스캐너·QR 코드에 모두 적용됩니다. PNG·SVG(투명 배경 권장) 1MB 이하. ‘점에 새기기’는 QR 무늬 자체에 로고를 새깁니다 — 로고가 지나가는 자리의 어두운 점은 로고 색으로, 흰 칸은 아주 연한 로고 색으로 칠해 글자가 또렷이 드러납니다. ‘포스터’는 로고 원본 이미지를 그대로 얹고 그 위에 흰 점을 뚫는 광고 포스터 방식입니다 — 이 스타일은 업데이트된 스캐너(ZXing 내장)에서 인식됩니다.</p>
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>명단 QR 일괄 내려받기</h2>
+      <p class="muted">위에서 고른 디자인 그대로, 명단 전체(또는 검색으로 걸러진 사람들)의 QR 을 만들어 내려받습니다.</p>
+      <div class="form-row" style="margin-top:14px;">
+        <label>대상
+          <select id="bulkScope">
+            <option value="all">명단 전체</option>
+            <option value="filtered">명단 탭에서 검색한 결과만</option>
+          </select>
+        </label>
+        <label>형식
+          <select id="bulkFormat">
+            <option value="one">한 파일로 (PDF · 한 페이지에 10명)</option>
+            <option value="each">사람별 파일로 (PDF 여러 개를 ZIP 으로)</option>
+          </select>
+        </label>
+        <span class="actions"><button class="primary" id="btnBulkQr">내려받기</button></span>
+      </div>
+      <p class="hint" id="bulkHint">한 파일 방식은 A4 한 장에 10명(2열 × 5줄)씩 배치되고 자르는 선이 함께 인쇄됩니다. 사람별 방식은 이름으로 된 PDF 를 각각 만들어 ZIP 으로 묶습니다.</p>
     </div>
   </section>
 

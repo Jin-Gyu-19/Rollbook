@@ -298,9 +298,30 @@
   async function loadMembers() {
     const { members } = await api('/api/members').catch((e) => (toast(e.message, true), { members: [] }));
     membersCache = members;
+    renderMembers();
+  }
+
+  // 검색어로 걸러진 명단 (일괄 내려받기도 이 결과를 씁니다)
+  function filteredMembers() {
+    const q = ($('memberSearch')?.value ?? '').trim().toLowerCase();
+    if (!q) return membersCache;
+    return membersCache.filter((m) =>
+      [m.name, m.title, m.dept, m.code].some((v) => String(v ?? '').toLowerCase().includes(q)));
+  }
+
+  function renderMembers() {
     const holder = $('memberList');
-    if (!members.length) {
+    const members = filteredMembers();
+    const q = ($('memberSearch')?.value ?? '').trim();
+    $('memberCount').textContent = membersCache.length
+      ? (q ? `${members.length} / ${membersCache.length}명` : `${membersCache.length}명`)
+      : '';
+    if (!membersCache.length) {
       holder.innerHTML = `<div class="empty"><span class="icon">👥</span>아직 등록된 인원이 없습니다.<br>위에서 인원을 추가해 보세요.</div>`;
+      return;
+    }
+    if (!members.length) {
+      holder.innerHTML = `<div class="empty"><span class="icon">🔍</span>"${esc(q)}" 와 맞는 사람이 없습니다.</div>`;
       return;
     }
     holder.innerHTML = `
@@ -322,6 +343,8 @@
         </tbody>
       </table>`;
   }
+
+  $('memberSearch').addEventListener('input', renderMembers);
 
   // ── 엑셀 일괄 등록 ───────────────────────────────────
   $('excelFile').addEventListener('change', async () => {
@@ -878,47 +901,150 @@
   });
 
   // 전체 QR 을 ZIP 으로 일괄 다운로드 (현재 디자인·로고 적용, 인쇄용 720px)
-  $('btnDownloadAll').addEventListener('click', async () => {
+  // ── 명단 QR 일괄 내려받기 (PDF) ─────────────────────
+  // 한 페이지에 10명 = 2열 × 5줄. A4 210×297mm, 여백 12mm.
+  const SHEET = { cols: 2, rows: 5, marginX: 12, marginY: 14, qrMm: 34, gapY: 2 };
+
+  // 지금 고른 디자인으로 QR 이미지(dataURL) 만들기
+  async function memberQrDataUrl(m, px = 560) {
+    if (qrState.logoMode === 'pattern' || qrState.logoMode === 'poster') {
+      const build = qrState.logoMode === 'poster' ? buildPosterCanvas : buildPatternCanvas;
+      return (await build(m, px)).toDataURL('image/png');
+    }
+    const holder = document.createElement('div');
+    new QRCodeStyling(buildQrOptions(m, px)).append(holder);
+    for (let i = 0; i < 60 && !holder.querySelector('canvas'); i++) await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 250)); // 로고가 얹힐 때까지
+    return holder.querySelector('canvas').toDataURL('image/png');
+  }
+
+  // 한글은 PDF 기본 글꼴로 안 나오므로 캔버스에 그려 이미지로 넣는다.
+  // 캔버스 폭을 고정해 두면 PDF 에서 항상 같은 크기로 보이고,
+  // 이름이 길어 폭을 넘치면 그 줄만 글자를 줄여 칸 안에 맞춘다.
+  function textImage(lines, widthPx = 560) {
+    const measure = document.createElement('canvas').getContext('2d');
+    const fontOf = (l, size) =>
+      `${l.bold ? '700 ' : ''}${size}px 'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif`;
+    const fitted = lines.map((l) => {
+      let size = l.size;
+      measure.font = fontOf(l, size);
+      const w = measure.measureText(l.text).width;
+      if (w > widthPx) size = Math.max(10, Math.floor(size * (widthPx / w)));
+      return { ...l, size };
+    });
+
+    const c = document.createElement('canvas');
+    let h = 6;
+    for (const l of fitted) h += Math.round(l.size * 1.35);
+    c.width = widthPx;
+    c.height = h + 6;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.textBaseline = 'top';
+    let y = 6;
+    for (const l of fitted) {
+      ctx.font = fontOf(l, l.size);
+      ctx.fillStyle = l.color || '#111827';
+      ctx.fillText(l.text, 0, y);
+      y += Math.round(l.size * 1.35);
+    }
+    return { dataUrl: c.toDataURL('image/png'), ratio: c.height / c.width };
+  }
+
+  // 한 사람 칸 그리기 (자르는 선 + QR + 이름·직함·부서)
+  function drawCell(doc, m, qrDataUrl, x, y, cellW, cellH) {
+    doc.setDrawColor(215);
+    doc.setLineWidth(0.2);
+    doc.rect(x, y, cellW, cellH);
+    const pad = 4;
+    const qr = SHEET.qrMm;
+    doc.addImage(qrDataUrl, 'PNG', x + pad, y + (cellH - qr) / 2, qr, qr, undefined, 'FAST');
+    const tx = x + pad + qr + 4;
+    const tw = cellW - (pad + qr + 4) - pad;
+    const lines = [{ text: `${m.name}${m.title ? ` ${m.title}` : ''}`, size: 62, bold: true }];
+    if (m.dept) lines.push({ text: m.dept, size: 46, color: '#6B7280' });
+    lines.push({ text: m.code, size: 38, color: '#9CA3AF' });
+    const img = textImage(lines);
+    const th = tw * img.ratio;
+    doc.addImage(img.dataUrl, 'PNG', tx, y + (cellH - th) / 2, tw, th, undefined, 'FAST');
+  }
+
+  // 한 파일: 한 페이지에 10명
+  async function buildOnePdf(list, btn) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageW = 210;
+    const pageH = 297;
+    const cellW = (pageW - SHEET.marginX * 2) / SHEET.cols;
+    const cellH = (pageH - SHEET.marginY * 2) / SHEET.rows;
+    const perPage = SHEET.cols * SHEET.rows;
+
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      btn.textContent = `만드는 중… ${i + 1}/${list.length}`;
+      const slot = i % perPage;
+      if (i > 0 && slot === 0) doc.addPage();
+      const col = slot % SHEET.cols;
+      const row = Math.floor(slot / SHEET.cols);
+      const x = SHEET.marginX + col * cellW;
+      const y = SHEET.marginY + row * cellH;
+      drawCell(doc, m, await memberQrDataUrl(m), x, y, cellW, cellH);
+    }
+    btn.textContent = '저장 중…';
+    doc.save(`Rollbook_QR_${list.length}명.pdf`);
+  }
+
+  // 사람별 파일: 각자 한 장짜리 PDF 를 만들어 ZIP 으로
+  async function buildEachPdfZip(list, btn) {
+    const { jsPDF } = window.jspdf;
+    const zip = new JSZip();
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      btn.textContent = `만드는 중… ${i + 1}/${list.length}`;
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const qr = 60;
+      doc.addImage(await memberQrDataUrl(m, 720), 'PNG', (210 - qr) / 2, 45, qr, qr, undefined, 'FAST');
+      const lines = [{ text: `${m.name}${m.title ? ` ${m.title}` : ''}`, size: 96, bold: true }];
+      if (m.dept) lines.push({ text: m.dept, size: 62, color: '#6B7280' });
+      lines.push({ text: m.code, size: 48, color: '#9CA3AF' });
+      const img = textImage(lines, 900);
+      const tw = 120;
+      doc.addImage(img.dataUrl, 'PNG', (210 - tw) / 2, 45 + qr + 8, tw, tw * img.ratio, undefined, 'FAST');
+      const safe = `${m.name}${m.dept ? `_${m.dept}` : ''}_${m.code}`.replace(/[\\/:*?"<>|]/g, '_');
+      zip.file(`${safe}.pdf`, doc.output('blob'));
+    }
+    btn.textContent = '압축 중…';
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Rollbook_QR_${list.length}명.zip`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+
+  $('btnBulkQr').addEventListener('click', async () => {
     if (!membersCache.length) {
       const { members } = await api('/api/members').catch(() => ({ members: [] }));
       membersCache = members;
     }
-    if (!membersCache.length) {
-      toast('등록된 인원이 없습니다', true);
+    const list = $('bulkScope').value === 'filtered' ? filteredMembers() : membersCache;
+    if (!list.length) {
+      toast($('bulkScope').value === 'filtered' ? '검색 결과가 없습니다' : '등록된 인원이 없습니다', true);
       return;
     }
-    const btn = $('btnDownloadAll');
+    const btn = $('btnBulkQr');
+    const label = btn.textContent;
     btn.disabled = true;
     try {
-      const zip = new JSZip();
-      for (let i = 0; i < membersCache.length; i++) {
-        const m = membersCache[i];
-        btn.textContent = `생성 중… ${i + 1}/${membersCache.length}`;
-        let blob;
-        if (qrState.logoMode === 'pattern' || qrState.logoMode === 'poster') {
-          const build = qrState.logoMode === 'poster' ? buildPosterCanvas : buildPatternCanvas;
-          const canvas = await build(m, 720);
-          blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
-        } else {
-          const q = new QRCodeStyling(buildQrOptions(m, 720));
-          blob = await q.getRawData('png');
-        }
-        const safeName = `${m.name}${m.dept ? `_${m.dept}` : ''}`.replace(/[\\/:*?"<>|]/g, '_');
-        zip.file(`${safeName}_${m.code}.png`, blob);
-      }
-      btn.textContent = '압축 중…';
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'rollbook-qr.zip';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      toast(`QR 코드 ${membersCache.length}개를 내려받았습니다`);
+      if ($('bulkFormat').value === 'each') await buildEachPdfZip(list, btn);
+      else await buildOnePdf(list, btn);
+      toast(`${list.length}명의 QR 을 내려받았습니다`);
     } catch (e) {
       toast(e.message, true);
     }
     btn.disabled = false;
-    btn.textContent = '전체 내려받기 (ZIP)';
+    btn.textContent = label;
   });
 
   // ── 보안 탭 ──────────────────────────────────────────
