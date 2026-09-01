@@ -512,10 +512,15 @@
   let logoVer = 0;
   const logoUrl = () => `/api/logo?v=${logoVer}`;
   // 로고 스타일: center(가운데 로고) · pattern(점에 새기기) · none
+  // 고른 디자인은 이 브라우저에 기억해 둔다 (다음에 열어도 그대로)
   const storedLogoMode = localStorage.getItem('rollbook-qr-logo');
+  const storedDot = localStorage.getItem('rollbook-qr-dot');
+  const storedColor = localStorage.getItem('rollbook-qr-color');
+  const DOTS = ['square', 'rounded', 'dots', 'classy-rounded'];
+  const COLORS = ['#111827', '#4F46E5', '#4338CA'];
   const qrState = {
-    dot: 'square',
-    color: '#111827',
+    dot: DOTS.includes(storedDot) ? storedDot : 'square',
+    color: COLORS.includes(storedColor) ? storedColor : '#111827',
     logoMode: ['none', 'pattern', 'poster'].includes(storedLogoMode) ? storedLogoMode : 'center',
   };
   let qr = null;
@@ -832,11 +837,17 @@
       if (!b) return;
       $(segId).querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
       qrState[key] = b.dataset.v;
+      try { localStorage.setItem(`rollbook-qr-${key}`, qrState[key]); } catch {}
       renderQr();
     });
   }
   bindSeg('qrDotSeg', 'dot');
   bindSeg('qrColorSeg', 'color');
+
+  // 기억해 둔 디자인을 버튼 상태에 반영
+  for (const [segId, key] of [['qrDotSeg', 'dot'], ['qrColorSeg', 'color']]) {
+    $(segId).querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === qrState[key]));
+  }
 
   $('qrLogoSeg').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-v]');
