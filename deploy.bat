@@ -8,6 +8,8 @@ REM  필요한 것: Node.js + Cloudflare 계정(무료, 첫 실행 때 로그인
 REM ═══════════════════════════════════════════════════════════
 chcp 65001 >nul
 setlocal enabledelayedexpansion
+REM wrangler 첫 실행 때 나오는 사용정보 수집 질문에서 멈추지 않도록
+set "WRANGLER_SEND_METRICS=false"
 cd /d "%~dp0"
 
 echo.
@@ -18,8 +20,8 @@ echo.
 
 where npm >nul 2>nul
 if errorlevel 1 (
-  if exist "%ProgramFiles%\r\nodejs\r\npm.cmd" (
-    set "PATH=%ProgramFiles%\r\nodejs;%PATH%"
+  if exist "%ProgramFiles%\nodejs\npm.cmd" (
+    set "PATH=%ProgramFiles%\nodejs;%PATH%"
   ) else (
     echo  [오류] Node.js 가 필요합니다. update.bat 을 먼저 실행해 주세요.
     pause
@@ -85,9 +87,19 @@ if defined URL (
   start "" %URL%/admin
 ) else (
   echo.
-  echo  [오류] 배포 결과 주소를 확인하지 못했습니다.
-  echo  아래 명령을 직접 실행해 오류 내용을 확인해 주세요:
-  echo    npx wrangler deploy
+  echo  주소를 확인하지 못했습니다. 자세한 내용을 확인합니다...
+  echo.
+  call npx wrangler deploy
+  echo.
+  echo  ──────────────────────────────────────────────────────
+  echo  위 내용에 workers.dev 주소가 보이면 배포는 된 것입니다.
+  echo  그 주소를 브라우저에 입력해 사용하시면 됩니다.
+  echo.
+  echo  "workers.dev subdomain" 관련 오류가 보인다면
+  echo  Cloudflare 대시보드에서 주소를 한 번만 정해 주면 됩니다:
+  echo    https://dash.cloudflare.com  ^>  Workers ^& Pages  ^>  Subdomain
+  echo  정하신 뒤 이 파일을 다시 실행해 주세요.
+  echo  ──────────────────────────────────────────────────────
 )
 echo.
 pause
