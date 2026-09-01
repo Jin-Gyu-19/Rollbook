@@ -54,17 +54,13 @@
   <div class="scan-pill" id="scanPill"><span class="dot"></span><span id="camState">카메라 준비 중…</span><span class="cam-res" id="camRes"></span></div>
 </div>
 
-<!-- 출석 결과: 전표에 도장이 찍히는 모달 -->
+<!-- 출석 결과 모달 (흰 유리 + 체크 링) -->
 <div class="result-modal" id="resultModal" aria-live="assertive">
   <div class="result-body">
-    <div class="result-top" id="resultTop"></div>
-    <div class="result-main">
-      <div class="result-who">
-        <div class="result-name" id="resultName"></div>
-        <div class="result-msg" id="resultMsg"></div>
-      </div>
-      <div class="result-stamp" id="resultStamp">출석</div>
-    </div>
+    <div class="result-ring" id="resultRing">✓</div>
+    <div class="result-name" id="resultName"></div>
+    <div class="result-div"></div>
+    <div class="result-msg" id="resultMsg"></div>
   </div>
 </div>
 
