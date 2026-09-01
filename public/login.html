@@ -8,22 +8,44 @@
 <link rel="stylesheet" href="/bdo-design.css">
 <link rel="stylesheet" href="/app.css">
 <style>
-  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-  .login-card { width: min(400px, calc(100vw - 40px)); padding: 38px 34px 32px; text-align: center; }
-  .login-logo { height: 34px; margin-bottom: 14px; }
-  .login-title { font-size: 22px; font-weight: 800; margin: 0 0 6px; }
-  .login-sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; }
-  .login-card input { width: 100%; text-align: center; font-size: 17px; letter-spacing: .06em; margin-bottom: 12px; }
-  .login-card button.primary { width: 100%; padding: 12px; font-size: 16px; }
-  .login-err { color: var(--danger); font-size: 13.5px; min-height: 20px; margin: 10px 0 0; }
-  .login-hint { color: var(--muted); font-size: 12.5px; margin-top: 18px; line-height: 1.6; }
-  .login-or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12.5px; margin: 18px 0 12px; }
-  .login-or::before, .login-or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
-  .qr-login-btn { width: 100%; padding: 11px; font-size: 15px; }
-  .qr-cam { position: relative; width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: #111827; margin-bottom: 12px; }
-  .qr-cam video { width: 100%; height: 100%; object-fit: cover; }
-  .qr-cam .qr-guide { position: absolute; inset: 14%; border: 2px solid rgba(255,255,255,.85); border-radius: 14px; box-shadow: 0 0 0 999px rgba(0,0,0,.25); pointer-events: none; }
-  .qr-cam .qr-state { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+  .login-card { width: min(430px, calc(100vw - 32px)); padding: 34px 30px 28px; text-align: center; }
+  .login-logo { height: 32px; margin-bottom: 12px; }
+  .login-title { font-size: 21px; font-weight: 800; margin: 0 0 6px; }
+  .login-sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; line-height: 1.5; }
+
+  /* 카메라 — 로그인 화면의 주인공 */
+  .qr-cam { position: relative; width: 100%; aspect-ratio: 1; border-radius: 20px; overflow: hidden;
+            background: #0F172A; display: flex; align-items: center; justify-content: center; }
+  .qr-cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .qr-guide { position: absolute; inset: 13%; border-radius: 18px; box-shadow: 0 0 0 999px rgba(15,23,42,.45); pointer-events: none; }
+  .qr-guide i { position: absolute; width: 30px; height: 30px; border: 3px solid #fff; border-radius: 4px; }
+  .qr-guide .tl { top: -3px; left: -3px; border-right: 0; border-bottom: 0; border-top-left-radius: 14px; }
+  .qr-guide .tr { top: -3px; right: -3px; border-left: 0; border-bottom: 0; border-top-right-radius: 14px; }
+  .qr-guide .bl { bottom: -3px; left: -3px; border-right: 0; border-top: 0; border-bottom-left-radius: 14px; }
+  .qr-guide .br { bottom: -3px; right: -3px; border-left: 0; border-top: 0; border-bottom-right-radius: 14px; }
+  .qr-cam-off { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                gap: 12px; color: #E2E8F0; font-size: 14px; padding: 24px; text-align: center; line-height: 1.6; }
+  .qr-cam-off .icon { font-size: 34px; }
+  .qr-state { margin: 14px 0 0; font-size: 14.5px; font-weight: 600; min-height: 22px; }
+  .qr-state.err { color: var(--danger); }
+  .qr-state.ok { color: #16A34A; }
+
+  .login-hint { color: var(--muted); font-size: 12.5px; margin-top: 16px; line-height: 1.65; }
+  .login-link { display: inline-block; margin-top: 14px; color: var(--muted); font-size: 12.5px;
+                text-decoration: underline; cursor: pointer; background: none; border: 0; padding: 4px; }
+  .login-card input { width: 100%; text-align: center; font-size: 15px; margin-bottom: 10px; }
+  .login-card button.primary { width: 100%; padding: 12px; font-size: 15.5px; }
+  .login-err { color: var(--danger); font-size: 13.5px; min-height: 20px; margin: 8px 0 0; }
+
+  /* 발급된 QR·복구 코드 보여주기 */
+  .issued-qr { display: flex; justify-content: center; margin: 4px 0 14px; }
+  .issued-qr canvas, .issued-qr img { width: 210px; height: 210px; border: 1px solid var(--line); border-radius: 14px; }
+  .code-box { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; font-weight: 700;
+              letter-spacing: .05em; background: var(--bg); border: 1px solid var(--line);
+              border-radius: 12px; padding: 12px 10px; word-break: break-all; margin: 8px 0 4px; }
+  .warn-box { background: #FEF3C7; border: 1px solid #FDE68A; color: #92400E; border-radius: 12px;
+              padding: 12px 14px; font-size: 13px; line-height: 1.6; text-align: left; margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -31,34 +53,61 @@
 <div class="card login-card">
   <img src="/api/logo" class="login-logo" alt="BDO">
   <h1 class="login-title">Rollbook</h1>
-  <p class="login-sub" id="subText">비밀번호를 입력해 주세요</p>
+  <p class="login-sub" id="subText">로그인 QR 을 카메라에 비춰 주세요</p>
 
-  <!-- 로그인 -->
-  <form id="loginForm" class="hidden">
-    <input type="password" id="pw" placeholder="비밀번호 또는 스캐너 접속 코드" autocomplete="current-password">
-    <button class="primary" type="submit">로그인</button>
-    <div class="login-or">또는</div>
-    <div class="qr-cam hidden" id="qrCam">
+  <!-- QR 스캔 로그인 (기본) -->
+  <div id="scanView">
+    <div class="qr-cam" id="qrCam">
       <video id="qrVideo" autoplay muted playsinline></video>
-      <div class="qr-guide"></div>
-      <div class="qr-state" id="qrState">관리자 로그인 QR 을 비춰 주세요</div>
+      <div class="qr-guide" id="qrGuide"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
+      <div class="qr-cam-off" id="camOff">
+        <span class="icon">📷</span>
+        <span id="camOffMsg">카메라를 시작하는 중입니다…</span>
+        <button class="primary" id="btnRetryCam" style="display:none; width:auto; padding:8px 18px;">카메라 다시 시작</button>
+      </div>
     </div>
-    <button type="button" class="qr-login-btn" id="btnQrLogin">📷 관리자 QR로 로그인</button>
-  </form>
-  <canvas id="qrFrame" class="hidden"></canvas>
+    <p class="qr-state" id="qrState"></p>
+    <p class="login-hint" id="hintText">관리자 QR 로 로그인하면 관리 화면으로, 스캐너 PC QR 로 로그인하면 출석 촬영 화면으로 들어갑니다.</p>
+    <button class="login-link" id="btnRecovery">QR 을 잃어버렸을 때</button>
+  </div>
 
-  <!-- 최초 1회: 관리자 비밀번호 만들기 -->
-  <form id="setupForm" class="hidden">
-    <input type="password" id="newPw" placeholder="새 관리자 비밀번호 (4자 이상)" autocomplete="new-password">
-    <input type="password" id="newPw2" placeholder="비밀번호 확인" autocomplete="new-password">
-    <button class="primary" type="submit">설정하고 시작하기</button>
-  </form>
+  <!-- 비상 복구 코드 -->
+  <div id="recoveryView" class="hidden">
+    <form id="recoveryForm">
+      <input type="password" id="recoveryCode" placeholder="비상 복구 코드" autocomplete="one-time-code">
+      <button class="primary" type="submit">복구 코드로 로그인</button>
+    </form>
+    <p class="login-err" id="recoveryErr"></p>
+    <p class="login-hint">초기 설정 때 저장해 둔 복구 코드입니다. 로그인 후 보안 탭에서 QR 을 다시 내려받으세요.</p>
+    <button class="login-link" id="btnBackToScan">QR 스캔으로 돌아가기</button>
+  </div>
 
-  <p class="login-err" id="errText"></p>
-  <p class="login-hint" id="hintText"></p>
+  <!-- 최초 1회: 관리자 QR + 복구 코드 발급 -->
+  <div id="setupView" class="hidden">
+    <div id="setupIntro">
+      <p class="login-hint" style="margin-bottom:16px;">처음 사용합니다. 관리자 로그인 QR 과 비상 복구 코드를 발급합니다. 발급 후 QR 이미지를 저장하거나 인쇄해서 보관해 주세요.</p>
+      <button class="primary" id="btnSetup" style="width:100%; padding:12px;">관리자 QR 발급받기</button>
+      <p class="login-err" id="setupErr"></p>
+    </div>
+    <div id="setupResult" class="hidden">
+      <div class="issued-qr" id="setupQrHolder"></div>
+      <button class="primary" id="btnDownloadQr" style="margin-bottom:8px;">QR 이미지 내려받기</button>
+      <button id="btnDownloadQrPdf" style="width:100%; padding:10px; margin-bottom:10px;">인쇄용 PDF 내려받기 (30·40·50mm)</button>
+      <div class="code-box" id="setupRecoveryCode"></div>
+      <div class="warn-box">
+        이 QR 과 복구 코드는 <b>지금만 볼 수 있습니다.</b> QR 은 내려받아 보관하고, 복구 코드는 따로 적어 두세요.
+        QR 을 잃어버렸을 때 복구 코드로만 다시 들어올 수 있습니다.
+      </div>
+      <button class="primary" id="btnSetupDone" style="width:100%; padding:12px; margin-top:14px;">저장했습니다 — 시작하기</button>
+    </div>
+  </div>
 </div>
 
+<canvas id="qrFrame" class="hidden"></canvas>
+
 <script src="/vendor/jsqr.js"></script>
+<script src="/vendor/qr-code-styling.js"></script>
+<script src="/vendor/jspdf.min.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -76,60 +125,29 @@
       body: JSON.stringify(body),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || `요청 실패 (${r.status})`);
+    if (!r.ok) {
+      const e = new Error(data.error || `요청 실패 (${r.status})`);
+      e.locked = Boolean(data.locked);
+      throw e;
+    }
     return data;
   }
 
-  async function init() {
-    try {
-      const s = await (await fetch('/api/auth/state')).json();
-      if (s.role) return go(s.role);
-      if (!s.setup) {
-        $('subText').textContent = '처음 사용합니다 — 관리자 비밀번호를 만들어 주세요';
-        $('setupForm').classList.remove('hidden');
-        $('hintText').textContent = '이 비밀번호로 관리자 페이지에 들어갈 수 있습니다. 스캐너 PC용 접속 코드는 관리자 › 보안에서 따로 만들 수 있어요.';
-        $('newPw').focus();
-      } else {
-        $('loginForm').classList.remove('hidden');
-        $('hintText').textContent = '관리자 비밀번호 또는 스캐너 접속 코드로 로그인합니다. 스캐너 PC는 한 번 로그인하면 계속 유지됩니다.';
-        $('pw').focus();
-      }
-    } catch {
-      $('errText').textContent = '서버에 연결할 수 없습니다. 잠시 후 새로고침해 주세요.';
-    }
+  function setState(msg, kind = '') {
+    $('qrState').textContent = msg;
+    $('qrState').className = `qr-state ${kind}`;
   }
 
-  $('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    $('errText').textContent = '';
-    try {
-      const d = await post('/api/auth/login', { password: $('pw').value });
-      go(d.role);
-    } catch (err) {
-      $('errText').textContent = err.message;
-      $('pw').select();
-    }
-  });
-
-  // ── QR 로그인 (BarcodeDetector → jsQR 폴백) ──────────
-  let qrStream = null;
-  let qrRunning = false;
-
-  async function stopQrCam() {
-    qrRunning = false;
-    if (qrStream) {
-      qrStream.getTracks().forEach((t) => t.stop());
-      qrStream = null;
-    }
-    $('qrCam').classList.add('hidden');
-    $('btnQrLogin').textContent = '📷 관리자 QR로 로그인';
-  }
+  // ── 카메라 QR 스캔 ───────────────────────────────────
+  let stream = null;
+  let scanning = false;
+  let locked = false;
 
   async function decodeFrame(video, detector) {
-    const canvas = $('qrFrame');
     const w = video.videoWidth;
     const h = video.videoHeight;
     if (!w || !h) return null;
+    const canvas = $('qrFrame');
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -148,71 +166,232 @@
     return null;
   }
 
-  async function startQrCam() {
-    $('errText').textContent = '';
+  function stopCamera() {
+    scanning = false;
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      stream = null;
+    }
+  }
+
+  async function startCamera() {
+    $('camOff').style.display = 'flex';
+    $('btnRetryCam').style.display = 'none';
+    $('camOffMsg').textContent = '카메라를 시작하는 중입니다…';
     try {
-      qrStream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       });
     } catch {
-      $('errText').textContent = '카메라를 열 수 없습니다. 카메라 권한을 확인해 주세요.';
+      $('camOffMsg').textContent = '카메라를 열 수 없습니다. 브라우저의 카메라 권한을 허용해 주세요.';
+      $('btnRetryCam').style.display = '';
+      setState('카메라가 있어야 로그인할 수 있습니다', 'err');
       return;
     }
     const video = $('qrVideo');
-    video.srcObject = qrStream;
+    video.srcObject = stream;
     await video.play();
-    $('qrCam').classList.remove('hidden');
-    $('btnQrLogin').textContent = '카메라 닫기';
-    $('qrState').textContent = '관리자 로그인 QR 을 비춰 주세요';
-    const detector = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
-    qrRunning = true;
-    let busy = false;
-    const loop = async () => {
-      if (!qrRunning) return;
-      if (!busy) {
-        busy = true;
-        const value = await decodeFrame(video, detector);
-        if (value && qrRunning) {
-          if (value.startsWith('ROLLBOOK-LOGIN:')) {
-            $('qrState').textContent = '확인 중…';
-            try {
-              const d = await post('/api/auth/qr-login', { payload: value });
-              await stopQrCam();
-              return go(d.role);
-            } catch (err) {
-              $('qrState').textContent = err.message;
-            }
-          } else if (value.startsWith('ROLLBOOK:')) {
-            $('qrState').textContent = '출석용 QR 입니다 — 관리자 로그인 QR 을 비춰 주세요';
-          }
-        }
-        busy = false;
-      }
-      setTimeout(loop, 180);
-    };
-    loop();
+    $('camOff').style.display = 'none';
+    setState('로그인 QR 을 사각형 안에 맞춰 주세요');
+    scanLoop(video);
   }
 
-  $('btnQrLogin').addEventListener('click', () => {
-    if (qrRunning) stopQrCam();
-    else startQrCam();
+  async function scanLoop(video) {
+    const detector = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+    scanning = true;
+    let lastMiss = '';
+    while (scanning) {
+      const value = await decodeFrame(video, detector);
+      if (!scanning) break;
+      if (value) {
+        if (value.startsWith('ROLLBOOK-LOGIN:') || value.startsWith('ROLLBOOK-SCANNER:')) {
+          setState('확인 중…');
+          try {
+            const d = await post('/api/auth/qr-login', { payload: value });
+            setState(d.name ? `${d.name}님, 로그인되었습니다` : '로그인되었습니다', 'ok');
+            stopCamera();
+            return go(d.role);
+          } catch (e) {
+            setState(e.message, 'err');
+            if (e.locked) {
+              locked = true;
+              stopCamera();
+              $('camOff').style.display = 'flex';
+              $('camOffMsg').textContent = e.message;
+              return;
+            }
+            await sleep(1500);
+          }
+        } else if (value !== lastMiss) {
+          lastMiss = value;
+          setState(value.startsWith('ROLLBOOK:') ? '출석용 QR 입니다 — 로그인 QR 을 비춰 주세요' : '로그인 QR 이 아닙니다', 'err');
+        }
+      }
+      await sleep(150);
+    }
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  $('btnRetryCam').addEventListener('click', () => { if (!locked) startCamera(); });
+
+  // ── 화면 전환 ────────────────────────────────────────
+  function show(view) {
+    for (const v of ['scanView', 'recoveryView', 'setupView']) $(v).classList.toggle('hidden', v !== view);
+  }
+
+  $('btnRecovery').addEventListener('click', () => {
+    stopCamera();
+    show('recoveryView');
+    $('subText').textContent = '비상 복구 코드로 로그인합니다';
+    $('recoveryCode').focus();
   });
 
-  $('setupForm').addEventListener('submit', async (e) => {
+  $('btnBackToScan').addEventListener('click', () => {
+    show('scanView');
+    $('subText').textContent = '로그인 QR 을 카메라에 비춰 주세요';
+    if (!locked) startCamera();
+  });
+
+  $('recoveryForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    $('errText').textContent = '';
-    if ($('newPw').value !== $('newPw2').value) {
-      $('errText').textContent = '두 비밀번호가 서로 다릅니다.';
-      return;
-    }
+    $('recoveryErr').textContent = '';
     try {
-      const d = await post('/api/auth/setup', { password: $('newPw').value });
+      const d = await post('/api/auth/recovery', { code: $('recoveryCode').value.trim() });
       go(d.role);
     } catch (err) {
-      $('errText').textContent = err.message;
+      $('recoveryErr').textContent = err.message;
+      $('recoveryCode').select();
     }
   });
+
+  // ── 최초 설정 ────────────────────────────────────────
+  let setupRole = null;
+  let qrBlobUrl = null;
+  let qrCanvas = null;
+  let qrOwner = '';
+
+  // 인쇄용 PDF — 같은 QR 을 30·40·50mm 세 크기로
+  function savePdf(canvas, who, filename) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const dataUrl = canvas.toDataURL('image/png');
+
+    // 한글은 PDF 기본 글꼴로 안 나오므로 캔버스에 그려서 이미지로 넣는다
+    const drawText = (lines, xMm, yMm, widthMm) => {
+      const c = document.createElement('canvas');
+      let h = 6;
+      for (const l of lines) h += Math.round(l.size * 1.45);
+      c.width = 1600;
+      c.height = h + 6;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.textBaseline = 'top';
+      let y = 6;
+      for (const l of lines) {
+        ctx.font = `${l.bold ? '700 ' : ''}${l.size}px 'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif`;
+        ctx.fillStyle = l.color || '#111827';
+        ctx.fillText(l.text, 0, y);
+        y += Math.round(l.size * 1.45);
+      }
+      doc.addImage(c.toDataURL('image/png'), 'PNG', xMm, yMm, widthMm, (c.height / c.width) * widthMm, undefined, 'FAST');
+    };
+
+    drawText([
+      { text: 'Rollbook 관리자 로그인 QR', size: 54, bold: true },
+      { text: `${who} · 한 장을 잘라서 로그인 화면 카메라에 비춰 주세요`, size: 34, color: '#6B7280' },
+    ], 20, 16, 170);
+
+    let y = 42;
+    for (const mm of [30, 40, 50]) {
+      doc.addImage(dataUrl, 'PNG', 20, y, mm, mm, 'loginqr', 'FAST');
+      doc.setDrawColor(200);
+      doc.rect(20, y, mm, mm);
+      doc.setFontSize(11);
+      doc.setTextColor(17);
+      doc.text(`${mm} mm`, 20 + mm + 8, y + mm / 2);
+      y += mm + 14;
+    }
+
+    drawText([
+      { text: '인쇄할 때 "용지에 맞춤"을 끄고 100% 배율로 출력하세요.', size: 30, color: '#9CA3AF' },
+      { text: 'QR 둘레의 흰 여백은 잘라내지 말고 남겨 두어야 인식이 잘 됩니다.', size: 30, color: '#9CA3AF' },
+    ], 20, y + 2, 170);
+    doc.save(filename.replace(/[\\/:*?"<>|]/g, '_'));
+  }
+
+  $('btnSetup').addEventListener('click', async () => {
+    $('setupErr').textContent = '';
+    $('btnSetup').disabled = true;
+    try {
+      const d = await post('/api/auth/setup', {});
+      setupRole = d.role;
+      $('setupRecoveryCode').textContent = d.recovery_code;
+      const qr = new QRCodeStyling({
+        width: 640, height: 640, type: 'canvas',
+        data: `ROLLBOOK-LOGIN:${d.login_token}`,
+        margin: 12,
+        qrOptions: { errorCorrectionLevel: 'H' },
+        dotsOptions: { type: 'square', color: '#111827' },
+        backgroundOptions: { color: '#FFFFFF' },
+        image: '/api/logo',
+        imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.35, hideBackgroundDots: true },
+      });
+      qr.append($('setupQrHolder'));
+      qrBlobUrl = await qr.getRawData('png').then((b) => URL.createObjectURL(b));
+      await sleep(400); // 로고가 얹힐 때까지
+      qrCanvas = $('setupQrHolder').querySelector('canvas');
+      qrOwner = d.name || '관리자';
+      $('btnDownloadQr').dataset.name = `관리자로그인_${qrOwner}.png`;
+      $('setupIntro').classList.add('hidden');
+      $('setupResult').classList.remove('hidden');
+      $('subText').textContent = '발급된 QR 과 복구 코드를 보관해 주세요';
+    } catch (err) {
+      $('setupErr').textContent = err.message;
+      $('btnSetup').disabled = false;
+    }
+  });
+
+  $('btnDownloadQr').addEventListener('click', () => {
+    if (!qrBlobUrl) return;
+    const a = document.createElement('a');
+    a.href = qrBlobUrl;
+    a.download = $('btnDownloadQr').dataset.name || '관리자로그인.png';
+    a.click();
+  });
+
+  $('btnDownloadQrPdf').addEventListener('click', () => {
+    if (qrCanvas) savePdf(qrCanvas, qrOwner, `관리자로그인_${qrOwner}_인쇄용.pdf`);
+  });
+
+  $('btnSetupDone').addEventListener('click', () => go(setupRole || 'admin'));
+
+  // ── 시작 ─────────────────────────────────────────────
+  async function init() {
+    try {
+      const s = await (await fetch('/api/auth/state')).json();
+      if (s.role) return go(s.role);
+      if (s.lockedMinutes) {
+        locked = true;
+        show('scanView');
+        $('camOff').style.display = 'flex';
+        $('camOffMsg').textContent = `로그인이 잠겼습니다. ${s.lockedMinutes}분 뒤에 다시 시도해 주세요.`;
+        setState('5회 이상 실패해서 잠금 상태입니다', 'err');
+        return;
+      }
+      if (!s.setup) {
+        show('setupView');
+        $('subText').textContent = '처음 사용합니다 — 관리자 QR 을 발급받으세요';
+        return;
+      }
+      show('scanView');
+      startCamera();
+    } catch {
+      setState('서버에 연결할 수 없습니다. 잠시 후 새로고침해 주세요.', 'err');
+    }
+  }
 
   init();
 })();

@@ -923,13 +923,100 @@
 
   // ── 보안 탭 ──────────────────────────────────────────
   async function loadSecurityTab() {
-    try {
-      const d = await api('/api/auth/scanner-code');
-      $('scannerCode').value = d.code || '';
-    } catch (e) {
-      toast(e.message, true);
-    }
     loadAdmins();
+  }
+
+  // 로그인 QR 캔버스 (사이트에서 쓰는 디자인 그대로 — 로고 + 오류보정 H)
+  async function renderLoginQrCanvas(payload, px = 720) {
+    const qr = new QRCodeStyling({
+      width: px, height: px, type: 'canvas',
+      data: payload,
+      margin: Math.round(px / 60),
+      qrOptions: { errorCorrectionLevel: 'H' },
+      dotsOptions: { type: 'square', color: '#111827' },
+      backgroundOptions: { color: '#FFFFFF' },
+      image: logoUrl(),
+      imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.35, hideBackgroundDots: true },
+    });
+    const holder = document.createElement('div');
+    qr.append(holder);
+    for (let i = 0; i < 60 && !holder.querySelector('canvas'); i++) await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 350)); // 로고가 얹힐 때까지
+    return holder.querySelector('canvas');
+  }
+
+  // 로그인 QR PNG 내려받기 (관리자·스캐너 공용)
+  async function downloadLoginQr(payload, filename) {
+    const canvas = await renderLoginQrCanvas(payload, 720);
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename.replace(/[\\/:*?"<>|]/g, '_');
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  }
+
+  // 인쇄용 PDF — 같은 QR 을 30·40·50mm 세 크기로 한 장에
+  const PRINT_SIZES_MM = [30, 40, 50];
+  async function downloadLoginQrPdf(payload, who, filename) {
+    const canvas = await renderLoginQrCanvas(payload, 900);
+    const dataUrl = canvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+    // 한글은 PDF 기본 글꼴로 안 나오므로 캔버스에 그려서 이미지로 넣는다
+    const drawText = (lines, xMm, yMm, widthMm) => {
+      const W = 1600;
+      const pad = 6;
+      const c = document.createElement('canvas');
+      const ctx0 = c.getContext('2d');
+      const font = (l) => `${l.bold ? '700 ' : ''}${l.size}px 'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif`;
+      let h = pad;
+      for (const l of lines) h += Math.round(l.size * 1.45);
+      c.width = W;
+      c.height = h + pad;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.textBaseline = 'top';
+      let y = pad;
+      for (const l of lines) {
+        ctx.font = font(l);
+        ctx.fillStyle = l.color || '#111827';
+        ctx.fillText(l.text, 0, y);
+        y += Math.round(l.size * 1.45);
+      }
+      void ctx0;
+      doc.addImage(c.toDataURL('image/png'), 'PNG', xMm, yMm, widthMm, (c.height / c.width) * widthMm, undefined, 'FAST');
+    };
+
+    drawText(
+      [
+        { text: 'Rollbook 관리자 로그인 QR', size: 54, bold: true },
+        { text: `${who} · 한 장을 잘라서 로그인 화면 카메라에 비춰 주세요`, size: 34, color: '#6B7280' },
+      ],
+      20, 16, 170,
+    );
+
+    let y = 42;
+    for (const mm of PRINT_SIZES_MM) {
+      doc.addImage(dataUrl, 'PNG', 20, y, mm, mm, 'loginqr', 'FAST');
+      doc.setDrawColor(200);
+      doc.rect(20, y, mm, mm); // 자를 때 기준선
+      doc.setFontSize(11);
+      doc.setTextColor(17);
+      doc.text(`${mm} mm`, 20 + mm + 8, y + mm / 2);
+      y += mm + 14;
+    }
+
+    drawText(
+      [
+        { text: '인쇄할 때 "용지에 맞춤"을 끄고 100% 배율로 출력하세요.', size: 30, color: '#9CA3AF' },
+        { text: 'QR 둘레의 흰 여백은 잘라내지 말고 남겨 두어야 인식이 잘 됩니다.', size: 30, color: '#9CA3AF' },
+      ],
+      20, y + 2, 170,
+    );
+    doc.save(filename.replace(/[\\/:*?"<>|]/g, '_'));
   }
 
   // QR 로그인 관리자 목록 + 지정 대상 드롭다운
@@ -950,7 +1037,8 @@
                 <td>${esc(a.title)}</td>
                 <td>${esc(a.dept)}</td>
                 <td style="text-align:right; white-space:nowrap;">
-                  <button class="small" data-qr-admin="${a.id}">로그인 QR 내려받기</button>
+                  <button class="small" data-qr-admin="${a.id}">QR 이미지</button>
+                  <button class="small" data-pdf-admin="${a.id}">인쇄용 PDF (30·40·50mm)</button>
                   <button class="small ghost" data-del-admin="${a.id}">해제</button>
                 </td>
               </tr>`)
@@ -980,26 +1068,31 @@
         const { admins } = await api('/api/auth/admins');
         const a = admins.find((x) => x.id === Number(qrBtn.dataset.qrAdmin));
         if (!a) return;
-        const qr = new QRCodeStyling({
-          width: 720, height: 720, type: 'canvas',
-          data: `ROLLBOOK-LOGIN:${a.login_token}`,
-          margin: 12,
-          qrOptions: { errorCorrectionLevel: 'H' },
-          dotsOptions: { type: 'square', color: '#111827' },
-          backgroundOptions: { color: '#FFFFFF' },
-          image: logoUrl(),
-          imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.35, hideBackgroundDots: true },
-        });
-        const blob = await qr.getRawData('png');
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `관리자로그인_${a.name}.png`.replace(/[\\/:*?"<>|]/g, '_');
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+        await downloadLoginQr(`ROLLBOOK-LOGIN:${a.login_token}`, `관리자로그인_${a.name}.png`);
         toast(`${a.name}님의 로그인 QR 을 내려받았습니다`);
       } catch (err) {
         toast(err.message, true);
       }
+      return;
+    }
+
+    const pdfBtn = e.target.closest('button[data-pdf-admin]');
+    if (pdfBtn) {
+      const old = pdfBtn.textContent;
+      pdfBtn.disabled = true;
+      pdfBtn.textContent = '만드는 중…';
+      try {
+        const { admins } = await api('/api/auth/admins');
+        const a = admins.find((x) => x.id === Number(pdfBtn.dataset.pdfAdmin));
+        if (a) {
+          await downloadLoginQrPdf(`ROLLBOOK-LOGIN:${a.login_token}`, `${a.name}${a.title ? ` ${a.title}` : ''}`, `관리자로그인_${a.name}_인쇄용.pdf`);
+          toast(`${a.name}님의 인쇄용 QR (30·40·50mm) 을 내려받았습니다`);
+        }
+      } catch (err) {
+        toast(err.message, true);
+      }
+      pdfBtn.disabled = false;
+      pdfBtn.textContent = old;
       return;
     }
     const delBtn = e.target.closest('button[data-del-admin]');
@@ -1015,36 +1108,45 @@
     }
   });
 
-  $('btnSaveScannerCode').addEventListener('click', async () => {
-    const code = $('scannerCode').value.trim();
-    if (!code) return toast('접속 코드를 입력해 주세요.', true);
+  $('btnScannerQr').addEventListener('click', async () => {
     try {
-      await api('/api/auth/scanner-code', { method: 'POST', body: JSON.stringify({ code }) });
-      toast('스캐너 접속 코드를 저장했습니다');
+      const { token } = await api('/api/auth/scanner-qr');
+      if (!token) return toast('스캐너 QR 토큰이 없습니다. 재발급을 눌러 주세요.', true);
+      await downloadLoginQrPdf(`ROLLBOOK-SCANNER:${token}`, '스캐너 PC 로그인용', '스캐너PC_로그인QR_인쇄용.pdf');
+      toast('스캐너 로그인 QR (30·40·50mm) 을 내려받았습니다');
     } catch (e) {
       toast(e.message, true);
     }
   });
 
-  $('btnClearScannerCode').addEventListener('click', async () => {
-    if (!confirm('접속 코드를 없애면 로그인돼 있던 스캐너 PC가 모두 풀립니다. 계속할까요?')) return;
+  $('btnResetScannerQr').addEventListener('click', async () => {
+    if (!confirm('재발급하면 기존 스캐너 QR 이 무효가 되고, 로그인돼 있던 스캐너 PC 가 모두 풀립니다. 계속할까요?')) return;
     try {
-      await api('/api/auth/scanner-code', { method: 'POST', body: JSON.stringify({ code: '' }) });
-      $('scannerCode').value = '';
-      toast('접속 코드를 없앴습니다 — 스캐너 PC 로그인이 모두 해제되었습니다');
+      const { token } = await api('/api/auth/scanner-qr', { method: 'POST', body: JSON.stringify({}) });
+      await downloadLoginQrPdf(`ROLLBOOK-SCANNER:${token}`, '스캐너 PC 로그인용', '스캐너PC_로그인QR_인쇄용.pdf');
+      toast('새 스캐너 QR 을 발급하고 내려받았습니다');
     } catch (e) {
       toast(e.message, true);
     }
   });
 
-  $('btnChangePw').addEventListener('click', async () => {
-    const current = $('pwCurrent').value;
-    const next = $('pwNext').value;
-    if (next !== $('pwNext2').value) return toast('새 비밀번호 두 개가 서로 다릅니다.', true);
+  $('btnNewRecovery').addEventListener('click', async () => {
+    if (!confirm('새 복구 코드를 발급하면 기존 코드는 쓸 수 없게 됩니다. 계속할까요?')) return;
     try {
-      await api('/api/auth/password', { method: 'POST', body: JSON.stringify({ current, next }) });
-      $('pwCurrent').value = $('pwNext').value = $('pwNext2').value = '';
-      toast('관리자 비밀번호를 변경했습니다');
+      const { code } = await api('/api/auth/recovery-code', { method: 'POST', body: JSON.stringify({}) });
+      const box = $('newRecoveryCode');
+      box.textContent = code;
+      box.classList.remove('hidden');
+      toast('새 복구 코드입니다 — 지금 적어 두세요 (다시 볼 수 없습니다)');
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  $('btnUnlock').addEventListener('click', async () => {
+    try {
+      await api('/api/auth/unlock', { method: 'POST', body: JSON.stringify({}) });
+      toast('로그인 잠금을 모두 풀었습니다');
     } catch (e) {
       toast(e.message, true);
     }

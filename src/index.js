@@ -47,6 +47,11 @@ async function ensureSchema(db) {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       expires_at TEXT NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS login_attempts (
+      client TEXT PRIMARY KEY,
+      fails INTEGER NOT NULL DEFAULT 0,
+      locked_until TEXT
+    )`),
   ]);
   // 기존 DB 에 없는 컬럼은 추가
   try {
@@ -96,6 +101,18 @@ async function ensureSchema(db) {
     }
     await db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('seeded_admin_kimjinkyu', '1')").run();
   }
+
+  // 스캐너 PC 로그인 QR 토큰 (없으면 발급)
+  const scannerToken = await db.prepare("SELECT value FROM settings WHERE key = 'scanner_token'").first();
+  if (!scannerToken) {
+    await db
+      .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('scanner_token', ?)")
+      .bind(newScannerToken())
+      .run();
+  }
+
+  // 비밀번호·접속코드 로그인은 QR 로그인으로 대체 — 남아 있던 값 정리
+  await db.prepare("DELETE FROM settings WHERE key IN ('admin_pw', 'scanner_code')").run();
   schemaReady = true;
 }
 
@@ -108,14 +125,18 @@ function newMemberCode() {
   return `RB-${out.slice(0, 4)}-${out.slice(4, 8)}`;
 }
 
-// 관리자 로그인 전용 QR 토큰 (출석용 QR 과 별개 — 명찰 QR 이 노출돼도 로그인은 안 됨)
-function newLoginToken() {
-  const bytes = crypto.getRandomValues(new Uint8Array(24));
+// 로그인 전용 QR 토큰 (출석용 QR 과 별개 — 명찰 QR 이 노출돼도 로그인은 안 됨)
+function randomToken(prefix, len = 24) {
+  const bytes = crypto.getRandomValues(new Uint8Array(len));
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let out = '';
   for (const b of bytes) out += alphabet[b % 32];
-  return `RBL-${out}`;
+  return `${prefix}-${out}`;
 }
+
+const newLoginToken = () => randomToken('RBL');
+const newScannerToken = () => randomToken('RBS');
+const newRecoveryCode = () => randomToken('RBR', 16);
 
 async function readBody(request) {
   try {
@@ -193,6 +214,53 @@ async function createSession(db, role, request) {
 const jsonWithCookie = (data, cookie) =>
   new Response(JSON.stringify(data), { headers: { ...JSON_HEADERS, 'set-cookie': cookie } });
 
+// ── 로그인 실패 잠금 (5회 틀리면 10분) ────────────────
+const MAX_FAILS = 5;
+const LOCK_MINUTES = 10;
+
+const clientKey = (request) =>
+  request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'local';
+
+// 잠겨 있으면 남은 시간(분)을, 아니면 null 을 돌려준다
+async function lockRemaining(db, request) {
+  const row = await db.prepare('SELECT locked_until FROM login_attempts WHERE client = ?').bind(clientKey(request)).first();
+  if (!row?.locked_until) return null;
+  const left = new Date(row.locked_until).getTime() - Date.now();
+  if (left <= 0) return null;
+  return Math.max(1, Math.ceil(left / 60000));
+}
+
+// 실패 1회 기록 — 5회째면 잠근다. { fails, lockedMinutes } 반환
+async function recordFail(db, request) {
+  const client = clientKey(request);
+  await db
+    .prepare(`
+      INSERT INTO login_attempts (client, fails) VALUES (?, 1)
+      ON CONFLICT(client) DO UPDATE SET fails = fails + 1
+    `)
+    .bind(client)
+    .run();
+  const row = await db.prepare('SELECT fails FROM login_attempts WHERE client = ?').bind(client).first();
+  const fails = row?.fails ?? 1;
+  if (fails >= MAX_FAILS) {
+    const until = new Date(Date.now() + LOCK_MINUTES * 60000).toISOString();
+    await db.prepare('UPDATE login_attempts SET fails = 0, locked_until = ? WHERE client = ?').bind(until, client).run();
+    return { fails, lockedMinutes: LOCK_MINUTES };
+  }
+  return { fails, lockedMinutes: 0 };
+}
+
+async function clearFails(db, request) {
+  await db.prepare('DELETE FROM login_attempts WHERE client = ?').bind(clientKey(request)).run();
+}
+
+// 로그인 시도 전 잠금 확인 — 잠겨 있으면 429 응답, 아니면 null
+async function lockGuard(db, request) {
+  const mins = await lockRemaining(db, request);
+  if (mins === null) return null;
+  return json({ error: `로그인이 잠겼습니다. ${mins}분 뒤에 다시 시도해 주세요.`, locked: true, minutes: mins }, 429);
+}
+
 // 경로별 필요한 권한: null = 공개, 'scanner' = 스캐너 코드 이상, 'admin' = 관리자만
 function requiredRole(pathname, method) {
   if (pathname === '/login' || pathname === '/login.html') return null;
@@ -246,40 +314,50 @@ async function route(request, env, pathname) {
   const seg = pathname.split('/').filter(Boolean); // ['api', ...]
 
   // ── 인증 API ──────────────────────────────────────────
-  // 현재 상태: 초기 설정 여부 + 내 로그인 역할
+  // 현재 상태: 초기 설정 여부 + 내 로그인 역할 + 잠금 여부
   if (pathname === '/api/auth/state' && method === 'GET') {
-    const hasAdmin = Boolean(await getSetting(db, 'admin_pw'));
+    const hasAdmin = Boolean(await getSetting(db, 'recovery_code'));
     const session = await getSession(db, request);
-    return json({ setup: hasAdmin, role: session?.role ?? null });
+    const lockedMinutes = await lockRemaining(db, request);
+    return json({ setup: hasAdmin, role: session?.role ?? null, lockedMinutes });
   }
 
-  // 최초 1회: 관리자 비밀번호 만들기 (이미 있으면 거부)
+  // 최초 1회: 관리자 QR + 비상 복구 코드 발급 (이미 설정됐으면 거부)
   if (pathname === '/api/auth/setup' && method === 'POST') {
-    if (await getSetting(db, 'admin_pw')) return err('이미 관리자 비밀번호가 설정되어 있습니다.', 409);
+    if (await getSetting(db, 'recovery_code')) return err('이미 초기 설정이 끝났습니다.', 409);
+    const admin = await db
+      .prepare('SELECT id, name, login_token FROM members WHERE is_admin = 1 ORDER BY id LIMIT 1')
+      .first();
+    if (!admin) return err('관리자로 지정된 인원이 없습니다.', 500);
+    const recovery = newRecoveryCode();
+    await setSetting(db, 'recovery_code', await hashPassword(recovery));
+    const cookie = await createSession(db, 'admin', request);
+    // 복구 코드는 이 응답에서 딱 한 번만 원문으로 나간다 (DB 에는 해시만 남음)
+    return jsonWithCookie(
+      { ok: true, role: 'admin', name: admin.name, login_token: admin.login_token, recovery_code: recovery },
+      cookie,
+    );
+  }
+
+  // 비상 복구 로그인 — QR 을 잃어버렸을 때만 쓰는 복구 코드
+  if (pathname === '/api/auth/recovery' && method === 'POST') {
+    const locked = await lockGuard(db, request);
+    if (locked) return locked;
     const body = await readBody(request);
-    const password = String(body?.password ?? '');
-    if (password.length < 4) return err('비밀번호는 4자 이상으로 해 주세요.');
-    await setSetting(db, 'admin_pw', await hashPassword(password));
+    const code = String(body?.code ?? '').trim();
+    if (!code) return err('복구 코드를 입력해 주세요.');
+    const hash = await getSetting(db, 'recovery_code');
+    if (!hash || !(await verifyPassword(code, hash))) {
+      const { fails, lockedMinutes } = await recordFail(db, request);
+      if (lockedMinutes) {
+        return json({ error: `${MAX_FAILS}회 틀려서 로그인이 잠겼습니다. ${lockedMinutes}분 뒤에 다시 시도해 주세요.`, locked: true, minutes: lockedMinutes }, 429);
+      }
+      return json({ error: `복구 코드가 올바르지 않습니다. (${fails}/${MAX_FAILS}회)`, fails, remaining: MAX_FAILS - fails }, 401);
+    }
+    await clearFails(db, request);
+    await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
     const cookie = await createSession(db, 'admin', request);
     return jsonWithCookie({ ok: true, role: 'admin' }, cookie);
-  }
-
-  // 로그인 — 관리자 비밀번호면 admin, 스캐너 접속 코드면 scanner
-  if (pathname === '/api/auth/login' && method === 'POST') {
-    const body = await readBody(request);
-    const password = String(body?.password ?? '');
-    if (!password) return err('비밀번호를 입력해 주세요.');
-    let role = null;
-    const adminHash = await getSetting(db, 'admin_pw');
-    if (adminHash && (await verifyPassword(password, adminHash))) role = 'admin';
-    if (!role) {
-      const scannerCode = await getSetting(db, 'scanner_code');
-      if (scannerCode && password === scannerCode) role = 'scanner';
-    }
-    if (!role) return err('비밀번호가 올바르지 않습니다.', 401);
-    await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
-    const cookie = await createSession(db, role, request);
-    return jsonWithCookie({ ok: true, role }, cookie);
   }
 
   // 로그아웃
@@ -289,36 +367,50 @@ async function route(request, env, pathname) {
     return jsonWithCookie({ ok: true }, `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
   }
 
-  // 관리자 비밀번호 변경 (관리자만)
-  if (pathname === '/api/auth/password' && method === 'POST') {
-    const session = await getSession(db, request);
-    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
-    const body = await readBody(request);
-    const current = String(body?.current ?? '');
-    const next = String(body?.next ?? '');
-    const adminHash = await getSetting(db, 'admin_pw');
-    if (!(await verifyPassword(current, adminHash))) return err('현재 비밀번호가 올바르지 않습니다.', 401);
-    if (next.length < 4) return err('새 비밀번호는 4자 이상으로 해 주세요.');
-    await setSetting(db, 'admin_pw', await hashPassword(next));
-    // 다른 기기의 관리자 세션은 정리하고 내 세션만 남긴다
-    await db.prepare("DELETE FROM sessions WHERE role = 'admin' AND token != ?").bind(session.token).run();
-    return json({ ok: true });
-  }
-
-  // QR 로그인 — 관리자 로그인 전용 QR (ROLLBOOK-LOGIN:토큰)
+  // QR 로그인 — 관리자 QR(ROLLBOOK-LOGIN:) · 스캐너 PC QR(ROLLBOOK-SCANNER:)
   if (pathname === '/api/auth/qr-login' && method === 'POST') {
+    const locked = await lockGuard(db, request);
+    if (locked) return locked;
+
     const body = await readBody(request);
-    let payload = String(body?.payload ?? '').trim();
-    if (!payload.startsWith('ROLLBOOK-LOGIN:')) return err('관리자 로그인 QR 이 아닙니다.', 400);
-    const token = payload.slice('ROLLBOOK-LOGIN:'.length);
-    const member = await db
-      .prepare('SELECT id, name, title FROM members WHERE login_token = ? AND is_admin = 1')
-      .bind(token)
-      .first();
-    if (!member) return err('등록되지 않았거나 해제된 관리자 QR 입니다.', 401);
+    const payload = String(body?.payload ?? '').trim();
+    const isAdminQr = payload.startsWith('ROLLBOOK-LOGIN:');
+    const isScannerQr = payload.startsWith('ROLLBOOK-SCANNER:');
+
+    // 출석용 QR 은 실패로 세지 않는다 — 잘못 비춘 것뿐이므로 안내만
+    if (!isAdminQr && !isScannerQr) {
+      if (payload.startsWith('ROLLBOOK:')) return err('출석용 QR 입니다. 로그인 QR 을 비춰 주세요.', 400);
+      return err('로그인 QR 이 아닙니다.', 400);
+    }
+
+    let role = null;
+    let name = '';
+    if (isAdminQr) {
+      const member = await db
+        .prepare('SELECT name, title FROM members WHERE login_token = ? AND is_admin = 1')
+        .bind(payload.slice('ROLLBOOK-LOGIN:'.length))
+        .first();
+      if (member) {
+        role = 'admin';
+        name = member.name;
+      }
+    } else {
+      const token = await getSetting(db, 'scanner_token');
+      if (token && payload.slice('ROLLBOOK-SCANNER:'.length) === token) role = 'scanner';
+    }
+
+    if (!role) {
+      const { fails, lockedMinutes } = await recordFail(db, request);
+      if (lockedMinutes) {
+        return json({ error: `${MAX_FAILS}회 틀려서 로그인이 잠겼습니다. ${lockedMinutes}분 뒤에 다시 시도해 주세요.`, locked: true, minutes: lockedMinutes }, 429);
+      }
+      return json({ error: `등록되지 않았거나 해제된 로그인 QR 입니다. (${fails}/${MAX_FAILS}회)`, fails, remaining: MAX_FAILS - fails }, 401);
+    }
+
+    await clearFails(db, request);
     await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
-    const cookie = await createSession(db, 'admin', request);
-    return jsonWithCookie({ ok: true, role: 'admin', name: member.name, title: member.title }, cookie);
+    const cookie = await createSession(db, role, request);
+    return jsonWithCookie({ ok: true, role, name }, cookie);
   }
 
   // 관리자 지정 목록/추가/해제 (관리자만)
@@ -361,25 +453,37 @@ async function route(request, env, pathname) {
     }
   }
 
-  // 스캐너 접속 코드 보기/설정/해제 (관리자만)
-  if (pathname === '/api/auth/scanner-code') {
+  // 스캐너 PC 로그인 QR 토큰 보기 / 재발급 (관리자만)
+  if (pathname === '/api/auth/scanner-qr') {
     const session = await getSession(db, request);
     if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
     if (method === 'GET') {
-      return json({ code: (await getSetting(db, 'scanner_code')) ?? '' });
+      return json({ token: (await getSetting(db, 'scanner_token')) ?? '' });
     }
+    // 재발급 — 기존 QR 은 무효가 되고 로그인돼 있던 스캐너 PC 도 모두 풀린다
     if (method === 'POST') {
-      const body = await readBody(request);
-      const code = String(body?.code ?? '').trim();
-      if (!code) {
-        await db.prepare("DELETE FROM settings WHERE key = 'scanner_code'").run();
-        await db.prepare("DELETE FROM sessions WHERE role = 'scanner'").run();
-        return json({ ok: true, code: '' });
-      }
-      if (code.length < 4) return err('접속 코드는 4자 이상으로 해 주세요.');
-      await setSetting(db, 'scanner_code', code);
-      return json({ ok: true, code });
+      const token = newScannerToken();
+      await setSetting(db, 'scanner_token', token);
+      await db.prepare("DELETE FROM sessions WHERE role = 'scanner'").run();
+      return json({ ok: true, token });
     }
+  }
+
+  // 비상 복구 코드 재발급 (관리자만) — 새 코드는 이 응답에서만 원문으로 나간다
+  if (pathname === '/api/auth/recovery-code' && method === 'POST') {
+    const session = await getSession(db, request);
+    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+    const code = newRecoveryCode();
+    await setSetting(db, 'recovery_code', await hashPassword(code));
+    return json({ ok: true, code });
+  }
+
+  // 로그인 잠금 풀기 (관리자만)
+  if (pathname === '/api/auth/unlock' && method === 'POST') {
+    const session = await getSession(db, request);
+    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+    await db.prepare('DELETE FROM login_attempts').run();
+    return json({ ok: true });
   }
 
   // ── 브랜드 로고 (D1 저장, 없으면 기본 SVG) ───────────
