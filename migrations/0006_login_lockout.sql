@@ -5,5 +5,5 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   locked_until TEXT
 );
 
--- 비밀번호·접속코드 로그인은 QR 로그인으로 대체되었다
-DELETE FROM settings WHERE key IN ('admin_pw', 'scanner_code');
+-- 예전 스캐너 접속코드 방식은 QR 로그인으로 대체되었다
+DELETE FROM settings WHERE key = 'scanner_code';

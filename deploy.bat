@@ -18,8 +18,8 @@ echo.
 
 where npm >nul 2>nul
 if errorlevel 1 (
-  if exist "%ProgramFiles%\nodejs\npm.cmd" (
-    set "PATH=%ProgramFiles%\nodejs;%PATH%"
+  if exist "%ProgramFiles%\r\nodejs\r\npm.cmd" (
+    set "PATH=%ProgramFiles%\r\nodejs;%PATH%"
   ) else (
     echo  [오류] Node.js 가 필요합니다. update.bat 을 먼저 실행해 주세요.
     pause
@@ -57,6 +57,11 @@ if not defined DBID (
   exit /b 1
 )
 powershell -NoProfile -Command "(Get-Content wrangler.jsonc -Raw) -replace '\"database_id\"\s*:\s*\"[^\"]*\"', '\"database_id\": \"%DBID%\"' | Set-Content wrangler.jsonc -Encoding UTF8"
+
+REM ── 표 만들기 (마이그레이션) ──────────────────────────────
+REM  실패해도 서버가 처음 켜질 때 표를 알아서 만들기 때문에 계속 진행한다.
+echo  표를 준비하는 중...
+call npx wrangler d1 migrations apply rollbook-db --remote >nul 2>nul
 
 REM ── 배포 ──────────────────────────────────────────────────
 echo  배포하는 중... (1~2분 걸릴 수 있습니다)
