@@ -485,10 +485,27 @@ async function route(request, env, pathname) {
     const payload = String(body?.payload ?? '').trim();
     const isAdminQr = payload.startsWith('ROLLBOOK-LOGIN:');
     const isScannerQr = payload.startsWith('ROLLBOOK-SCANNER:');
+    const isBadgeQr = payload.startsWith('ROLLBOOK:');
 
-    // 출석용 QR 은 실패로 세지 않는다 — 잘못 비춘 것뿐이므로 안내만
+    // 명찰(출석용) QR 로 로그인 — 관리자로 지정된 사람만, 설정이 켜져 있을 때만
+    if (isBadgeQr) {
+      if ((await getSetting(db, 'badge_login')) === '0') {
+        return err('출석용 QR 입니다. 로그인 QR 을 비춰 주세요.', 400);
+      }
+      const member = await db
+        .prepare('SELECT name, is_admin FROM members WHERE code = ?')
+        .bind(payload.slice('ROLLBOOK:'.length))
+        .first();
+      if (!member) return err('등록되지 않은 QR 입니다.', 400);
+      if (!member.is_admin) return err(`${member.name}님은 관리자로 지정되어 있지 않습니다.`, 403);
+      await clearFails(db, request);
+      await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
+      const cookie = await createSession(db, 'admin', request);
+      return jsonWithCookie({ ok: true, role: 'admin', name: member.name }, cookie);
+    }
+
+    // 로그인 QR 이 아닌 것은 실패로 세지 않는다 — 잘못 비춘 것뿐이므로 안내만
     if (!isAdminQr && !isScannerQr) {
-      if (payload.startsWith('ROLLBOOK:')) return err('출석용 QR 입니다. 로그인 QR 을 비춰 주세요.', 400);
       return err('로그인 QR 이 아닙니다.', 400);
     }
 
@@ -616,6 +633,21 @@ async function route(request, env, pathname) {
     const code = newRecoveryCode();
     await setSetting(db, 'recovery_code', await hashPassword(code));
     return json({ ok: true, code });
+  }
+
+  // 명찰 QR 로 로그인 허용 여부 (관리자만)
+  if (pathname === '/api/auth/badge-login') {
+    const session = await getSession(db, request);
+    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+    if (method === 'GET') {
+      return json({ enabled: (await getSetting(db, 'badge_login')) !== '0' });
+    }
+    if (method === 'POST') {
+      const body = await readBody(request);
+      const enabled = Boolean(body?.enabled);
+      await setSetting(db, 'badge_login', enabled ? '1' : '0');
+      return json({ ok: true, enabled });
+    }
   }
 
   // 로그인 잠금 풀기 (관리자만)

@@ -266,9 +266,21 @@
             }
             await sleep(1500);
           }
+        } else if (value.startsWith('ROLLBOOK:')) {
+          // 명찰 QR — 관리자로 지정돼 있으면 서버가 로그인시켜 준다
+          setState('확인 중…');
+          try {
+            const d = await post('/api/auth/qr-login', { payload: value });
+            setState(d.name ? `${d.name}님, 로그인되었습니다` : '로그인되었습니다', 'ok');
+            stopCamera();
+            return go(d.role);
+          } catch (e) {
+            setState(e.message, 'err');
+            await sleep(1800);
+          }
         } else if (value !== lastMiss) {
           lastMiss = value;
-          setState(value.startsWith('ROLLBOOK:') ? '출석용 QR 입니다 — 로그인 QR 을 비춰 주세요' : '로그인 QR 이 아닙니다', 'err');
+          setState('로그인 QR 이 아닙니다', 'err');
         }
       }
       await sleep(150);

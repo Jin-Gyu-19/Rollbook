@@ -925,7 +925,37 @@
   async function loadSecurityTab() {
     loadAdmins();
     loadPasswordState();
+    loadBadgeLogin();
   }
+
+  // 명찰 QR 로도 로그인할 수 있게 할지
+  async function loadBadgeLogin() {
+    try {
+      const { enabled } = await api('/api/auth/badge-login');
+      $('badgeLogin').checked = enabled;
+      setBadgeHint(enabled);
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }
+
+  function setBadgeHint(enabled) {
+    $('badgeLoginHint').innerHTML = enabled
+      ? '켜져 있습니다 — 관리자는 명찰 하나로 출석 체크와 관리자 로그인을 모두 할 수 있습니다. 명찰이 복사되면 관리자 권한도 함께 넘어가니, 명찰을 잃어버렸을 때는 명단에서 그 사람의 QR 을 새로 발급하세요.'
+      : '꺼져 있습니다 — 명찰 QR 은 출석 체크에만 쓰이고, 로그인은 로그인 QR 이나 비밀번호로만 됩니다.';
+  }
+
+  $('badgeLogin').addEventListener('change', async (e) => {
+    const enabled = e.target.checked;
+    try {
+      await api('/api/auth/badge-login', { method: 'POST', body: JSON.stringify({ enabled }) });
+      setBadgeHint(enabled);
+      toast(enabled ? '명찰 QR 로도 로그인할 수 있습니다' : '명찰 QR 로는 로그인할 수 없게 했습니다');
+    } catch (err) {
+      e.target.checked = !enabled;
+      toast(err.message, true);
+    }
+  });
 
   // 관리자 비밀번호 등록 여부에 따라 화면을 맞춘다
   async function loadPasswordState() {
