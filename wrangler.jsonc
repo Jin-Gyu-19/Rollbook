@@ -4,11 +4,11 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-01",
 
-  // 정적 자산: public/ 폴더. /api/* 는 Worker 가 먼저 처리
+  // 정적 자산: public/ 폴더. 로그인 검사 때문에 모든 요청이 Worker 를 먼저 거친다
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": true
   },
 
   // D1 데이터베이스 — `npm run db:create` 후 출력된 database_id 로 교체할 것

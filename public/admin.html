@@ -25,6 +25,7 @@
     <button data-tab="status">출석 현황</button>
     <button data-tab="members">명단</button>
     <button data-tab="qr">QR 코드</button>
+    <button data-tab="security">보안</button>
   </div>
 
   <!-- ── 출석부 ─────────────────────────────────────── -->
@@ -143,6 +144,47 @@
           <p class="hint">여기서 올린 로고 원본이 서버에 저장되어 상단바·스캐너·QR 코드에 모두 적용됩니다. PNG·SVG(투명 배경 권장) 1MB 이하. ‘점에 새기기’는 QR 무늬 자체에 로고를 새깁니다 — 로고가 지나가는 자리의 어두운 점은 로고 색으로, 흰 칸은 아주 연한 로고 색으로 칠해 글자가 또렷이 드러납니다. ‘포스터’는 로고 원본 이미지를 그대로 얹고 그 위에 흰 점을 뚫는 광고 포스터 방식입니다 — 이 스타일은 업데이트된 스캐너(ZXing 내장)에서 인식됩니다.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ── 보안 ───────────────────────────────────────── -->
+  <section id="tab-security" class="hidden">
+    <div class="card">
+      <h2>스캐너 접속 코드</h2>
+      <p class="muted">스캐너 PC에서는 이 코드로 로그인합니다. 촬영 화면만 쓸 수 있고 관리자 페이지에는 들어올 수 없습니다. 한 번 로그인하면 재부팅해도 유지됩니다.</p>
+      <div class="form-row" style="margin-top:14px;">
+        <label>접속 코드 (4자 이상)
+          <input id="scannerCode" placeholder="예: bdo2026">
+        </label>
+        <span class="actions">
+          <button class="primary" id="btnSaveScannerCode">저장</button>
+          <button class="ghost" id="btnClearScannerCode">코드 없애기</button>
+        </span>
+      </div>
+      <p class="hint">코드를 없애면 스캐너 PC 로그인이 모두 풀립니다. 코드를 바꿔도 이미 로그인된 PC는 유지됩니다 — 전부 다시 로그인하게 하려면 없앤 뒤 새로 만드세요.</p>
+    </div>
+
+    <div class="card">
+      <h2>관리자 비밀번호 변경</h2>
+      <div class="form-row">
+        <label>현재 비밀번호
+          <input id="pwCurrent" type="password" autocomplete="current-password">
+        </label>
+        <label>새 비밀번호 (4자 이상)
+          <input id="pwNext" type="password" autocomplete="new-password">
+        </label>
+        <label>새 비밀번호 확인
+          <input id="pwNext2" type="password" autocomplete="new-password">
+        </label>
+        <span class="actions"><button class="primary" id="btnChangePw">변경</button></span>
+      </div>
+      <p class="hint">변경하면 다른 기기에 로그인돼 있던 관리자 세션은 모두 로그아웃됩니다.</p>
+    </div>
+
+    <div class="card">
+      <h2>로그아웃</h2>
+      <p class="muted">이 컴퓨터에서 로그아웃합니다.</p>
+      <button class="danger" id="btnLogout" style="margin-top:12px;">로그아웃</button>
     </div>
   </section>
 </main>

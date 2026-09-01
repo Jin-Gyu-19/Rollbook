@@ -129,9 +129,18 @@
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
+  // 로그인이 풀리면 로그인 화면으로 (한 번만)
+  let authRedirected = false;
+  function toLogin() {
+    if (authRedirected) return;
+    authRedirected = true;
+    location.href = '/login?next=%2F';
+  }
+
   async function loadRecent() {
     try {
       const r = await fetch('/api/recent');
+      if (r.status === 401) return toLogin();
       const d = await r.json();
       if (!d.sheet) {
         panelSheetTitle.textContent = '출석부';
@@ -289,6 +298,7 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ code }),
       });
+      if (r.status === 401) return toLogin();
       const data = await r.json().catch(() => ({}));
       const who = data.member
         ? `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`

@@ -142,10 +142,10 @@ REM 서버 응답 확인 (curl 이 없으면 PowerShell 로)
 :probe
 where curl >nul 2>nul
 if errorlevel 1 goto probe_ps
-curl -s -o nul -m 2 %SITE%/api/status 2>nul
+curl -s -o nul -m 2 %SITE%/api/auth/state 2>nul
 exit /b
 :probe_ps
-powershell -NoProfile -Command "try { $null = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%SITE%/api/status'; exit 0 } catch { exit 1 }" >nul 2>nul
+powershell -NoProfile -Command "try { $null = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%SITE%/api/auth/state'; exit 0 } catch { exit 1 }" >nul 2>nul
 exit /b
 
 :fetchfail

@@ -18,6 +18,10 @@
     if (options.body) options.headers = { 'content-type': 'application/json', ...options.headers };
     const r = await fetch(path, options);
     const data = await r.json().catch(() => ({}));
+    if (r.status === 401 && data.auth) {
+      location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+      throw new Error('로그인이 필요합니다.');
+    }
     if (!r.ok) throw new Error(data.error || `요청 실패 (${r.status})`);
     return data;
   }
@@ -34,7 +38,7 @@
   const tabs = $('tabs');
   function switchTab(name) {
     tabs.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-    for (const t of ['sheets', 'status', 'members', 'qr']) {
+    for (const t of ['sheets', 'status', 'members', 'qr', 'security']) {
       const sec = $(`tab-${t}`);
       sec.classList.toggle('hidden', t !== name);
       if (t === name) {
@@ -47,6 +51,7 @@
     if (name === 'status') loadStatusTab();
     if (name === 'members') loadMembers();
     if (name === 'qr') loadQrTab();
+    if (name === 'security') loadSecurityTab();
   }
   tabs.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-tab]');
@@ -914,6 +919,58 @@
     }
     btn.disabled = false;
     btn.textContent = '전체 내려받기 (ZIP)';
+  });
+
+  // ── 보안 탭 ──────────────────────────────────────────
+  async function loadSecurityTab() {
+    try {
+      const d = await api('/api/auth/scanner-code');
+      $('scannerCode').value = d.code || '';
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }
+
+  $('btnSaveScannerCode').addEventListener('click', async () => {
+    const code = $('scannerCode').value.trim();
+    if (!code) return toast('접속 코드를 입력해 주세요.', true);
+    try {
+      await api('/api/auth/scanner-code', { method: 'POST', body: JSON.stringify({ code }) });
+      toast('스캐너 접속 코드를 저장했습니다');
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  $('btnClearScannerCode').addEventListener('click', async () => {
+    if (!confirm('접속 코드를 없애면 로그인돼 있던 스캐너 PC가 모두 풀립니다. 계속할까요?')) return;
+    try {
+      await api('/api/auth/scanner-code', { method: 'POST', body: JSON.stringify({ code: '' }) });
+      $('scannerCode').value = '';
+      toast('접속 코드를 없앴습니다 — 스캐너 PC 로그인이 모두 해제되었습니다');
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  $('btnChangePw').addEventListener('click', async () => {
+    const current = $('pwCurrent').value;
+    const next = $('pwNext').value;
+    if (next !== $('pwNext2').value) return toast('새 비밀번호 두 개가 서로 다릅니다.', true);
+    try {
+      await api('/api/auth/password', { method: 'POST', body: JSON.stringify({ current, next }) });
+      $('pwCurrent').value = $('pwNext').value = $('pwNext2').value = '';
+      toast('관리자 비밀번호를 변경했습니다');
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  $('btnLogout').addEventListener('click', async () => {
+    try {
+      await api('/api/auth/logout', { method: 'POST', body: JSON.stringify({}) });
+    } catch { /* 무시 */ }
+    location.href = '/login';
   });
 
   // ── 초기 로드 ────────────────────────────────────────

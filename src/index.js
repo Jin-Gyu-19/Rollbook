@@ -41,6 +41,12 @@ async function ensureSchema(db) {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      role TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      expires_at TEXT NOT NULL
+    )`),
   ]);
   // 기존 DB 에 직함 컬럼이 없으면 추가
   try {
@@ -82,20 +88,116 @@ async function readBody(request) {
   }
 }
 
+// ── 인증 ──────────────────────────────────────────────
+const SESSION_COOKIE = 'rb_sess';
+
+function parseCookies(request) {
+  const out = {};
+  for (const part of (request.headers.get('cookie') || '').split(/;\s*/)) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i)] = decodeURIComponent(part.slice(i + 1));
+  }
+  return out;
+}
+
+const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+
+// PBKDF2-SHA256 해시 — "pbkdf2$반복수$salt$hash" 형태로 저장
+async function hashPassword(password, saltB64 = null, iterations = 100000) {
+  const salt = saltB64
+    ? Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0))
+    : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
+  return `pbkdf2$${iterations}$${toB64(salt)}$${toB64(bits)}`;
+}
+
+async function verifyPassword(password, stored) {
+  const parts = (stored || '').split('$');
+  if (parts.length !== 4) return false;
+  return (await hashPassword(password, parts[2], Number(parts[1]))) === stored;
+}
+
+async function getSetting(db, key) {
+  const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first();
+  return row?.value ?? null;
+}
+
+async function setSetting(db, key, value) {
+  await db
+    .prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .bind(key, value)
+    .run();
+}
+
+async function getSession(db, request) {
+  const token = parseCookies(request)[SESSION_COOKIE];
+  if (!token) return null;
+  const row = await db.prepare('SELECT role, expires_at FROM sessions WHERE token = ?').bind(token).first();
+  if (!row) return null;
+  if (row.expires_at < new Date().toISOString()) {
+    await db.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run();
+    return null;
+  }
+  return { role: row.role, token };
+}
+
+// 관리자 30일 · 스캐너 PC 1년 유지
+async function createSession(db, role, request) {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const token = toB64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const days = role === 'admin' ? 30 : 365;
+  const expires = new Date(Date.now() + days * 86400_000).toISOString();
+  await db.prepare('INSERT INTO sessions (token, role, expires_at) VALUES (?, ?, ?)').bind(token, role, expires).run();
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${days * 86400}${secure}`;
+}
+
+const jsonWithCookie = (data, cookie) =>
+  new Response(JSON.stringify(data), { headers: { ...JSON_HEADERS, 'set-cookie': cookie } });
+
+// 경로별 필요한 권한: null = 공개, 'scanner' = 스캐너 코드 이상, 'admin' = 관리자만
+function requiredRole(pathname, method) {
+  if (pathname === '/login' || pathname === '/login.html') return null;
+  if (pathname === '/app.css' || pathname === '/bdo-design.css' || pathname === '/bdo-logo.png' || pathname === '/favicon.ico') return null;
+  if (pathname.startsWith('/vendor/')) return null;
+  if (pathname === '/api/logo' && method === 'GET') return null;
+  if (pathname.startsWith('/api/auth/')) return null;
+  if (pathname === '/' || pathname === '/index.html' || pathname === '/scanner.js') return 'scanner';
+  if (pathname === '/api/status' || pathname === '/api/recent' || pathname === '/api/checkin') return 'scanner';
+  return 'admin';
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
 
-    if (!pathname.startsWith('/api/')) {
-      return env.ASSETS.fetch(request);
-    }
-
     try {
       await ensureSchema(env.DB);
+
+      // 접속 권한 검사 — 페이지는 로그인 화면으로, API 는 401 로
+      const need = requiredRole(pathname, request.method);
+      if (need) {
+        const session = await getSession(env.DB, request);
+        const allowed = session && (session.role === 'admin' || (need === 'scanner' && session.role === 'scanner'));
+        if (!allowed) {
+          if (pathname.startsWith('/api/')) return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+          return Response.redirect(new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url).toString(), 302);
+        }
+      }
+
+      if (!pathname.startsWith('/api/')) {
+        return env.ASSETS.fetch(request);
+      }
+
       const res = await route(request, env, pathname);
       return res ?? err('찾을 수 없는 API 경로입니다.', 404);
     } catch (e) {
+      // 오류가 나도 공개 자산(로그인 화면·CSS 등)은 열리고, 보호 자산은 열리지 않는다
+      if (!pathname.startsWith('/api/') && requiredRole(pathname, request.method) === null) {
+        return env.ASSETS.fetch(request);
+      }
       return err(`서버 오류: ${e.message}`, 500);
     }
   },
@@ -105,6 +207,87 @@ async function route(request, env, pathname) {
   const db = env.DB;
   const method = request.method;
   const seg = pathname.split('/').filter(Boolean); // ['api', ...]
+
+  // ── 인증 API ──────────────────────────────────────────
+  // 현재 상태: 초기 설정 여부 + 내 로그인 역할
+  if (pathname === '/api/auth/state' && method === 'GET') {
+    const hasAdmin = Boolean(await getSetting(db, 'admin_pw'));
+    const session = await getSession(db, request);
+    return json({ setup: hasAdmin, role: session?.role ?? null });
+  }
+
+  // 최초 1회: 관리자 비밀번호 만들기 (이미 있으면 거부)
+  if (pathname === '/api/auth/setup' && method === 'POST') {
+    if (await getSetting(db, 'admin_pw')) return err('이미 관리자 비밀번호가 설정되어 있습니다.', 409);
+    const body = await readBody(request);
+    const password = String(body?.password ?? '');
+    if (password.length < 4) return err('비밀번호는 4자 이상으로 해 주세요.');
+    await setSetting(db, 'admin_pw', await hashPassword(password));
+    const cookie = await createSession(db, 'admin', request);
+    return jsonWithCookie({ ok: true, role: 'admin' }, cookie);
+  }
+
+  // 로그인 — 관리자 비밀번호면 admin, 스캐너 접속 코드면 scanner
+  if (pathname === '/api/auth/login' && method === 'POST') {
+    const body = await readBody(request);
+    const password = String(body?.password ?? '');
+    if (!password) return err('비밀번호를 입력해 주세요.');
+    let role = null;
+    const adminHash = await getSetting(db, 'admin_pw');
+    if (adminHash && (await verifyPassword(password, adminHash))) role = 'admin';
+    if (!role) {
+      const scannerCode = await getSetting(db, 'scanner_code');
+      if (scannerCode && password === scannerCode) role = 'scanner';
+    }
+    if (!role) return err('비밀번호가 올바르지 않습니다.', 401);
+    await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
+    const cookie = await createSession(db, role, request);
+    return jsonWithCookie({ ok: true, role }, cookie);
+  }
+
+  // 로그아웃
+  if (pathname === '/api/auth/logout' && method === 'POST') {
+    const session = await getSession(db, request);
+    if (session) await db.prepare('DELETE FROM sessions WHERE token = ?').bind(session.token).run();
+    return jsonWithCookie({ ok: true }, `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  }
+
+  // 관리자 비밀번호 변경 (관리자만)
+  if (pathname === '/api/auth/password' && method === 'POST') {
+    const session = await getSession(db, request);
+    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+    const body = await readBody(request);
+    const current = String(body?.current ?? '');
+    const next = String(body?.next ?? '');
+    const adminHash = await getSetting(db, 'admin_pw');
+    if (!(await verifyPassword(current, adminHash))) return err('현재 비밀번호가 올바르지 않습니다.', 401);
+    if (next.length < 4) return err('새 비밀번호는 4자 이상으로 해 주세요.');
+    await setSetting(db, 'admin_pw', await hashPassword(next));
+    // 다른 기기의 관리자 세션은 정리하고 내 세션만 남긴다
+    await db.prepare("DELETE FROM sessions WHERE role = 'admin' AND token != ?").bind(session.token).run();
+    return json({ ok: true });
+  }
+
+  // 스캐너 접속 코드 보기/설정/해제 (관리자만)
+  if (pathname === '/api/auth/scanner-code') {
+    const session = await getSession(db, request);
+    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+    if (method === 'GET') {
+      return json({ code: (await getSetting(db, 'scanner_code')) ?? '' });
+    }
+    if (method === 'POST') {
+      const body = await readBody(request);
+      const code = String(body?.code ?? '').trim();
+      if (!code) {
+        await db.prepare("DELETE FROM settings WHERE key = 'scanner_code'").run();
+        await db.prepare("DELETE FROM sessions WHERE role = 'scanner'").run();
+        return json({ ok: true, code: '' });
+      }
+      if (code.length < 4) return err('접속 코드는 4자 이상으로 해 주세요.');
+      await setSetting(db, 'scanner_code', code);
+      return json({ ok: true, code });
+    }
+  }
 
   // ── 브랜드 로고 (D1 저장, 없으면 기본 SVG) ───────────
   if (pathname === '/api/logo') {
