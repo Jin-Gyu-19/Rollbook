@@ -68,8 +68,20 @@
     </div>
     <p class="qr-state" id="qrState"></p>
     <p class="login-hint" id="hintText">관리자 QR 로 로그인하면 관리 화면으로, 스캐너 PC QR 로 로그인하면 출석 촬영 화면으로 들어갑니다.</p>
+    <button class="login-link hidden" id="btnPasswordLogin">비밀번호로 로그인</button>
     <button class="login-link" id="btnRecovery">QR 을 잃어버렸을 때</button>
     <button class="login-link hidden" id="btnIssueNew">가진 QR 이 없어요 — 새로 발급받기</button>
+  </div>
+
+  <!-- 비밀번호 로그인 -->
+  <div id="passwordView" class="hidden">
+    <form id="passwordForm">
+      <input type="password" id="loginPw" placeholder="관리자 비밀번호" autocomplete="current-password">
+      <button class="primary" type="submit">로그인</button>
+    </form>
+    <p class="login-err" id="passwordErr"></p>
+    <p class="login-hint">관리자 비밀번호로 로그인합니다. 스캐너 PC 는 QR 로만 로그인할 수 있습니다.</p>
+    <button class="login-link" id="btnBackToScan2">QR 스캔으로 돌아가기</button>
   </div>
 
   <!-- 비상 복구 코드 -->
@@ -249,8 +261,33 @@
 
   // ── 화면 전환 ────────────────────────────────────────
   function show(view) {
-    for (const v of ['scanView', 'recoveryView', 'setupView']) $(v).classList.toggle('hidden', v !== view);
+    for (const v of ['scanView', 'passwordView', 'recoveryView', 'setupView']) $(v).classList.toggle('hidden', v !== view);
   }
+
+  $('btnPasswordLogin').addEventListener('click', () => {
+    stopCamera();
+    show('passwordView');
+    $('subText').textContent = '관리자 비밀번호로 로그인합니다';
+    $('loginPw').focus();
+  });
+
+  $('btnBackToScan2').addEventListener('click', () => {
+    show('scanView');
+    $('subText').textContent = '로그인 QR 을 카메라에 비춰 주세요';
+    if (!locked) startCamera();
+  });
+
+  $('passwordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('passwordErr').textContent = '';
+    try {
+      const d = await post('/api/auth/password-login', { password: $('loginPw').value });
+      go(d.role);
+    } catch (err) {
+      $('passwordErr').textContent = err.message;
+      $('loginPw').select();
+    }
+  });
 
   $('btnRecovery').addEventListener('click', () => {
     stopCamera();
@@ -416,6 +453,7 @@
         return;
       }
       show('scanView');
+      if (s.hasPassword) $('btnPasswordLogin').classList.remove('hidden');
       if (!s.setup) {
         // 아직 아무도 등록하지 않은 시스템 — 가진 QR 을 비추면 그 QR 로 등록된다
         setupMode = true;

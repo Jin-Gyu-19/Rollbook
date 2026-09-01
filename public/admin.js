@@ -924,7 +924,52 @@
   // ── 보안 탭 ──────────────────────────────────────────
   async function loadSecurityTab() {
     loadAdmins();
+    loadPasswordState();
   }
+
+  // 관리자 비밀번호 등록 여부에 따라 화면을 맞춘다
+  async function loadPasswordState() {
+    try {
+      const { registered } = await api('/api/auth/admin-password');
+      $('pwCurrentWrap').classList.toggle('hidden', !registered);
+      $('btnRemovePw').classList.toggle('hidden', !registered);
+      $('btnSavePw').textContent = registered ? '변경' : '등록';
+      $('pwStateMsg').textContent = registered
+        ? '비밀번호가 등록되어 있습니다. 로그인 화면에서 QR 과 비밀번호 중 하나를 골라 로그인할 수 있습니다.'
+        : 'QR 없이도 로그인할 수 있게 비밀번호를 등록해 둘 수 있습니다. 등록하면 로그인 화면에 "비밀번호로 로그인" 이 나타납니다.';
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }
+
+  $('btnSavePw').addEventListener('click', async () => {
+    const next = $('pwNext').value;
+    if (next !== $('pwNext2').value) return toast('새 비밀번호 두 개가 서로 다릅니다.', true);
+    if (next.length < 6) return toast('비밀번호는 6자 이상으로 정해 주세요.', true);
+    try {
+      await api('/api/auth/admin-password', {
+        method: 'POST',
+        body: JSON.stringify({ current: $('pwCurrent').value, next }),
+      });
+      $('pwCurrent').value = $('pwNext').value = $('pwNext2').value = '';
+      toast('관리자 비밀번호를 저장했습니다');
+      loadPasswordState();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  $('btnRemovePw').addEventListener('click', async () => {
+    if (!confirm('비밀번호를 없애면 앞으로 QR 로만 로그인할 수 있습니다. 계속할까요?')) return;
+    try {
+      await api('/api/auth/admin-password', { method: 'DELETE' });
+      $('pwCurrent').value = $('pwNext').value = $('pwNext2').value = '';
+      toast('비밀번호를 없앴습니다 — 이제 QR 로만 로그인합니다');
+      loadPasswordState();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
 
   // 로그인 QR 캔버스 (사이트에서 쓰는 디자인 그대로 — 로고 + 오류보정 H)
   async function renderLoginQrCanvas(payload, px = 720) {

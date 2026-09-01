@@ -111,8 +111,8 @@ async function ensureSchema(db) {
       .run();
   }
 
-  // 비밀번호·접속코드 로그인은 QR 로그인으로 대체 — 남아 있던 값 정리
-  await db.prepare("DELETE FROM settings WHERE key IN ('admin_pw', 'scanner_code')").run();
+  // 예전 접속코드 방식은 QR 로 대체 — 남아 있던 값 정리
+  await db.prepare("DELETE FROM settings WHERE key = 'scanner_code'").run();
 
   // 예전 방식(비밀번호·접속코드)으로 만들어진 세션은 한 번 모두 끊는다.
   // 이걸 안 하면 업데이트 후에도 예전 쿠키로 로그인 화면 없이 들어가진다.
@@ -328,9 +328,10 @@ async function route(request, env, pathname) {
   // 현재 상태: 초기 설정 여부 + 내 로그인 역할 + 잠금 여부
   if (pathname === '/api/auth/state' && method === 'GET') {
     const hasAdmin = Boolean(await getSetting(db, 'recovery_code'));
+    const hasPassword = Boolean(await getSetting(db, 'admin_pw'));
     const session = await getSession(db, request);
     const lockedMinutes = await lockRemaining(db, request);
-    return json({ setup: hasAdmin, role: session?.role ?? null, lockedMinutes });
+    return json({ setup: hasAdmin, hasPassword, role: session?.role ?? null, lockedMinutes });
   }
 
   // 최초 1회: 관리자 QR + 비상 복구 코드 발급 (이미 설정됐으면 거부)
@@ -393,6 +394,58 @@ async function route(request, env, pathname) {
     ]);
     const cookie = await createSession(db, 'admin', request);
     return jsonWithCookie({ ok: true, role: 'admin', name: admin.name, recovery_code: recovery, claimed: true }, cookie);
+  }
+
+  // 비밀번호 로그인 — QR 대신 쓸 수 있는 관리자 로그인
+  if (pathname === '/api/auth/password-login' && method === 'POST') {
+    const locked = await lockGuard(db, request);
+    if (locked) return locked;
+    const body = await readBody(request);
+    const password = String(body?.password ?? '');
+    if (!password) return err('비밀번호를 입력해 주세요.');
+    const hash = await getSetting(db, 'admin_pw');
+    if (!hash) return err('등록된 관리자 비밀번호가 없습니다. QR 로 로그인해 주세요.', 400);
+    if (!(await verifyPassword(password, hash))) {
+      const { fails, lockedMinutes } = await recordFail(db, request);
+      if (lockedMinutes) {
+        return json({ error: `${MAX_FAILS}회 틀려서 로그인이 잠겼습니다. ${lockedMinutes}분 뒤에 다시 시도해 주세요.`, locked: true, minutes: lockedMinutes }, 429);
+      }
+      return json({ error: `비밀번호가 올바르지 않습니다. (${fails}/${MAX_FAILS}회)`, fails, remaining: MAX_FAILS - fails }, 401);
+    }
+    await clearFails(db, request);
+    await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
+    const cookie = await createSession(db, 'admin', request);
+    return jsonWithCookie({ ok: true, role: 'admin' }, cookie);
+  }
+
+  // 관리자 비밀번호 등록 / 변경 / 해제 (관리자만)
+  if (pathname === '/api/auth/admin-password') {
+    const session = await getSession(db, request);
+    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+    const hash = await getSetting(db, 'admin_pw');
+
+    if (method === 'GET') return json({ registered: Boolean(hash) });
+
+    if (method === 'POST') {
+      const body = await readBody(request);
+      const next = String(body?.next ?? '');
+      if (next.length < 6) return err('비밀번호는 6자 이상으로 정해 주세요.');
+      // 이미 등록돼 있으면 현재 비밀번호를 확인한다
+      if (hash) {
+        const current = String(body?.current ?? '');
+        if (!(await verifyPassword(current, hash))) return err('현재 비밀번호가 올바르지 않습니다.', 401);
+      }
+      await setSetting(db, 'admin_pw', await hashPassword(next));
+      // 비밀번호를 바꾸면 다른 기기의 관리자 세션은 정리하고 내 세션만 남긴다
+      await db.prepare("DELETE FROM sessions WHERE role = 'admin' AND token != ?").bind(session.token).run();
+      return json({ ok: true, registered: true });
+    }
+
+    if (method === 'DELETE') {
+      if (!hash) return json({ ok: true, registered: false });
+      await db.prepare("DELETE FROM settings WHERE key = 'admin_pw'").run();
+      return json({ ok: true, registered: false });
+    }
   }
 
   // 비상 복구 로그인 — QR 을 잃어버렸을 때만 쓰는 복구 코드
