@@ -805,30 +805,74 @@ async function route(request, env, pathname) {
   }
 
   // 엑셀 업로드 일괄 등록 — 같은 이름+부서가 이미 있으면 건너뜀
+  // 엑셀 일괄 등록 — 같은 사람이면 부서·직함이 바뀐 것으로 보고 최신 자료로 갱신한다.
+  // QR 코드 값은 그대로 두므로 이미 나눠 준 명찰은 계속 쓸 수 있다.
   if (pathname === '/api/members/bulk' && method === 'POST') {
     const body = await readBody(request);
     const list = Array.isArray(body?.members) ? body.members : [];
     if (!list.length) return err('등록할 인원이 없습니다.');
     if (list.length > 1000) return err('한 번에 1,000명까지 등록할 수 있습니다.');
 
-    const { results: existing } = await db.prepare('SELECT name, dept FROM members').all();
-    const seen = new Set(existing.map((m) => `${m.name}|${m.dept}`));
+    const { results: existing } = await db.prepare('SELECT id, name, title, dept FROM members').all();
+    // 이름별로 묶어 둔다 — 동명이인 판단에 쓴다
+    const byName = new Map();
+    for (const m of existing) {
+      if (!byName.has(m.name)) byName.set(m.name, []);
+      byName.get(m.name).push({ ...m });
+    }
+
     const stmts = [];
-    let added = 0;
-    let skipped = 0;
+    let added = 0;      // 새로 등록
+    let updated = 0;    // 부서·직함이 바뀌어 갱신
+    let unchanged = 0;  // 이미 같은 내용
+    let skipped = 0;    // 이름이 비어 있는 줄
+    const ambiguous = []; // 동명이인이라 판단할 수 없는 사람
+
     for (const m of list) {
       const name = String(m?.name ?? '').trim();
       const title = String(m?.title ?? '').trim();
       const dept = String(m?.dept ?? '').trim();
       if (!name) { skipped++; continue; }
-      const key = `${name}|${dept}`;
-      if (seen.has(key)) { skipped++; continue; }
-      seen.add(key);
-      stmts.push(db.prepare('INSERT INTO members (name, title, dept, code) VALUES (?, ?, ?, ?)').bind(name, title, dept, newMemberCode()));
-      added++;
+
+      const sameName = byName.get(name) ?? [];
+
+      // 1) 이름·부서가 모두 같으면 그 사람이 확실하다
+      let target = sameName.find((x) => x.dept === dept);
+      if (!target) {
+        // 이번 파일에서 아직 짝지어지지 않은 같은 이름들
+        const free = sameName.filter((x) => !x.used);
+        if (free.length === 1) {
+          // 그 이름이 한 명뿐 → 부서·직함이 바뀐 것으로 보고 갱신
+          target = free[0];
+        } else if (free.length > 1) {
+          // 동명이인이 여럿인데 부서도 안 맞음 — 잘못 합칠 수 있으니 건드리지 않는다
+          if (!ambiguous.includes(name)) ambiguous.push(name);
+          continue;
+        }
+        // free 가 0 이면: 같은 파일 안에 이미 그 이름을 쓴 줄이 있다는 뜻 → 동명이인이므로 새로 등록
+      }
+
+      if (!target) {
+        sameName.push({ id: null, name, title, dept, used: true });
+        byName.set(name, sameName);
+        stmts.push(db.prepare('INSERT INTO members (name, title, dept, code) VALUES (?, ?, ?, ?)').bind(name, title, dept, newMemberCode()));
+        added++;
+        continue;
+      }
+
+      target.used = true;
+      if (target.title === title && target.dept === dept) { unchanged++; continue; }
+      // 최신 자료로 갱신 (QR 코드 값은 유지)
+      if (target.id != null) {
+        stmts.push(db.prepare('UPDATE members SET title = ?, dept = ? WHERE id = ?').bind(title, dept, target.id));
+      }
+      target.title = title;
+      target.dept = dept;
+      updated++;
     }
+
     if (stmts.length) await db.batch(stmts);
-    return json({ added, skipped });
+    return json({ added, updated, unchanged, skipped, ambiguous });
   }
 
   if (seg[1] === 'members' && seg.length === 3) {

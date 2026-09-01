@@ -377,7 +377,17 @@
     }
     try {
       const r = await api('/api/members/bulk', { method: 'POST', body: JSON.stringify({ members }) });
-      toast(`${r.added}명 등록 완료${r.skipped ? ` · ${r.skipped}건 건너뜀(중복/빈 줄)` : ''}`);
+      const parts = [];
+      if (r.added) parts.push(`${r.added}명 새로 등록`);
+      if (r.updated) parts.push(`${r.updated}명 정보 갱신`);
+      if (r.unchanged) parts.push(`${r.unchanged}명 변경 없음`);
+      if (r.skipped) parts.push(`${r.skipped}줄 건너뜀(빈 줄)`);
+      toast(parts.length ? parts.join(' · ') : '변경된 내용이 없습니다');
+      if (r.ambiguous?.length) {
+        setTimeout(() => toast(
+          `동명이인이라 자동으로 판단할 수 없어 그대로 두었습니다: ${r.ambiguous.join(', ')} — 명단에서 직접 수정해 주세요`,
+          true), 3600);
+      }
       loadMembers();
     } catch (e) {
       toast(e.message, true);
