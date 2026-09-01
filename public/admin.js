@@ -640,6 +640,11 @@
     };
   }
 
+  const hexToRgb = (hex) => {
+    const h = String(hex).replace('#', '');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  };
+
   function drawPatternDot(ctx, x, y, s) {
     ctx.beginPath();
     if (qrState.dot === 'dots') {
@@ -689,51 +694,103 @@
   async function buildPatternCanvas(m, size) {
     const grid = makeQrGrid(m.code);
     const count = grid.getModuleCount();
-
-    let sampler = null;
-    try {
-      sampler = makeLogoSampler(await loadLogoImage(), count);
-    } catch {
-      // 로고를 못 불러오면 로고 없이 일반 점으로 그린다
-    }
-
     const margin = Math.round(size / 60);
     const mod = (size - margin * 2) / count;
+
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, size, size);
 
+    // 1) 평범한 QR 을 먼저 그린다 (모서리 파인더 포함)
     const isFinder = (r, c) =>
       (r < 7 && c < 7) || (r < 7 && c >= count - 7) || (r >= count - 7 && c < 7);
-
+    ctx.fillStyle = qrState.color;
     for (let r = 0; r < count; r++) {
       for (let c = 0; c < count; c++) {
-        if (isFinder(r, c)) continue;
-        const logoColor = sampler ? sampler(r, c) : null;
-        if (grid.isDark(r, c)) {
-          ctx.fillStyle = logoColor ? `rgb(${logoColor[0]},${logoColor[1]},${logoColor[2]})` : qrState.color;
-          drawPatternDot(ctx, margin + c * mod, margin + r * mod, mod);
-        } else if (logoColor) {
-          // 흰 칸에도 아주 연한 로고 색을 깔아 글자를 면으로 채운다.
-          // 흰색 75% 혼합이면 밝은 모듈로 안전하게 남는다 (jsQR 검증 완료)
-          ctx.fillStyle = `rgb(${(logoColor[0] * 0.25 + 191.25) | 0},${(logoColor[1] * 0.25 + 191.25) | 0},${(logoColor[2] * 0.25 + 191.25) | 0})`;
-          ctx.fillRect(margin + c * mod, margin + r * mod, mod + 0.35, mod + 0.35);
-        }
+        if (isFinder(r, c) || !grid.isDark(r, c)) continue;
+        drawPatternDot(ctx, margin + c * mod, margin + r * mod, mod);
       }
     }
     drawPatternFinder(ctx, margin, margin, mod);
     drawPatternFinder(ctx, margin + (count - 7) * mod, margin, mod);
     drawPatternFinder(ctx, margin, margin + (count - 7) * mod, mod);
+
+    // 2) 로고를 원본 해상도 그대로 겹쳐 그린 뒤, 픽셀 단위로 색만 갈아 끼운다.
+    //    칸 단위로 자르지 않으므로 글자 테두리가 뭉개지지 않는다.
+    let logo;
+    try {
+      logo = await loadLogoImage();
+    } catch {
+      return canvas; // 로고를 못 불러오면 평범한 QR 로 둔다
+    }
+    const lw = logo.naturalWidth || logo.width;
+    const lh = logo.naturalHeight || logo.height;
+    if (!lw || !lh) return canvas;
+
+    // 가로는 QR 끝까지, 세로는 모서리 파인더를 피해서
+    const k = Math.min((count * mod) / lw, ((count - 16) * mod) / lh);
+    const dw = lw * k;
+    const dh = lh * k;
+    const dx = (size - dw) / 2;
+    const dy = (size - dh) / 2;
+
+    const off = document.createElement('canvas');
+    off.width = size;
+    off.height = size;
+    const octx = off.getContext('2d', { willReadFrequently: true });
+    octx.imageSmoothingEnabled = true;
+    octx.imageSmoothingQuality = 'high';
+    octx.drawImage(logo, dx, dy, dw, dh);
+
+    // 로고 안쪽에서는 점 사이 틈을 없애 글자가 덩어리로 보이게 한다.
+    // 그래서 '꽉 찬 사각형' 으로 그린 QR 을 따로 만들어 어두운 칸 판정에 쓴다.
+    const solid = document.createElement('canvas');
+    solid.width = size;
+    solid.height = size;
+    const sctx = solid.getContext('2d', { willReadFrequently: true });
+    sctx.fillStyle = '#FFFFFF';
+    sctx.fillRect(0, 0, size, size);
+    sctx.fillStyle = '#000000';
+    for (let r = 0; r < count; r++) {
+      for (let c = 0; c < count; c++) {
+        if (isFinder(r, c) || !grid.isDark(r, c)) continue;
+        sctx.fillRect(margin + c * mod, margin + r * mod, mod + 0.5, mod + 0.5);
+      }
+    }
+
+    const base = ctx.getImageData(0, 0, size, size);
+    const solidPx = sctx.getImageData(0, 0, size, size).data;
+    const lay = octx.getImageData(0, 0, size, size);
+    const B = base.data;
+    const L = lay.data;
+    const ink = hexToRgb(qrState.color);
+
+    for (let i = 0; i < L.length; i += 4) {
+      const a = L[i + 3] / 255;
+      if (a < 0.35) continue;                    // 로고가 없는 자리는 그대로
+      let R = L[i], G = L[i + 1], Bl = L[i + 2];
+      const lum = 0.299 * R + 0.587 * G + 0.114 * Bl;
+      if (lum > 210) continue;                   // 로고의 흰 배경은 무시
+      if (lum > 150) { const d = 150 / lum; R *= d; G *= d; Bl *= d; } // 밝은 색은 눌러 준다
+
+      // 이 픽셀이 어두운 칸에 속하는지 (칸 전체 기준 — 점 사이 틈도 어두운 칸으로 본다)
+      const wasDark = solidPx[i] < 128;
+      if (wasDark) {
+        B[i] = R | 0; B[i + 1] = G | 0; B[i + 2] = Bl | 0;
+      } else {
+        // 흰 칸에는 아주 연한 로고 색 (흰색 75% 혼합 — 밝은 모듈로 안전하게 남는다)
+        B[i] = (R * 0.40 + 153.0) | 0;
+        B[i + 1] = (G * 0.40 + 153.0) | 0;
+        B[i + 2] = (Bl * 0.40 + 153.0) | 0;
+      }
+    }
+    ctx.putImageData(base, 0, 0);
     return canvas;
   }
 
-  // ── '포스터' 렌더러 (버거킹 스타일) ───────────────────
-  // 로고 원본 이미지를 매끈하게 그대로 얹고, 로고 위의 밝은 모듈 자리에
-  // 흰 점을 뚫는다. 로고 밖 어두운 모듈은 성긴 점으로 그린다.
-  // 성긴 점은 jsQR 가 못 읽으므로 이 스타일은 ZXing 내장 스캐너 전제.
   async function buildPosterCanvas(m, size) {
     // 로고가 원본 이미지 그대로라 격자 해상도가 필요 없으므로 버전 5(37칸)로
     // 낮춰 모듈을 키운다 — 소형 인쇄에서 인식 거리가 v8 대비 약 1.36배
