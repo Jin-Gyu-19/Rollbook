@@ -1,0 +1,3 @@
+-- QR 로그인 관리자
+ALTER TABLE members ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE members ADD COLUMN login_token TEXT;

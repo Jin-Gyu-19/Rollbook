@@ -48,9 +48,19 @@ async function ensureSchema(db) {
       expires_at TEXT NOT NULL
     )`),
   ]);
-  // 기존 DB 에 직함 컬럼이 없으면 추가
+  // 기존 DB 에 없는 컬럼은 추가
   try {
     await db.prepare("ALTER TABLE members ADD COLUMN title TEXT NOT NULL DEFAULT ''").run();
+  } catch {
+    /* 이미 있으면 무시 */
+  }
+  try {
+    await db.prepare('ALTER TABLE members ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0').run();
+  } catch {
+    /* 이미 있으면 무시 */
+  }
+  try {
+    await db.prepare('ALTER TABLE members ADD COLUMN login_token TEXT').run();
   } catch {
     /* 이미 있으면 무시 */
   }
@@ -68,6 +78,24 @@ async function ensureSchema(db) {
       db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('seeded_test', '1')"),
     ]);
   }
+
+  // 김진규를 관리자로 지정 (DB당 1회 — 명단에 있으면 지정, 없으면 새로 등록)
+  const adminSeeded = await db.prepare("SELECT value FROM settings WHERE key = 'seeded_admin_kimjinkyu'").first();
+  if (!adminSeeded) {
+    const existing = await db.prepare("SELECT id FROM members WHERE name = '김진규' ORDER BY id LIMIT 1").first();
+    if (existing) {
+      await db
+        .prepare('UPDATE members SET is_admin = 1, login_token = COALESCE(login_token, ?) WHERE id = ?')
+        .bind(newLoginToken(), existing.id)
+        .run();
+    } else {
+      await db
+        .prepare("INSERT INTO members (name, title, dept, code, is_admin, login_token) VALUES ('김진규', '', '', ?, 1, ?)")
+        .bind(newMemberCode(), newLoginToken())
+        .run();
+    }
+    await db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('seeded_admin_kimjinkyu', '1')").run();
+  }
   schemaReady = true;
 }
 
@@ -78,6 +106,15 @@ function newMemberCode() {
   let out = '';
   for (const b of bytes) out += alphabet[b % alphabet.length];
   return `RB-${out.slice(0, 4)}-${out.slice(4, 8)}`;
+}
+
+// 관리자 로그인 전용 QR 토큰 (출석용 QR 과 별개 — 명찰 QR 이 노출돼도 로그인은 안 됨)
+function newLoginToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (const b of bytes) out += alphabet[b % 32];
+  return `RBL-${out}`;
 }
 
 async function readBody(request) {
@@ -266,6 +303,62 @@ async function route(request, env, pathname) {
     // 다른 기기의 관리자 세션은 정리하고 내 세션만 남긴다
     await db.prepare("DELETE FROM sessions WHERE role = 'admin' AND token != ?").bind(session.token).run();
     return json({ ok: true });
+  }
+
+  // QR 로그인 — 관리자 로그인 전용 QR (ROLLBOOK-LOGIN:토큰)
+  if (pathname === '/api/auth/qr-login' && method === 'POST') {
+    const body = await readBody(request);
+    let payload = String(body?.payload ?? '').trim();
+    if (!payload.startsWith('ROLLBOOK-LOGIN:')) return err('관리자 로그인 QR 이 아닙니다.', 400);
+    const token = payload.slice('ROLLBOOK-LOGIN:'.length);
+    const member = await db
+      .prepare('SELECT id, name, title FROM members WHERE login_token = ? AND is_admin = 1')
+      .bind(token)
+      .first();
+    if (!member) return err('등록되지 않았거나 해제된 관리자 QR 입니다.', 401);
+    await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
+    const cookie = await createSession(db, 'admin', request);
+    return jsonWithCookie({ ok: true, role: 'admin', name: member.name, title: member.title }, cookie);
+  }
+
+  // 관리자 지정 목록/추가/해제 (관리자만)
+  if (pathname === '/api/auth/admins' || (seg[2] === 'admins' && seg.length === 4)) {
+    const session = await getSession(db, request);
+    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+
+    if (pathname === '/api/auth/admins' && method === 'GET') {
+      const { results } = await db
+        .prepare('SELECT id, name, title, dept, login_token FROM members WHERE is_admin = 1 ORDER BY name, id')
+        .all();
+      return json({ admins: results });
+    }
+
+    if (pathname === '/api/auth/admins' && method === 'POST') {
+      const body = await readBody(request);
+      const memberId = Number(body?.member_id);
+      if (!Number.isInteger(memberId)) return err('잘못된 회원 ID 입니다.');
+      const member = await db.prepare('SELECT id, login_token FROM members WHERE id = ?').bind(memberId).first();
+      if (!member) return err('명단에서 회원을 찾을 수 없습니다.', 404);
+      await db
+        .prepare('UPDATE members SET is_admin = 1, login_token = COALESCE(login_token, ?) WHERE id = ?')
+        .bind(newLoginToken(), memberId)
+        .run();
+      const admin = await db
+        .prepare('SELECT id, name, title, dept, login_token FROM members WHERE id = ?')
+        .bind(memberId)
+        .first();
+      return json({ admin });
+    }
+
+    // 해제 — 로그인 토큰도 폐기해서 이미 만든 QR 을 무효화
+    if (seg[2] === 'admins' && seg.length === 4 && method === 'DELETE') {
+      const memberId = Number(seg[3]);
+      if (!Number.isInteger(memberId)) return err('잘못된 회원 ID 입니다.');
+      const count = await db.prepare('SELECT COUNT(*) AS n FROM members WHERE is_admin = 1').first();
+      if ((count?.n ?? 0) <= 1) return err('마지막 관리자는 해제할 수 없습니다.');
+      await db.prepare('UPDATE members SET is_admin = 0, login_token = NULL WHERE id = ?').bind(memberId).run();
+      return json({ ok: true });
+    }
   }
 
   // 스캐너 접속 코드 보기/설정/해제 (관리자만)

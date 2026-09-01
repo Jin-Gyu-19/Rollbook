@@ -929,7 +929,91 @@
     } catch (e) {
       toast(e.message, true);
     }
+    loadAdmins();
   }
+
+  // QR 로그인 관리자 목록 + 지정 대상 드롭다운
+  async function loadAdmins() {
+    try {
+      const [{ admins }, { members }] = await Promise.all([api('/api/auth/admins'), api('/api/members')]);
+      membersCache = members;
+      const adminIds = new Set(admins.map((a) => a.id));
+      const candidates = members.filter((m) => !adminIds.has(m.id));
+      $('adminMemberSel').innerHTML = candidates.length
+        ? candidates.map((m) => `<option value="${m.id}">${esc(m.name)}${m.title ? ` ${esc(m.title)}` : ''}${m.dept ? ` (${esc(m.dept)})` : ''}</option>`).join('')
+        : '<option value="">지정할 수 있는 인원이 없습니다</option>';
+      $('adminList').innerHTML = admins.length
+        ? `<table><thead><tr><th>이름</th><th>직함</th><th>부서</th><th style="width:230px;"></th></tr></thead><tbody>${admins
+            .map((a) => `
+              <tr>
+                <td>${esc(a.name)}</td>
+                <td>${esc(a.title)}</td>
+                <td>${esc(a.dept)}</td>
+                <td style="text-align:right; white-space:nowrap;">
+                  <button class="small" data-qr-admin="${a.id}">로그인 QR 내려받기</button>
+                  <button class="small ghost" data-del-admin="${a.id}">해제</button>
+                </td>
+              </tr>`)
+            .join('')}</tbody></table>`
+        : '<p class="muted">지정된 관리자가 없습니다.</p>';
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }
+
+  $('btnAddAdmin').addEventListener('click', async () => {
+    const id = Number($('adminMemberSel').value);
+    if (!id) return toast('명단에서 지정할 사람을 선택해 주세요.', true);
+    try {
+      const { admin } = await api('/api/auth/admins', { method: 'POST', body: JSON.stringify({ member_id: id }) });
+      toast(`${admin.name}님을 관리자로 지정했습니다`);
+      loadAdmins();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  $('adminList').addEventListener('click', async (e) => {
+    const qrBtn = e.target.closest('button[data-qr-admin]');
+    if (qrBtn) {
+      try {
+        const { admins } = await api('/api/auth/admins');
+        const a = admins.find((x) => x.id === Number(qrBtn.dataset.qrAdmin));
+        if (!a) return;
+        const qr = new QRCodeStyling({
+          width: 720, height: 720, type: 'canvas',
+          data: `ROLLBOOK-LOGIN:${a.login_token}`,
+          margin: 12,
+          qrOptions: { errorCorrectionLevel: 'H' },
+          dotsOptions: { type: 'square', color: '#111827' },
+          backgroundOptions: { color: '#FFFFFF' },
+          image: logoUrl(),
+          imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.35, hideBackgroundDots: true },
+        });
+        const blob = await qr.getRawData('png');
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `관리자로그인_${a.name}.png`.replace(/[\\/:*?"<>|]/g, '_');
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+        toast(`${a.name}님의 로그인 QR 을 내려받았습니다`);
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return;
+    }
+    const delBtn = e.target.closest('button[data-del-admin]');
+    if (delBtn) {
+      if (!confirm('관리자를 해제하면 이 사람의 로그인 QR 은 즉시 무효가 됩니다. 계속할까요?')) return;
+      try {
+        await api(`/api/auth/admins/${delBtn.dataset.delAdmin}`, { method: 'DELETE' });
+        toast('관리자를 해제했습니다');
+        loadAdmins();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+  });
 
   $('btnSaveScannerCode').addEventListener('click', async () => {
     const code = $('scannerCode').value.trim();
