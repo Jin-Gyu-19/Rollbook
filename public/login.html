@@ -188,7 +188,7 @@
     }
     if (window.jsQR) {
       const img = ctx.getImageData(0, 0, w, h);
-      const found = jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' });
+      const found = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
       if (found?.data) return found.data;
     }
     return null;

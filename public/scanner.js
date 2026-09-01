@@ -282,14 +282,14 @@
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
       if (zxingReady) {
         try {
-          const found = await ZXingWASM.readBarcodes(img, { formats: ['QRCode'], tryHarder: true, tryInvert: true });
+          const found = await ZXingWASM.readBarcodes(img, { formats: ['QRCode'], tryHarder: true });
           if (found.length && found[0].isValid) text = found[0].text;
         } catch {
           zxingReady = false; // WASM 실패 시 이후 jsQR 만 사용
         }
       }
       if (text === null && typeof jsQR === 'function') {
-        const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+        const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
         if (found) text = found.data;
       }
     }
