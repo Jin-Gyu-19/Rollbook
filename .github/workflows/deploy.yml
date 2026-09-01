@@ -1,0 +1,77 @@
+# Rollbook 자동 배포
+#
+# GitHub 에 코드가 올라가면 Cloudflare 에 자동으로 배포됩니다.
+# 준비: 저장소 Settings > Secrets and variables > Actions 에서
+#   CLOUDFLARE_API_TOKEN   (필수)  Cloudflare 에서 발급한 API 토큰
+#   CLOUDFLARE_ACCOUNT_ID  (선택)  계정이 여러 개일 때만 필요
+# 토큰을 등록하기 전에는 아무 것도 하지 않고 조용히 끝납니다.
+
+name: 배포 (Cloudflare)
+
+on:
+  push:
+    branches:
+      - main
+      - claude/qr-attendance-system-diehqy
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: 토큰 등록 여부 확인
+        id: check
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::notice::CLOUDFLARE_API_TOKEN 이 등록되지 않아 배포를 건너뜁니다."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
+        with:
+          node-version: 22
+
+      - name: 구성 요소 설치
+        if: steps.check.outputs.ready == 'true'
+        run: npm ci
+
+      - name: 데이터베이스 준비 (없으면 만들고 ID 를 설정에 넣기)
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          npx wrangler d1 create rollbook-db || true
+          DBID=$(npx wrangler d1 list --json | node -e "
+            let s='';
+            process.stdin.on('data', d => s += d).on('end', () => {
+              const hit = JSON.parse(s).find(x => x.name === 'rollbook-db');
+              process.stdout.write(hit ? (hit.uuid || hit.database_id || '') : '');
+            });
+          ")
+          if [ -z "$DBID" ]; then
+            echo "::error::rollbook-db 데이터베이스를 찾지 못했습니다."
+            exit 1
+          fi
+          DBID="$DBID" node -e "
+            const fs = require('fs');
+            const f = 'wrangler.jsonc';
+            fs.writeFileSync(f, fs.readFileSync(f, 'utf8')
+              .replace(/\"database_id\"\s*:\s*\"[^\"]*\"/, '\"database_id\": \"' + process.env.DBID + '\"'));
+          "
+          echo "데이터베이스 연결됨: $DBID"
+
+      - name: 표 만들기 (마이그레이션)
+        if: steps.check.outputs.ready == 'true'
+        continue-on-error: true   # 서버가 처음 켜질 때도 표를 만들므로 실패해도 계속
+        run: npx wrangler d1 migrations apply rollbook-db --remote
+
+      - name: 배포
+        if: steps.check.outputs.ready == 'true'
+        run: npx wrangler deploy
