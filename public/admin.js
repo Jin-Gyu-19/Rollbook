@@ -1023,6 +1023,144 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
+  // ── 엑셀(xlsx) 로 내려받기 — QR 이미지를 셀에 넣는다 ──
+  // SheetJS 무료판은 이미지를 못 넣어서, xlsx(=zip) 구조를 직접 만든다.
+  const XE = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const PX2EMU = 9525;
+
+  async function buildXlsx(list, btn) {
+    const COLS = [
+      { title: '순번', width: 6 },
+      { title: 'QR 코드', width: 13 },
+      { title: '이름', width: 14 },
+      { title: '직함', width: 16 },
+      { title: '부서', width: 20 },
+      { title: 'QR 값', width: 18 },
+    ];
+    const ROW_PT = 62;      // 줄 높이(포인트) — QR 이 들어갈 만큼
+    const QR_PX = 76;       // 셀 안 QR 크기(픽셀)
+    const images = [];      // {name, blob}
+
+    // 시트 본문
+    let rows = '';
+    // 1행: 제목
+    rows += '<row r="1" ht="20" customHeight="1">' +
+      COLS.map((c, i) => `<c r="${String.fromCharCode(65 + i)}1" t="inlineStr" s="1"><is><t>${XE(c.title)}</t></is></c>`).join('') +
+      '</row>';
+
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      btn.textContent = `만드는 중… ${i + 1}/${list.length}`;
+      const dataUrl = await memberQrDataUrl(m, 320);
+      images.push({ name: `qr${i + 1}.png`, dataUrl });
+      const r = i + 2;
+      const cell = (col, val) => `<c r="${col}${r}" t="inlineStr"><is><t>${XE(val)}</t></is></c>`;
+      rows += `<row r="${r}" ht="${ROW_PT}" customHeight="1">` +
+        `<c r="A${r}"><v>${i + 1}</v></c>` +
+        cell('C', m.name) + cell('D', m.title) + cell('E', m.dept) + cell('F', m.code) +
+        '</row>';
+    }
+
+    const sheet =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      `<dimension ref="A1:F${list.length + 1}"/>` +
+      '<sheetViews><sheetView tabSelected="1" workbookViewId="0">' +
+      '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>' +
+      '<selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="16.5"/>' +
+      '<cols>' + COLS.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.width}" customWidth="1"/>`).join('') + '</cols>' +
+      `<sheetData>${rows}</sheetData>` +
+      '<drawing r:id="rId1"/></worksheet>';
+
+    // 그림 배치 — B열(index 1) 각 줄에 QR 하나
+    const anchors = images.map((_, i) => {
+      const row = i + 1; // 0-based, 제목 줄 다음
+      return '<xdr:oneCellAnchor>' +
+        `<xdr:from><xdr:col>1</xdr:col><xdr:colOff>${6 * PX2EMU}</xdr:colOff>` +
+        `<xdr:row>${row}</xdr:row><xdr:rowOff>${4 * PX2EMU}</xdr:rowOff></xdr:from>` +
+        `<xdr:ext cx="${QR_PX * PX2EMU}" cy="${QR_PX * PX2EMU}"/>` +
+        '<xdr:pic><xdr:nvPicPr>' +
+        `<xdr:cNvPr id="${i + 2}" name="QR ${i + 1}"/><xdr:cNvPicPr/></xdr:nvPicPr>` +
+        `<xdr:blipFill><a:blip r:embed="rId${i + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>` +
+        `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${QR_PX * PX2EMU}" cy="${QR_PX * PX2EMU}"/></a:xfrm>` +
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>' +
+        '<xdr:clientData/></xdr:oneCellAnchor>';
+    }).join('');
+
+    const zip = new JSZip();
+    zip.file('[Content_Types].xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Default Extension="png" ContentType="image/png"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' +
+      '</Types>');
+    zip.file('_rels/.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>');
+    zip.file('xl/workbook.xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="20000" windowHeight="12000"/></bookViews>' +
+      '<sheets><sheet name="명단" sheetId="1" state="visible" r:id="rId1"/></sheets></workbook>');
+    zip.file('xl/_rels/workbook.xml.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '</Relationships>');
+    zip.file('xl/styles.xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<fonts count="2"><font><sz val="11"/><name val="맑은 고딕"/></font>' +
+      '<font><b/><sz val="11"/><name val="맑은 고딕"/></font></fonts>' +
+      '<fills count="2"><fill><patternFill patternType="none"/></fill>' +
+      '<fill><patternFill patternType="gray125"/></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
+      '</styleSheet>');
+    zip.file('xl/worksheets/sheet1.xml', sheet);
+    zip.file('xl/worksheets/_rels/sheet1.xml.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>' +
+      '</Relationships>');
+    zip.file('xl/drawings/drawing1.xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" ' +
+      'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      anchors + '</xdr:wsDr>');
+    zip.file('xl/drawings/_rels/drawing1.xml.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      images.map((im, i) =>
+        `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${im.name}"/>`).join('') +
+      '</Relationships>');
+    for (const im of images) {
+      zip.file(`xl/media/${im.name}`, im.dataUrl.split(',')[1], { base64: true });
+    }
+
+    btn.textContent = '저장 중…';
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Rollbook_명단_${list.length}명.xlsx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+
   $('btnBulkQr').addEventListener('click', async () => {
     if (!membersCache.length) {
       const { members } = await api('/api/members').catch(() => ({ members: [] }));
@@ -1037,7 +1175,9 @@
     const label = btn.textContent;
     btn.disabled = true;
     try {
-      if ($('bulkFormat').value === 'each') await buildEachPdfZip(list, btn);
+      const fmt = $('bulkFormat').value;
+      if (fmt === 'each') await buildEachPdfZip(list, btn);
+      else if (fmt === 'xlsx') await buildXlsx(list, btn);
       else await buildOnePdf(list, btn);
       toast(`${list.length}명의 QR 을 내려받았습니다`);
     } catch (e) {

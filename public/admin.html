@@ -162,11 +162,12 @@
           <select id="bulkFormat">
             <option value="one">한 파일로 (PDF · 한 페이지에 10명)</option>
             <option value="each">사람별 파일로 (PDF 여러 개를 ZIP 으로)</option>
+            <option value="xlsx">엑셀로 (QR 이미지가 들어간 xlsx)</option>
           </select>
         </label>
         <span class="actions"><button class="primary" id="btnBulkQr">내려받기</button></span>
       </div>
-      <p class="hint" id="bulkHint">한 파일 방식은 A4 한 장에 10명(2열 × 5줄)씩 배치되고 자르는 선이 함께 인쇄됩니다. 사람별 방식은 이름으로 된 PDF 를 각각 만들어 ZIP 으로 묶습니다.</p>
+      <p class="hint" id="bulkHint">한 파일 방식은 A4 한 장에 10명(2열 × 5줄)씩 배치되고 자르는 선이 함께 인쇄됩니다. 사람별 방식은 이름으로 된 PDF 를 각각 만들어 ZIP 으로 묶습니다. 엑셀 방식은 순번·이름·직함·부서·QR 값과 함께 <b>QR 이미지가 셀에 박혀서</b> 나오므로, 엑셀에서 그대로 보거나 인쇄할 수 있습니다.</p>
     </div>
   </section>
 
