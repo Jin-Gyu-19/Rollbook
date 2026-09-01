@@ -1083,7 +1083,9 @@
                 <td>${esc(a.dept)}</td>
                 <td style="text-align:right; white-space:nowrap;">
                   <button class="small" data-qr-admin="${a.id}">QR 이미지</button>
-                  <button class="small" data-pdf-admin="${a.id}">인쇄용 PDF (30·40·50mm)</button>
+                  <button class="small" data-pdf-admin="${a.id}">인쇄용 PDF</button>
+                  <button class="small" data-scan-admin="${a.id}" data-name="${esc(a.name)}">가진 QR 재등록</button>
+                  <button class="small" data-reissue-admin="${a.id}">새 QR 발급</button>
                   <button class="small ghost" data-del-admin="${a.id}">해제</button>
                 </td>
               </tr>`)
@@ -1140,6 +1142,28 @@
       pdfBtn.textContent = old;
       return;
     }
+    const reissueBtn = e.target.closest('button[data-reissue-admin]');
+    if (reissueBtn) {
+      if (!confirm('새 QR 을 발급하면 이 관리자의 기존 QR 은 즉시 쓸 수 없게 됩니다. 계속할까요?')) return;
+      try {
+        const d = await api(`/api/auth/admins/${reissueBtn.dataset.reissueAdmin}/reissue`, {
+          method: 'POST', body: JSON.stringify({}),
+        });
+        await downloadLoginQrPdf(`ROLLBOOK-LOGIN:${d.login_token}`, d.name, `관리자로그인_${d.name}_인쇄용.pdf`);
+        toast(`${d.name}님의 새 QR 을 발급하고 내려받았습니다`);
+        loadAdmins();
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return;
+    }
+
+    const scanBtn = e.target.closest('button[data-scan-admin]');
+    if (scanBtn) {
+      openQrScan(Number(scanBtn.dataset.scanAdmin), scanBtn.dataset.name);
+      return;
+    }
+
     const delBtn = e.target.closest('button[data-del-admin]');
     if (delBtn) {
       if (!confirm('관리자를 해제하면 이 사람의 로그인 QR 은 즉시 무효가 됩니다. 계속할까요?')) return;
@@ -1203,6 +1227,101 @@
     } catch { /* 무시 */ }
     location.href = '/login';
   });
+
+  // ── 가진 QR 을 관리자에게 재등록 (카메라 스캔) ──────
+  let qrScanStream = null;
+  let qrScanning = false;
+  let qrScanTargetId = null;
+
+  function setScanState(msg, color = '') {
+    const el = $('scanQrState');
+    el.textContent = msg;
+    el.style.color = color || 'var(--muted)';
+  }
+
+  async function closeQrScan() {
+    qrScanning = false;
+    if (qrScanStream) {
+      qrScanStream.getTracks().forEach((t) => t.stop());
+      qrScanStream = null;
+    }
+    $('scanQrModal').classList.add('hidden');
+  }
+
+  async function openQrScan(memberId, name) {
+    qrScanTargetId = memberId;
+    $('scanQrWho').textContent = `${name}님의 로그인 QR 로 등록합니다`;
+    $('scanQrModal').classList.remove('hidden');
+    $('scanQrOff').style.display = 'flex';
+    $('scanQrOff').textContent = '카메라를 시작하는 중입니다…';
+    setScanState('');
+    try {
+      qrScanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+    } catch {
+      $('scanQrOff').textContent = '카메라를 열 수 없습니다. 브라우저의 카메라 권한을 허용해 주세요.';
+      return;
+    }
+    const video = $('scanQrVideo');
+    video.srcObject = qrScanStream;
+    await video.play();
+    const st = qrScanStream.getVideoTracks()[0]?.getSettings?.() || {};
+    video.classList.toggle('mirror', st.facingMode !== 'environment');
+    $('scanQrOff').style.display = 'none';
+    setScanState('관리자 로그인 QR 을 비춰 주세요');
+    qrScanLoop(video);
+  }
+
+  async function qrScanLoop(video) {
+    const detector = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+    const canvas = $('scanQrFrame');
+    qrScanning = true;
+    while (qrScanning) {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      let value = null;
+      if (w && h) {
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(video, 0, 0, w, h);
+        if (detector) {
+          try {
+            const codes = await detector.detect(canvas);
+            if (codes.length) value = codes[0].rawValue;
+          } catch { /* jsQR 로 폴백 */ }
+        }
+        if (!value && window.jsQR) {
+          const img = ctx.getImageData(0, 0, w, h);
+          value = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' })?.data ?? null;
+        }
+      }
+      if (!qrScanning) break;
+      if (value) {
+        setScanState('등록하는 중…');
+        try {
+          const d = await api(`/api/auth/admins/${qrScanTargetId}/token`, {
+            method: 'POST', body: JSON.stringify({ payload: value }),
+          });
+          await closeQrScan();
+          toast(`${d.name}님의 로그인 QR 을 재등록했습니다`);
+          loadAdmins();
+          return;
+        } catch (err) {
+          setScanState(err.message, 'var(--danger)');
+          await new Promise((r) => setTimeout(r, 1600));
+          if (!qrScanning) return;
+          setScanState('관리자 로그인 QR 을 비춰 주세요');
+        }
+      }
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
+
+  $('btnScanQrCancel').addEventListener('click', closeQrScan);
+  $('scanQrModal').addEventListener('click', (e) => { if (e.target === $('scanQrModal')) closeQrScan(); });
 
   // ── 초기 로드 ────────────────────────────────────────
   loadSheets();

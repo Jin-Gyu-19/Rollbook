@@ -523,7 +523,7 @@ async function route(request, env, pathname) {
   }
 
   // 관리자 지정 목록/추가/해제 (관리자만)
-  if (pathname === '/api/auth/admins' || (seg[2] === 'admins' && seg.length === 4)) {
+  if (pathname === '/api/auth/admins' || (seg[2] === 'admins' && (seg.length === 4 || seg.length === 5))) {
     const session = await getSession(db, request);
     if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
 
@@ -549,6 +549,37 @@ async function route(request, env, pathname) {
         .bind(memberId)
         .first();
       return json({ admin });
+    }
+
+    // 가지고 있는 QR 을 이 관리자의 로그인 QR 로 재등록
+    if (seg[2] === 'admins' && seg.length === 5 && seg[4] === 'token' && method === 'POST') {
+      const memberId = Number(seg[3]);
+      if (!Number.isInteger(memberId)) return err('잘못된 회원 ID 입니다.');
+      const body = await readBody(request);
+      const payload = String(body?.payload ?? '').trim();
+      if (!/^ROLLBOOK-LOGIN:RBL-[A-Z2-9]{16,48}$/.test(payload)) {
+        if (payload.startsWith('ROLLBOOK-SCANNER:')) return err('스캐너 PC 용 QR 입니다. 관리자 로그인 QR 을 비춰 주세요.');
+        if (payload.startsWith('ROLLBOOK:')) return err('출석용 QR 입니다. 관리자 로그인 QR 을 비춰 주세요.');
+        return err('관리자 로그인 QR 이 아닙니다.');
+      }
+      const token = payload.slice('ROLLBOOK-LOGIN:'.length);
+      const target = await db.prepare('SELECT id, name FROM members WHERE id = ? AND is_admin = 1').bind(memberId).first();
+      if (!target) return err('관리자를 찾을 수 없습니다.', 404);
+      const taken = await db.prepare('SELECT name FROM members WHERE login_token = ? AND id != ?').bind(token, memberId).first();
+      if (taken) return err(`이미 ${taken.name}님이 쓰고 있는 QR 입니다.`, 409);
+      await db.prepare('UPDATE members SET login_token = ? WHERE id = ?').bind(token, memberId).run();
+      return json({ ok: true, name: target.name });
+    }
+
+    // 새 QR 발급 — 이 관리자의 기존 QR 은 즉시 무효
+    if (seg[2] === 'admins' && seg.length === 5 && seg[4] === 'reissue' && method === 'POST') {
+      const memberId = Number(seg[3]);
+      if (!Number.isInteger(memberId)) return err('잘못된 회원 ID 입니다.');
+      const target = await db.prepare('SELECT id, name FROM members WHERE id = ? AND is_admin = 1').bind(memberId).first();
+      if (!target) return err('관리자를 찾을 수 없습니다.', 404);
+      const token = newLoginToken();
+      await db.prepare('UPDATE members SET login_token = ? WHERE id = ?').bind(token, memberId).run();
+      return json({ ok: true, name: target.name, login_token: token });
     }
 
     // 해제 — 로그인 토큰도 폐기해서 이미 만든 QR 을 무효화
