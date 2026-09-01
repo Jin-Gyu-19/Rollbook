@@ -45,6 +45,10 @@
   .code-box { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; font-weight: 700;
               letter-spacing: .05em; background: var(--bg); border: 1px solid var(--line);
               border-radius: 12px; padding: 12px 10px; word-break: break-all; margin: 8px 0 4px; }
+  .setup-pw { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); text-align: left; }
+  .setup-pw-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .setup-pw input { text-align: left; }
+  .setup-pw.done { opacity: .6; }
   .warn-box { background: #FEF3C7; border: 1px solid #FDE68A; color: #92400E; border-radius: 12px;
               padding: 12px 14px; font-size: 13px; line-height: 1.6; text-align: left; margin-top: 12px; }
 </style>
@@ -110,6 +114,18 @@
         이 복구 코드는 <b>지금만 볼 수 있습니다.</b> 따로 적어 두세요 —
         QR 을 잃어버렸을 때 이 코드로만 다시 들어올 수 있습니다.
       </div>
+
+      <div class="setup-pw">
+        <div class="setup-pw-title">관리자 비밀번호 설정</div>
+        <p class="login-hint" style="margin:0 0 12px;">
+          QR 없이도 로그인할 수 있게 비밀번호를 정해 두세요. 지금 건너뛰고 나중에 보안 탭에서 정해도 됩니다.
+        </p>
+        <input type="password" id="setupPw" placeholder="비밀번호 (6자 이상)" autocomplete="new-password">
+        <input type="password" id="setupPw2" placeholder="비밀번호 확인" autocomplete="new-password">
+        <button class="primary" id="btnSetupPw" style="width:100%; padding:11px;">비밀번호 저장</button>
+        <p class="login-err" id="setupPwErr"></p>
+      </div>
+
       <button class="primary" id="btnSetupDone" style="width:100%; padding:12px; margin-top:14px;">저장했습니다 — 시작하기</button>
     </div>
   </div>
@@ -435,6 +451,30 @@
 
   $('btnDownloadQrPdf').addEventListener('click', () => {
     if (qrCanvas) savePdf(qrCanvas, qrOwner, `관리자로그인_${qrOwner}_인쇄용.pdf`);
+  });
+
+  $('btnSetupPw').addEventListener('click', async () => {
+    $('setupPwErr').textContent = '';
+    const pw = $('setupPw').value;
+    if (pw !== $('setupPw2').value) {
+      $('setupPwErr').textContent = '두 비밀번호가 서로 다릅니다.';
+      return;
+    }
+    if (pw.length < 6) {
+      $('setupPwErr').textContent = '비밀번호는 6자 이상으로 정해 주세요.';
+      return;
+    }
+    $('btnSetupPw').disabled = true;
+    try {
+      await post('/api/auth/admin-password', { next: pw });
+      $('setupPw').value = $('setupPw2').value = '';
+      $('btnSetupPw').textContent = '비밀번호가 저장되었습니다';
+      document.querySelector('.setup-pw').classList.add('done');
+      $('setupPw').disabled = $('setupPw2').disabled = true;
+    } catch (err) {
+      $('setupPwErr').textContent = err.message;
+      $('btnSetupPw').disabled = false;
+    }
   });
 
   $('btnSetupDone').addEventListener('click', () => go(setupRole || 'admin'));
