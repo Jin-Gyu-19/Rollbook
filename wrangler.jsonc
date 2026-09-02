@@ -11,15 +11,25 @@
     "run_worker_first": true
   },
 
-  // D1 데이터베이스 — `npm run db:create` 후 출력된 database_id 로 교체할 것
+  // D1 데이터베이스 — `npm run db:create` 후 출력된 database_id 로 교체할 것.
+  // 출석 체크와 워크샵 관리는 서로 다른 데이터베이스를 쓴다 (한쪽 사고가 다른 쪽에 못 미치도록).
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "rollbook-db",
       "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
       "migrations_dir": "migrations"
+    },
+    {
+      "binding": "WSDB",
+      "database_name": "rollbook-workshop-db",
+      "database_id": "REPLACE_WITH_YOUR_WORKSHOP_D1_DATABASE_ID",
+      "migrations_dir": "migrations-workshop"
     }
   ],
+
+  // 매일 00:00 (한국시간) 자동 백업
+  "triggers": { "crons": ["0 15 * * *"] },
 
   "observability": { "enabled": true }
 }

@@ -52,6 +52,16 @@ async function ensureSchema(db) {
       fails INTEGER NOT NULL DEFAULT 0,
       locked_until TEXT
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS backups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      kind TEXT NOT NULL DEFAULT 'auto',
+      members INTEGER NOT NULL DEFAULT 0,
+      sheets INTEGER NOT NULL DEFAULT 0,
+      records INTEGER NOT NULL DEFAULT 0,
+      bytes INTEGER NOT NULL DEFAULT 0,
+      json TEXT NOT NULL
+    )`),
   ]);
   // 기존 DB 에 없는 컬럼은 추가
   try {
@@ -328,7 +338,198 @@ export default {
       return err(`서버 오류: ${e.message}`, 500);
     }
   },
+
+  // 매일 자동 백업 (wrangler.jsonc 의 crons 설정)
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil((async () => {
+      try {
+        await ensureSchema(env.DB);
+        const d = await saveSnapshot(env.DB, 'auto');
+        console.log(`자동 백업 완료 — 명단 ${d.members.length}명, 출석기록 ${d.attendance.length}건`);
+      } catch (e) {
+        console.log('자동 백업 실패:', e.message);
+      }
+    })());
+  },
 };
+
+// ── 백업 ────────────────────────────────────────────
+// 명단·출석부·출석기록을 JSON 한 덩어리로 뜬다.
+// 로그인 토큰·비밀번호 해시·복구 코드·세션은 일부러 넣지 않는다 —
+// 백업 파일이 곧 관리자 열쇠가 되면 안 되기 때문. 복원할 때는 이미 있는
+// 관리자 QR 을 코드(code) 기준으로 다시 붙여 준다.
+const BACKUP_KEEP = 30;
+
+async function buildBackup(db) {
+  const [members, sheets, attendance, logo] = await Promise.all([
+    db.prepare('SELECT id, name, title, dept, code, is_admin, created_at FROM members ORDER BY id').all(),
+    db.prepare('SELECT id, title, sheet_date, is_active, created_at FROM sheets ORDER BY id').all(),
+    db.prepare('SELECT id, sheet_id, member_id, checked_at FROM attendance ORDER BY id').all(),
+    db.prepare("SELECT value FROM settings WHERE key = 'brand_logo'").first(),
+  ]);
+  return {
+    format: 'rollbook-backup',
+    version: 1,
+    created_at: new Date().toISOString(),
+    members: members.results ?? [],
+    sheets: sheets.results ?? [],
+    attendance: attendance.results ?? [],
+    brand_logo: logo?.value ?? null,
+  };
+}
+
+async function saveSnapshot(db, kind = 'auto') {
+  const data = await buildBackup(db);
+  const text = JSON.stringify(data);
+  await db.prepare(
+    'INSERT INTO backups (kind, members, sheets, records, bytes, json) VALUES (?, ?, ?, ?, ?, ?)',
+  ).bind(kind, data.members.length, data.sheets.length, data.attendance.length, text.length, text).run();
+  // 자동 백업은 최근 것만 남긴다 (직접 만든 것은 지우지 않는다)
+  await db.prepare(
+    `DELETE FROM backups WHERE kind = 'auto' AND id NOT IN (
+       SELECT id FROM backups WHERE kind = 'auto' ORDER BY id DESC LIMIT ?
+     )`,
+  ).bind(BACKUP_KEEP).run();
+  return data;
+}
+
+// 백업 JSON 으로 되돌리기. 명단·출석부·출석기록을 통째로 갈아 끼우되,
+// 지금 쓰고 있는 관리자 QR·권한은 코드가 같은 사람에게 그대로 남긴다.
+async function restoreBackup(db, data) {
+  if (!data || data.format !== 'rollbook-backup' || !Array.isArray(data.members)) {
+    throw new Error('백업 파일 형식이 아닙니다.');
+  }
+  const keep = new Map();
+  const cur = await db.prepare('SELECT code, is_admin, login_token FROM members').all();
+  for (const m of cur.results ?? []) keep.set(m.code, m);
+
+  const stmts = [
+    db.prepare('DELETE FROM attendance'),
+    db.prepare('DELETE FROM sheets'),
+    db.prepare('DELETE FROM members'),
+  ];
+  for (const m of data.members) {
+    const had = keep.get(m.code);
+    stmts.push(db.prepare(
+      'INSERT INTO members (id, name, title, dept, code, is_admin, login_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(
+      m.id, m.name ?? '', m.title ?? '', m.dept ?? '', m.code,
+      had ? had.is_admin : (m.is_admin ?? 0),
+      had ? had.login_token : null,
+      m.created_at ?? new Date().toISOString(),
+    ));
+  }
+  for (const sh of data.sheets ?? []) {
+    stmts.push(db.prepare(
+      'INSERT INTO sheets (id, title, sheet_date, is_active, created_at) VALUES (?, ?, ?, ?, ?)',
+    ).bind(sh.id, sh.title ?? '', sh.sheet_date ?? '', sh.is_active ?? 0, sh.created_at ?? new Date().toISOString()));
+  }
+  for (const a of data.attendance ?? []) {
+    stmts.push(db.prepare(
+      'INSERT INTO attendance (id, sheet_id, member_id, checked_at) VALUES (?, ?, ?, ?)',
+    ).bind(a.id, a.sheet_id, a.member_id, a.checked_at ?? new Date().toISOString()));
+  }
+  if (data.brand_logo) {
+    stmts.push(db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('brand_logo', ?)").bind(data.brand_logo));
+  }
+  await db.batch(stmts);
+  return {
+    members: data.members.length,
+    sheets: (data.sheets ?? []).length,
+    records: (data.attendance ?? []).length,
+  };
+}
+
+// ── 워크샵 데이터 (전용 데이터베이스) ────────────────
+// 받은 워크샵 앱은 명단·조배정·프로그램이 파일 안에 상수로 박혀 있다.
+// 그 상수 자리에 데이터베이스에 저장해 둔 값을 끼워 넣어 내보낸다 —
+// 파일 자체는 손대지 않으므로 앱을 새로 받아도 그대로 갈아 끼우면 된다.
+const WS_KEYS = ['META', 'PEOPLE', 'PROGRAM', 'DINNER'];
+let wsSchemaReady = false;
+let wsCache = { id: null, html: null };
+
+async function ensureWsSchema(env) {
+  if (wsSchemaReady || !env.WSDB) return;
+  await env.WSDB.prepare(`CREATE TABLE IF NOT EXISTS ws_dataset (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    note TEXT NOT NULL DEFAULT '',
+    people_count INTEGER NOT NULL DEFAULT 0,
+    group_count INTEGER NOT NULL DEFAULT 0,
+    meta_json TEXT NOT NULL,
+    people_json TEXT NOT NULL,
+    program_json TEXT NOT NULL,
+    dinner_json TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  wsSchemaReady = true;
+}
+
+// 파일 안에서 상수 네 개의 값 위치를 찾는다.
+// RAW_TEMPLATE (파일을 다시 만들 때 쓰는 틀) 안에도 같은 이름이 있으므로 그 앞까지만 본다.
+function wsFindSpans(html) {
+  const limit = html.indexOf('const RAW_TEMPLATE');
+  const end = limit === -1 ? html.length : limit;
+  const spans = {};
+  for (const k of WS_KEYS) {
+    const decl = `const ${k} = `;
+    const i = html.indexOf(decl);
+    if (i === -1 || i >= end) return null;
+    const vs = i + decl.length;
+    const ve = html.indexOf(';\n', vs);
+    if (ve === -1 || ve >= end) return null;
+    spans[k] = [vs, ve];
+  }
+  return spans;
+}
+
+function wsExtract(html) {
+  const spans = wsFindSpans(html);
+  if (!spans) return null;
+  const out = {};
+  for (const k of WS_KEYS) {
+    try {
+      out[k] = JSON.parse(html.slice(spans[k][0], spans[k][1]));
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(out.PEOPLE) || !out.PEOPLE.length || !out.PEOPLE[0]?.name) return null;
+  return out;
+}
+
+function wsReplace(html, data) {
+  const spans = wsFindSpans(html);
+  if (!spans) return html;
+  // 뒤쪽부터 바꿔야 앞쪽 위치가 밀리지 않는다
+  const order = WS_KEYS.slice().sort((a, b) => spans[b][0] - spans[a][0]);
+  let out = html;
+  for (const k of order) {
+    const [vs, ve] = spans[k];
+    out = out.slice(0, vs) + JSON.stringify(data[k]) + out.slice(ve);
+  }
+  return out;
+}
+
+async function wsActiveData(env) {
+  if (!env.WSDB) return null;
+  try {
+    await ensureWsSchema(env);
+    const row = await env.WSDB.prepare(
+      'SELECT id, meta_json, people_json, program_json, dinner_json FROM ws_dataset WHERE is_active = 1 ORDER BY id DESC LIMIT 1',
+    ).first();
+    if (!row) return null;
+    return {
+      id: row.id,
+      META: JSON.parse(row.meta_json),
+      PEOPLE: JSON.parse(row.people_json),
+      PROGRAM: JSON.parse(row.program_json),
+      DINNER: JSON.parse(row.dinner_json),
+    };
+  } catch {
+    return null; // 워크샵 DB 가 아직 없으면 파일에 박힌 원래 데이터를 쓴다
+  }
+}
 
 // ── 워크샵 화면 ──────────────────────────────────────
 // 다른 사람이 만든 단일 파일 앱(public/workshop/index.html)을 손대지 않고,
@@ -347,7 +548,64 @@ const WS_ADMIN_BAR_CSS = `
   .rb-adminbar a { color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 9px; background: rgba(255,255,255,.12); }
   .rb-adminbar a:hover { background: rgba(255,255,255,.22); }
   .rb-adminbar .t { flex: 1; font-weight: 800; letter-spacing: -.01em; }
-  .rb-adminbar .s { font-weight: 500; opacity: .7; margin-left: 8px; }`;
+  .rb-adminbar .s { font-weight: 500; opacity: .7; margin-left: 8px; }
+  .rb-pub { margin: 0; padding: 14px 16px; background: #F3F4F6; border-bottom: 1px solid #E5E7EB;
+    font: 400 13px/1.5 system-ui, sans-serif; color: #374151; }
+  .rb-pub b { display: block; font-size: 14px; color: #111827; }
+  .rb-pub .d { display: block; margin: 3px 0 9px; color: #6B7280; font-size: 12.5px; }
+  .rb-pub .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .rb-pub button { padding: 8px 13px; border: 1px solid #D1D5DB; border-radius: 9px;
+    background: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+  .rb-pub button:hover { background: #F9FAFB; }
+  .rb-pub #rbPubSend { background: #111827; color: #fff; border-color: #111827; }
+  .rb-pub .msg { display: block; margin-top: 8px; font-size: 12.5px; }
+  .rb-pub .msg.ok { color: #166534; } .rb-pub .msg.err { color: #991B1B; }
+  .rb-pub table { margin-top: 9px; border-collapse: collapse; font-size: 12.5px; }
+  .rb-pub td { padding: 5px 10px 5px 0; }`;
+
+// 관리자 화면에만 넣는 스크립트 — 원본 앱은 건드리지 않는다
+const WS_ADMIN_JS = `(function(){
+  var p=document.getElementById('adminPanel'); if(p){p.hidden=false;}
+  var b=document.getElementById('adminLinkBtn'); if(b){b.hidden=true;}
+  var f=document.getElementById('rbPubFile'), send=document.getElementById('rbPubSend'),
+      list=document.getElementById('rbPubList'), msg=document.getElementById('rbPubMsg'),
+      vers=document.getElementById('rbPubVers');
+  function say(t,k){ msg.textContent=t; msg.className='msg'+(k?' '+k:''); }
+  send.addEventListener('click', async function(){
+    var file=f.files && f.files[0];
+    if(!file){ say('먼저 내려받은 index.html 파일을 골라 주세요.','err'); return; }
+    send.disabled=true; say('반영하는 중…');
+    try{
+      var text=await file.text();
+      var r=await fetch('/api/workshop/publish',{method:'POST',headers:{'content-type':'text/plain; charset=utf-8'},body:text});
+      var d=await r.json();
+      if(!r.ok) throw new Error(d.error||'반영하지 못했습니다.');
+      say('참석자 화면에 반영되었습니다 — 명단 '+d.people+'명, 조 '+d.groups+'개. (버전 '+d.id+')','ok');
+    }catch(e){ say(e.message,'err'); }
+    send.disabled=false;
+  });
+  list.addEventListener('click', async function(){
+    if(vers.innerHTML){ vers.innerHTML=''; return; }
+    try{
+      var r=await fetch('/api/workshop/versions'); var d=await r.json();
+      if(!d.versions || !d.versions.length){ vers.innerHTML='<p>아직 올린 버전이 없습니다. 지금은 파일에 들어 있던 원래 명단을 쓰고 있습니다.</p>'; return; }
+      vers.innerHTML='<table>'+d.versions.map(function(v){
+        return '<tr><td>'+(v.is_active?'● 사용 중':'')+'</td><td>버전 '+v.id+'</td><td>'+v.created_at.slice(0,16).replace('T',' ')+'</td>'+
+               '<td>'+v.people_count+'명 · '+v.group_count+'조</td><td>'+
+               (v.is_active?'':'<button type="button" data-id="'+v.id+'">이 버전으로</button>')+'</td></tr>';
+      }).join('')+'</table>';
+      vers.querySelectorAll('button[data-id]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          btn.disabled=true;
+          var r2=await fetch('/api/workshop/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:Number(btn.dataset.id)})});
+          var d2=await r2.json();
+          if(r2.ok){ say('버전 '+btn.dataset.id+' 로 되돌렸습니다.','ok'); vers.innerHTML=''; }
+          else { say(d2.error||'되돌리지 못했습니다.','err'); btn.disabled=false; }
+        });
+      });
+    }catch(e){ say(e.message,'err'); }
+  });
+})();`;
 
 async function serveWorkshop(request, env, view) {
   // 주소를 한 가지로 맞춘다 (참석자 QR 에는 /workshop/ 만 쓴다)
@@ -356,6 +614,17 @@ async function serveWorkshop(request, env, view) {
   }
   const asset = await env.ASSETS.fetch(new Request(new URL('/workshop/', request.url), { headers: request.headers }));
   if (!asset.ok) return asset;
+
+  // 데이터베이스에 올려 둔 명단이 있으면 파일 안의 상수를 그것으로 바꿔 내보낸다
+  const data = await wsActiveData(env);
+  const cacheKey = data ? data.id : 0;
+  let html = wsCache.id === cacheKey ? wsCache.html : null;
+  if (!html) {
+    html = await asset.text();
+    if (data) html = wsReplace(html, data);
+    wsCache = { id: cacheKey, html };
+  }
+  const page = new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 
   const rw = new HTMLRewriter();
   if (view === 'public') {
@@ -371,26 +640,121 @@ async function serveWorkshop(request, env, view) {
           el.prepend(
             '<div class="rb-adminbar"><a href="/start">← 메뉴</a>' +
             '<span class="t">워크샵 관리<span class="s">엑셀을 올려 프로그램·조배정을 갱신합니다</span></span>' +
-            '<a href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>',
+            '<a href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>' +
+            '<div class="rb-pub"><b>서버에 반영 — 마지막 단계</b>' +
+            '<span class="d">아래에서 미리보기 → 파일을 내려받은 뒤, 그 파일을 여기에 넣으면 참석자 화면이 바로 바뀝니다.</span>' +
+            '<span class="row"><input type="file" id="rbPubFile" accept=".html,text/html">' +
+            '<button type="button" id="rbPubSend">이 파일로 참석자 화면 갱신</button>' +
+            '<button type="button" id="rbPubList">지난 버전</button></span>' +
+            '<span class="msg" id="rbPubMsg"></span><div id="rbPubVers"></div></div>',
             { html: true },
           );
           // 관리 패널을 바로 열어 둔다 (원본은 맨 아래 '관리자' 글자를 눌러야 열린다)
-          el.append(
-            '<script>(function(){var p=document.getElementById("adminPanel");if(p){p.hidden=false;}' +
-            'var b=document.getElementById("adminLinkBtn");if(b){b.hidden=true;}})();</script>',
-            { html: true },
-          );
+          el.append(`<script>${WS_ADMIN_JS}</script>`, { html: true });
         },
       });
   }
-  const out = rw.transform(asset);
+  const out = rw.transform(page);
   const h = new Headers(out.headers);
+  h.set('content-type', 'text/html; charset=utf-8');
   h.set('cache-control', 'no-store');   // 두 가지 화면이 같은 파일에서 나오므로 캐시하지 않는다
   return new Response(out.body, { status: out.status, headers: h });
 }
 
 async function route(request, env, pathname) {
   const db = env.DB;
+
+  // ── 백업 (관리자 전용) ──────────────────────────────
+  if (pathname === '/api/backup/list' && request.method === 'GET') {
+    const r = await db.prepare(
+      'SELECT id, created_at, kind, members, sheets, records, bytes FROM backups ORDER BY id DESC LIMIT 60',
+    ).all();
+    return json({ backups: r.results ?? [], keep: BACKUP_KEEP });
+  }
+
+  if (pathname === '/api/backup/snapshot' && request.method === 'POST') {
+    const d = await saveSnapshot(db, 'manual');
+    return json({ ok: true, members: d.members.length, sheets: d.sheets.length, records: d.attendance.length });
+  }
+
+  // 지금 상태를 파일로 내려받기 (id 를 주면 그때 떠 둔 스냅샷)
+  if (pathname === '/api/backup/download' && request.method === 'GET') {
+    const id = Number(new URL(request.url).searchParams.get('id') || 0);
+    let text;
+    let stamp;
+    if (id) {
+      const row = await db.prepare('SELECT created_at, json FROM backups WHERE id = ?').bind(id).first();
+      if (!row) return err('그 백업을 찾을 수 없습니다.', 404);
+      text = row.json;
+      stamp = String(row.created_at).slice(0, 19).replace(/[:T]/g, '');
+    } else {
+      text = JSON.stringify(await buildBackup(db), null, 2);
+      stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '');
+    }
+    return new Response(text, {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'content-disposition': `attachment; filename="rollbook-backup-${stamp}.json"`,
+        'cache-control': 'no-store',
+      },
+    });
+  }
+
+  if (pathname === '/api/backup/restore' && request.method === 'POST') {
+    const body = await request.json().catch(() => null);
+    if (!body || body.confirm !== true) return err('복원하려면 확인이 필요합니다.', 400);
+    // 되돌리기 직전 상태를 먼저 떠 둔다 (잘못 복원했을 때 되살릴 수 있도록)
+    await saveSnapshot(db, 'manual').catch(() => {});
+    const n = await restoreBackup(db, body.data);
+    return json({ ok: true, ...n });
+  }
+
+  // ── 워크샵 데이터 (전용 데이터베이스, 관리자 전용) ──
+  if (pathname === '/api/workshop/publish' && request.method === 'POST') {
+    if (!env.WSDB) return err('워크샵 데이터베이스가 연결되어 있지 않습니다.', 503);
+    const html = await request.text();
+    const data = wsExtract(html);
+    if (!data) return err('워크샵 앱이 만든 index.html 이 아닙니다. 관리 화면에서 내려받은 파일을 넣어 주세요.', 400);
+    await ensureWsSchema(env);
+    const groups = new Set(data.PEOPLE.map((x) => x.groupLabel || x.group).filter((x) => x != null)).size;
+    const res = await env.WSDB.prepare(
+      `INSERT INTO ws_dataset (note, people_count, group_count, meta_json, people_json, program_json, dinner_json, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    ).bind(
+      data.PROGRAM?.title ?? '', data.PEOPLE.length, groups,
+      JSON.stringify(data.META), JSON.stringify(data.PEOPLE),
+      JSON.stringify(data.PROGRAM), JSON.stringify(data.DINNER),
+    ).run();
+    const id = res.meta?.last_row_id;
+    await env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0 WHERE id <> ?').bind(id).run();
+    wsCache = { id: null, html: null };
+    return json({ ok: true, id, people: data.PEOPLE.length, groups });
+  }
+
+  if (pathname === '/api/workshop/versions' && request.method === 'GET') {
+    if (!env.WSDB) return json({ versions: [] });
+    await ensureWsSchema(env);
+    const r = await env.WSDB.prepare(
+      'SELECT id, created_at, note, people_count, group_count, is_active FROM ws_dataset ORDER BY id DESC LIMIT 30',
+    ).all();
+    return json({ versions: r.results ?? [] });
+  }
+
+  if (pathname === '/api/workshop/activate' && request.method === 'POST') {
+    if (!env.WSDB) return err('워크샵 데이터베이스가 연결되어 있지 않습니다.', 503);
+    const { id } = await request.json().catch(() => ({}));
+    if (!id) return err('버전을 골라 주세요.', 400);
+    await ensureWsSchema(env);
+    const hit = await env.WSDB.prepare('SELECT id FROM ws_dataset WHERE id = ?').bind(id).first();
+    if (!hit) return err('그 버전을 찾을 수 없습니다.', 404);
+    await env.WSDB.batch([
+      env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0'),
+      env.WSDB.prepare('UPDATE ws_dataset SET is_active = 1 WHERE id = ?').bind(id),
+    ]);
+    wsCache = { id: null, html: null };
+    return json({ ok: true, id });
+  }
+
   const method = request.method;
   const seg = pathname.split('/').filter(Boolean); // ['api', ...]
 

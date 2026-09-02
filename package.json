@@ -8,7 +8,10 @@
     "deploy": "wrangler deploy",
     "db:create": "wrangler d1 create rollbook-db",
     "db:migrate:local": "wrangler d1 migrations apply rollbook-db --local",
-    "db:migrate": "wrangler d1 migrations apply rollbook-db --remote"
+    "db:migrate": "wrangler d1 migrations apply rollbook-db --remote",
+    "wsdb:create": "wrangler d1 create rollbook-workshop-db",
+    "wsdb:migrate:local": "wrangler d1 migrations apply rollbook-workshop-db --local",
+    "wsdb:migrate": "wrangler d1 migrations apply rollbook-workshop-db --remote"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

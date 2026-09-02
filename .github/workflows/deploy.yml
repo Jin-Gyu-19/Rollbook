@@ -63,9 +63,37 @@ jobs:
             const fs = require('fs');
             const f = 'wrangler.jsonc';
             fs.writeFileSync(f, fs.readFileSync(f, 'utf8')
-              .replace(/\"database_id\"\s*:\s*\"[^\"]*\"/, '\"database_id\": \"' + process.env.DBID + '\"'));
+              .replace(/\"REPLACE_WITH_YOUR_D1_DATABASE_ID\"/, '\"' + process.env.DBID + '\"'));
           "
           echo "데이터베이스 연결됨: $DBID"
+
+      - name: 워크샵 데이터베이스 준비 (없으면 만들고 ID 를 설정에 넣기)
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          npx wrangler d1 create rollbook-workshop-db || true
+          WSID=$(npx wrangler d1 list --json | node -e "
+            let s='';
+            process.stdin.on('data', d => s += d).on('end', () => {
+              const hit = JSON.parse(s).find(x => x.name === 'rollbook-workshop-db');
+              process.stdout.write(hit ? (hit.uuid || hit.database_id || '') : '');
+            });
+          ")
+          if [ -z "$WSID" ]; then
+            echo "::error::rollbook-workshop-db 데이터베이스를 찾지 못했습니다."
+            exit 1
+          fi
+          WSID="$WSID" node -e "
+            const fs = require('fs');
+            const f = 'wrangler.jsonc';
+            fs.writeFileSync(f, fs.readFileSync(f, 'utf8')
+              .replace(/\"REPLACE_WITH_YOUR_WORKSHOP_D1_DATABASE_ID\"/, '\"' + process.env.WSID + '\"'));
+          "
+          echo "워크샵 데이터베이스 연결됨: $WSID"
+
+      - name: 워크샵 표 만들기 (마이그레이션)
+        if: steps.check.outputs.ready == 'true'
+        continue-on-error: true
+        run: npx wrangler d1 migrations apply rollbook-workshop-db --remote
 
       - name: 표 만들기 (마이그레이션)
         if: steps.check.outputs.ready == 'true'

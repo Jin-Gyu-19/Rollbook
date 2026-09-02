@@ -38,7 +38,7 @@
   const tabs = $('tabs');
   function switchTab(name) {
     tabs.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-    for (const t of ['sheets', 'status', 'members', 'qr', 'security']) {
+    for (const t of ['sheets', 'status', 'members', 'qr', 'security', 'backup']) {
       const sec = $(`tab-${t}`);
       sec.classList.toggle('hidden', t !== name);
       if (t === name) {
@@ -52,6 +52,7 @@
     if (name === 'members') loadMembers();
     if (name === 'qr') loadQrTab();
     if (name === 'security') loadSecurityTab();
+    if (name === 'backup') loadBackupTab();
   }
   tabs.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-tab]');
@@ -1775,6 +1776,92 @@
 
   $('btnScanQrCancel').addEventListener('click', closeQrScan);
   $('scanQrModal').addEventListener('click', (e) => { if (e.target === $('scanQrModal')) closeQrScan(); });
+
+  // ── 백업 탭 ──────────────────────────────────────────
+  const kb = (n) => (n < 1024 ? `${n}B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)}KB` : `${(n / 1024 / 1024).toFixed(1)}MB`);
+
+  async function loadBackupTab() {
+    const box = $('backupList');
+    box.innerHTML = '<p class="muted">불러오는 중…</p>';
+    try {
+      const { backups, keep } = await api('/api/backup/list');
+      if (!backups.length) {
+        box.innerHTML = '<div class="empty"><span class="icon">🗄️</span>아직 백업이 없습니다<br>‘지금 백업 만들기’ 를 눌러 보세요</div>';
+        return;
+      }
+      box.innerHTML = `
+        <table>
+          <thead><tr><th>만든 때</th><th>방식</th><th class="right">명단</th><th class="right">출석부</th><th class="right">출석기록</th><th class="right">크기</th><th></th></tr></thead>
+          <tbody>${backups.map((b) => `
+            <tr>
+              <td>${fmtTime(b.created_at)}</td>
+              <td>${b.kind === 'auto' ? '자동' : '직접'}</td>
+              <td class="right">${b.members}</td>
+              <td class="right">${b.sheets}</td>
+              <td class="right">${b.records}</td>
+              <td class="right">${kb(b.bytes)}</td>
+              <td class="right"><a class="mini-btn" href="/api/backup/download?id=${b.id}">내려받기</a></td>
+            </tr>`).join('')}</tbody>
+        </table>
+        <p class="hint">자동 백업은 최근 ${keep}개까지만 남고, 직접 만든 백업은 계속 보관됩니다.</p>`;
+    } catch (e) {
+      box.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+    }
+  }
+
+  $('btnBackupNow').addEventListener('click', async () => {
+    const b = $('btnBackupNow');
+    b.disabled = true;
+    try {
+      const d = await api('/api/backup/snapshot', { method: 'POST', body: '{}' });
+      toast(`백업을 만들었습니다 — 명단 ${d.members}명 · 출석기록 ${d.records}건`);
+      loadBackupTab();
+    } catch (e) {
+      toast(e.message, true);
+    }
+    b.disabled = false;
+  });
+
+  $('btnBackupDownload').addEventListener('click', () => {
+    location.href = '/api/backup/download';
+  });
+
+  $('restoreFile').addEventListener('change', async () => {
+    const info = $('restoreInfo');
+    const f = $('restoreFile').files[0];
+    if (!f) { info.textContent = ''; return; }
+    try {
+      const d = JSON.parse(await f.text());
+      if (d.format !== 'rollbook-backup') throw new Error('Rollbook 백업 파일이 아닙니다.');
+      info.innerHTML = `이 파일: <b>${fmtTime(d.created_at)}</b> 시점 · 명단 ${d.members.length}명 · 출석부 ${(d.sheets || []).length}개 · 출석기록 ${(d.attendance || []).length}건`;
+    } catch (e) {
+      info.textContent = `읽을 수 없습니다 — ${e.message}`;
+    }
+  });
+
+  $('btnRestore').addEventListener('click', async () => {
+    const f = $('restoreFile').files[0];
+    if (!f) return toast('되돌릴 백업 파일을 골라 주세요', true);
+    let data;
+    try {
+      data = JSON.parse(await f.text());
+    } catch {
+      return toast('백업 파일을 읽지 못했습니다', true);
+    }
+    const n = (data.members || []).length;
+    if (!confirm(`지금 명단·출석기록을 지우고 이 백업(명단 ${n}명)으로 되돌립니다.\n되돌리기 직전 상태는 자동으로 한 벌 백업됩니다.\n계속할까요?`)) return;
+    const b = $('btnRestore');
+    b.disabled = true;
+    try {
+      const r = await api('/api/backup/restore', { method: 'POST', body: JSON.stringify({ confirm: true, data }) });
+      toast(`되돌렸습니다 — 명단 ${r.members}명 · 출석부 ${r.sheets}개 · 출석기록 ${r.records}건`);
+      membersCache = [];
+      loadBackupTab();
+    } catch (e) {
+      toast(e.message, true);
+    }
+    b.disabled = false;
+  });
 
   // ── 초기 로드 ────────────────────────────────────────
   loadSheets();

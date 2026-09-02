@@ -28,6 +28,7 @@
     <button data-tab="members">명단</button>
     <button data-tab="qr">QR 코드</button>
     <button data-tab="security">보안</button>
+    <button data-tab="backup">백업</button>
   </div>
 
   <!-- ── 출석부 ─────────────────────────────────────── -->
@@ -248,6 +249,34 @@
       <h2>로그아웃</h2>
       <p class="muted">이 컴퓨터에서 로그아웃합니다.</p>
       <button class="danger" id="btnLogout" style="margin-top:12px;">로그아웃</button>
+    </div>
+  </section>
+
+  <!-- ── 백업 ───────────────────────────────────────── -->
+  <section id="tab-backup" class="hidden">
+    <div class="card">
+      <h2>백업</h2>
+      <p class="muted">명단 · 출석부 · 출석기록을 통째로 보관합니다. <b>매일 자정(한국시간)에 자동으로</b> 한 벌씩 떠 두고 최근 30개를 남깁니다. 직접 만든 백업은 지우지 않습니다.</p>
+      <div class="form-row" style="margin-top:14px;">
+        <span class="actions">
+          <button class="primary" id="btnBackupNow">지금 백업 만들기</button>
+          <button id="btnBackupDownload">현재 상태를 파일로 내려받기</button>
+        </span>
+      </div>
+      <p class="hint">백업 파일에는 <b>로그인 QR 토큰 · 비밀번호 · 복구 코드가 들어가지 않습니다</b> — 파일이 곧 관리자 열쇠가 되면 안 되기 때문입니다. 복원하면 개인 QR 값(code)은 그대로 살아나므로 이미 나눠 준 명찰을 계속 쓸 수 있고, 관리자 QR 도 지금 쓰던 것이 그대로 유지됩니다.</p>
+      <div id="backupList" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>백업으로 되돌리기</h2>
+      <p class="muted">내려받아 둔 백업 파일을 올리면 그 시점의 명단 · 출석부 · 출석기록으로 되돌립니다. <b>지금 자료는 지워집니다</b> — 되돌리기 직전 상태를 자동으로 한 벌 떠 두므로 잘못 눌러도 되살릴 수 있습니다.</p>
+      <div class="form-row" style="margin-top:14px;">
+        <label>백업 파일(.json)
+          <input id="restoreFile" type="file" accept=".json,application/json" style="width:auto; margin:0;">
+        </label>
+        <span class="actions"><button id="btnRestore">이 파일로 되돌리기</button></span>
+      </div>
+      <div id="restoreInfo" class="hint"></div>
     </div>
   </section>
 </main>
