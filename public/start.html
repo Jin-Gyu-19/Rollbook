@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rollbook — 시작</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2224%22 fill=%22%234F46E5%22/><path d=%22M25 25h20v20H25zM55 25h20v20H55zM25 55h20v20H25zM55 55h8v8h-8zM67 55h8v8h-8zM55 67h8v8h-8zM67 67h8v8h-8z%22 fill=%22white%22/></svg>">
+<link rel="stylesheet" href="/bdo-design.css">
+<link rel="stylesheet" href="/app.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+  .start { width: min(760px, 100%); text-align: center; }
+  .start-logo { height: 34px; margin-bottom: 10px; }
+  .start-title { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+  .start-sub { color: var(--muted); font-size: 14px; margin: 0 0 26px; }
+
+  /* 두 개의 큰 선택 버튼 */
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 640px) { .choices { grid-template-columns: 1fr; } }
+  .choice {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    min-height: 220px; padding: 28px 22px; border-radius: 22px; text-decoration: none;
+    background: #fff; border: 1.5px solid var(--line); color: var(--text);
+    box-shadow: 0 6px 24px rgba(17, 24, 39, .06);
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .choice:hover, .choice:focus-visible { transform: translateY(-3px); border-color: var(--primary); box-shadow: 0 14px 34px rgba(79, 70, 229, .16); outline: none; }
+  .choice .icon { width: 64px; height: 64px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .choice.att .icon { background: var(--primary-soft); }
+  .choice.ws .icon { background: #FDE8EC; }
+  .choice b { font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+  .choice span { color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+
+  .start-foot { margin-top: 22px; display: flex; justify-content: center; gap: 18px; font-size: 13px; color: var(--muted); }
+  .start-foot a, .start-foot button { color: var(--muted); background: none; border: 0; padding: 0; font: inherit; text-decoration: underline; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div class="start">
+  <img src="/api/logo" class="start-logo" alt="BDO">
+  <h1 class="start-title">무엇을 하시겠어요?</h1>
+  <p class="start-sub">들어갈 곳을 고르세요. 언제든 상단 메뉴에서 다른 쪽으로 넘어갈 수 있습니다.</p>
+
+  <div class="choices">
+    <a class="choice att" href="/admin">
+      <div class="icon">✓</div>
+      <b>QR 출석 체크 관리</b>
+      <span>출석부 · 출석 현황 · 명단 · QR 코드 · 보안</span>
+    </a>
+    <a class="choice ws" href="/workshop/">
+      <div class="icon">🗓️</div>
+      <b>워크샵 관리</b>
+      <span>2026 워크샵 프로그램 · Grand Hall 조배정 · 석식 조배정</span>
+    </a>
+  </div>
+
+  <div class="start-foot">
+    <a href="/">출석 체크 화면(스캐너) 열기</a>
+    <button type="button" id="btnLogout">로그아웃</button>
+  </div>
+</div>
+
+<script>
+  document.getElementById('btnLogout').addEventListener('click', async () => {
+    if (!confirm('로그아웃할까요?')) return;
+    try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); } catch {}
+    location.href = '/login';
+  });
+</script>
+</body>
+</html>

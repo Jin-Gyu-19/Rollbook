@@ -1,0 +1,2140 @@
+<title>2026 워크샵 프로그램 및 조배정</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&display=swap');
+
+  :root {
+    --bg: #f4f7fa;
+    --surface: #ffffff;
+    --surface-alt: #eef3f8;
+    --border: #dbe4ec;
+    --text: #16212b;
+    --text-muted: #5b6b7c;
+    --accent: #1f4e78;
+    --accent-strong: #123049;
+    --accent-soft: #dceaf7;
+    --accent-soft-border: #b9d5ea;
+    --highlight-bg: #fff3d0;
+    --highlight-text: #7a5b00;
+    --highlight-border: #f0d98c;
+    --chip-bg: #eef1f5;
+    --shadow: 0 1px 2px rgba(18, 48, 73, 0.06), 0 8px 24px -12px rgba(18, 48, 73, 0.18);
+    --radius: 16px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1720;
+      --surface: #17212c;
+      --surface-alt: #1d2733;
+      --border: #2a3744;
+      --text: #e7edf3;
+      --text-muted: #93a3b2;
+      --accent: #6ea5da;
+      --accent-strong: #9dc6ec;
+      --accent-soft: #1e3348;
+      --accent-soft-border: #2c4d6b;
+      --highlight-bg: #3b2f0a;
+      --highlight-text: #f0c750;
+      --highlight-border: #5b4813;
+      --chip-bg: #212c38;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1720;
+    --surface: #17212c;
+    --surface-alt: #1d2733;
+    --border: #2a3744;
+    --text: #e7edf3;
+    --text-muted: #93a3b2;
+    --accent: #6ea5da;
+    --accent-strong: #9dc6ec;
+    --accent-soft: #1e3348;
+    --accent-soft-border: #2c4d6b;
+    --highlight-bg: #3b2f0a;
+    --highlight-text: #f0c750;
+    --highlight-border: #5b4813;
+    --chip-bg: #212c38;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 460px;
+    margin: 0 auto;
+    padding: 20px 16px 64px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  h1 {
+    margin: 4px 0 2px;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .sub {
+    margin: 0 0 18px;
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 16px;
+  }
+  .tab-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 9px 0;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .tab-btn.active {
+    background: var(--surface);
+    color: var(--accent-strong);
+    box-shadow: var(--shadow);
+  }
+  .tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .search-box {
+    position: relative;
+    margin-bottom: 10px;
+  }
+  .search-box input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 17px;
+    padding: 13px 14px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .match-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .match-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 11px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    color: var(--text);
+  }
+  .match-row:hover { border-color: var(--accent-soft-border); background: var(--accent-soft); }
+  .match-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .match-name { font-weight: 700; font-size: 15px; }
+  .match-meta { font-size: 12.5px; color: var(--text-muted); }
+  .match-arrow { color: var(--text-muted); font-size: 15px; }
+
+  .empty-hint {
+    padding: 20px 4px;
+    color: var(--text-muted);
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+
+  .result-card {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 22px;
+    margin-bottom: 14px;
+    animation: rise 0.28s ease;
+  }
+  .result-card.active { display: block; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .result-card { animation: none; }
+  }
+
+  .result-top {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+  .group-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    font-size: 30px;
+    line-height: 1;
+    color: var(--accent-strong);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-soft-border);
+    border-radius: 14px;
+    padding: 14px 12px;
+    min-width: 64px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .group-badge .unit { font-size: 13px; font-family: 'Noto Sans KR', sans-serif; font-weight: 700; display: block; margin-top: 2px; }
+  .group-badge.is-label {
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 15px;
+    padding: 12px 10px;
+    max-width: 92px;
+    line-height: 1.3;
+    word-break: keep-all;
+  }
+  .result-name { font-size: 20px; font-weight: 800; margin: 0 0 3px; }
+  .result-meta { font-size: 13.5px; color: var(--text-muted); }
+
+  .badge-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .chip {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--chip-bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .chip.ai {
+    background: var(--highlight-bg);
+    color: var(--highlight-text);
+    border-color: var(--highlight-border);
+  }
+
+  .tablemates-toggle {
+    width: 100%;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--accent-strong);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-soft-border);
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .tablemates-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chevron { transition: transform 0.15s ease; }
+  .chevron.open { transform: rotate(180deg); }
+
+  .tablemates {
+    display: none;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  .tablemates.open { display: block; }
+  .tm-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 2px;
+    font-size: 13.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tm-row:last-child { border-bottom: none; }
+  .tm-name { font-weight: 600; }
+  .tm-name.me { color: var(--accent-strong); }
+  .tm-meta { color: var(--text-muted); }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--accent);
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  .expand-all-btn {
+    display: block;
+    margin: 0 0 10px auto;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent-strong);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+  .expand-all-btn:hover { background: var(--accent-soft); border-color: var(--accent-soft-border); }
+  .expand-all-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .all-groups { display: flex; flex-direction: column; gap: 8px; }
+  .g-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .g-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .g-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .g-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--accent-strong);
+    background: var(--accent-soft);
+    border-radius: 8px;
+    padding: 4px 9px;
+    font-variant-numeric: tabular-nums;
+  }
+  .g-count { font-size: 12px; color: var(--text-muted); margin-left: auto; margin-right: 4px; }
+  .g-body { display: none; padding: 0 14px 12px; }
+  .g-body.open { display: block; }
+  .g-member {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13.5px;
+    border-top: 1px solid var(--border);
+  }
+  .g-member-name { font-weight: 600; }
+  .g-member-meta { color: var(--text-muted); }
+
+  /* ---- Program tab: BDO brand design (per company reference page) ---- */
+  .program-brand {
+    --p-red: #ED1A3B;
+    --p-red-ink: #C81330;
+    --p-ink: #2B2A28;
+    --p-paper: #FBF9F7;
+    --p-panel: #FFFFFF;
+    --p-line: #E6E1DC;
+    --p-tint: #FCEDEE;
+    --p-tint-line: #F2B9C2;
+    --p-muted: #8C8680;
+    --p-header-bg: #24211D;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .program-brand {
+      --p-red: #FF4560;
+      --p-red-ink: #FF7188;
+      --p-ink: #ECE7E1;
+      --p-paper: #1D1B1A;
+      --p-panel: #252220;
+      --p-line: #3B3633;
+      --p-tint: rgba(255, 69, 96, 0.12);
+      --p-tint-line: rgba(255, 69, 96, 0.35);
+      --p-muted: #A79F96;
+      --p-header-bg: #100F0D;
+    }
+  }
+  :root[data-theme="dark"] .program-brand {
+    --p-red: #FF4560;
+    --p-red-ink: #FF7188;
+    --p-ink: #ECE7E1;
+    --p-paper: #1D1B1A;
+    --p-panel: #252220;
+    --p-line: #3B3633;
+    --p-tint: rgba(255, 69, 96, 0.12);
+    --p-tint-line: rgba(255, 69, 96, 0.35);
+    --p-muted: #A79F96;
+    --p-header-bg: #100F0D;
+  }
+
+  .program-hero {
+    background: var(--p-header-bg);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .program-hero-content { padding: 22px 20px; color: #fff; }
+  .program-eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin: 0 0 4px;
+  }
+  .program-hero-title {
+    font-size: 19px;
+    font-weight: 800;
+    line-height: 1.3;
+    margin: 0 0 8px;
+    text-wrap: balance;
+  }
+  .program-hero-date {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 500;
+    opacity: 0.85;
+    margin: 0;
+  }
+
+  .program-section-head {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .program-day-grid { display: flex; flex-direction: column; gap: 16px; }
+  .program-day-card {
+    background: var(--p-panel);
+    border: 1px solid var(--p-line);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .program-day-card-head {
+    background: var(--p-red);
+    color: #fff;
+    padding: 10px 14px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .program-day-name { font-weight: 700; font-size: 14px; }
+  .program-day-date { font-family: 'IBM Plex Mono', monospace; font-size: 12px; opacity: 0.9; }
+
+  .program-schedule { width: 100%; border-collapse: collapse; color: var(--p-ink); }
+  .program-schedule tr { border-bottom: 1px solid var(--p-line); }
+  .program-schedule tr:last-child { border-bottom: none; }
+  .program-schedule td { padding: 8px 12px; vertical-align: middle; font-size: 12px; line-height: 1.5; }
+  .program-schedule td.time {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    font-size: 11.5px;
+    color: var(--p-muted);
+    white-space: nowrap;
+    width: 1%;
+    padding-right: 8px;
+  }
+  .program-schedule td.content { font-weight: 600; }
+  .program-schedule td.note { color: var(--p-muted); font-size: 11.5px; width: 32%; }
+  .program-schedule .sub {
+    display: block;
+    font-weight: 400;
+    color: var(--p-muted);
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  .program-schedule tr.plain td { color: var(--p-muted); }
+  .program-schedule tr.plain td.content { font-weight: 500; }
+  .program-schedule tr.alert td {
+    padding: 7px 12px;
+    border-top: 1px solid var(--p-tint-line);
+    border-bottom: 1px solid var(--p-tint-line);
+    background: var(--p-tint);
+  }
+  .program-schedule tr.alert .alert-text { color: var(--p-red-ink); font-weight: 700; font-size: 11.5px; }
+
+  .lineup-card {
+    background: var(--p-panel);
+    border: 1px solid var(--p-line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    margin-bottom: 14px;
+  }
+  .lineup-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 11px 14px 8px;
+  }
+  .lineup-card-head .name { font-weight: 700; font-size: 13px; color: var(--p-ink); }
+  .lineup-card-head .when { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--p-red-ink); white-space: nowrap; }
+  table.lineup { width: 100%; border-collapse: collapse; color: var(--p-ink); }
+  table.lineup tr { border-top: 1px solid var(--p-line); }
+  table.lineup td { padding: 7px 14px; font-size: 11.5px; vertical-align: top; }
+  table.lineup td.dept { color: var(--p-muted); font-size: 11px; white-space: nowrap; width: 1%; padding-right: 8px; }
+  table.lineup td.speaker { font-weight: 700; white-space: nowrap; width: 1%; padding-right: 8px; }
+  table.lineup td.topic { line-height: 1.45; }
+  table.lineup td.dur { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--p-red-ink); text-align: right; white-space: nowrap; width: 1%; }
+
+  .feature-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+  .feature-card { background: var(--p-panel); border: 1px solid var(--p-line); box-shadow: var(--shadow); border-radius: 10px; padding: 13px 15px; }
+  .feature-card .name { font-family: 'IBM Plex Sans KR', sans-serif; font-weight: 800; font-size: 14px; margin: 0 0 5px; color: var(--p-ink); }
+  .feature-card .when { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--p-red-ink); font-weight: 600; margin: 0 0 8px; }
+  .feature-card .speaker { font-size: 12px; font-weight: 700; margin: 0 0 2px; color: var(--p-ink); }
+  .feature-card .topic { font-size: 11.5px; color: var(--p-muted); line-height: 1.5; margin: 0; }
+
+  .admin-toggle-row {
+    margin-top: 24px;
+    text-align: center;
+  }
+  .admin-link {
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    opacity: 0.7;
+    cursor: pointer;
+    padding: 6px;
+  }
+  .admin-link:hover { opacity: 1; text-decoration: underline; }
+  .admin-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .admin-panel {
+    margin-top: 12px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .admin-title {
+    font-size: 14px;
+    font-weight: 800;
+    margin: 0 0 4px;
+  }
+  .admin-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin: 0 0 14px;
+  }
+  .admin-field { margin-bottom: 12px; }
+  .admin-field label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .admin-panel input[type="file"] {
+    width: 100%;
+    font-family: inherit;
+    font-size: 12.5px;
+    color: var(--text);
+  }
+  .admin-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  .admin-btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  .admin-btn {
+    flex: 1;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface-alt);
+    color: var(--text);
+  }
+  .admin-btn.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .admin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .admin-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .admin-status {
+    margin-top: 10px;
+    font-size: 12.5px;
+    padding: 9px 11px;
+    border-radius: 9px;
+    display: none;
+  }
+  .admin-status.show { display: block; }
+  .admin-status.info { background: var(--accent-soft); color: var(--accent-strong); }
+  .admin-status.error { background: #fbe4e1; color: #9c2b1f; }
+  .admin-status.success { background: #e2f3e6; color: #216534; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .admin-status.error { background: #3a1f1c; color: #ff9b8a; }
+    :root:not([data-theme="light"]) .admin-status.success { background: #163524; color: #7fdba0; }
+  }
+  :root[data-theme="dark"] .admin-status.error { background: #3a1f1c; color: #ff9b8a; }
+  :root[data-theme="dark"] .admin-status.success { background: #163524; color: #7fdba0; }
+
+  .admin-preview {
+    display: none;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+    font-size: 12.5px;
+  }
+  .admin-preview.show { display: block; }
+  .admin-preview .pv-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+  }
+  .admin-preview .pv-label { color: var(--text-muted); }
+  .admin-preview .pv-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .admin-preview .pv-names {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin: 2px 0 8px;
+    word-break: keep-all;
+  }
+  .admin-preview .pv-warn {
+    background: var(--highlight-bg);
+    color: var(--highlight-text);
+    border: 1px solid var(--highlight-border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+  .admin-sizes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+  }
+  .admin-sizes span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    background: var(--chip-bg);
+    border-radius: 6px;
+    padding: 2px 6px;
+  }
+  .admin-sizes span.warn { background: var(--highlight-bg); color: var(--highlight-text); }
+</style>
+
+<!--BODY_START-->
+<div class="wrap">
+  <div class="eyebrow">2026 AI Workshop</div>
+  <h1 id="mainTitle">내 조 찾기</h1>
+  <p class="sub" id="mainSub">이름을 검색하면 배정된 조를 바로 확인할 수 있습니다.</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab-btn" id="tabProgramBtn" role="tab" aria-selected="false">Program</button>
+    <button class="tab-btn active" id="tabGhBtn" role="tab" aria-selected="true">Grand Hall</button>
+    <button class="tab-btn" id="tabDnBtn" role="tab" aria-selected="false">석식</button>
+  </div>
+
+  <section class="panel" id="panelProgram">
+    <div id="programBody" class="program-brand"></div>
+  </section>
+
+  <section class="panel active" id="panelGh">
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active" id="subSearchGhBtn" role="tab" aria-selected="true">이름으로 찾기</button>
+      <button class="tab-btn" id="subAllGhBtn" role="tab" aria-selected="false">전체 조 보기</button>
+    </div>
+
+    <section class="panel active" id="subPanelSearchGh">
+      <div class="search-box">
+        <input type="text" id="searchInputGh" placeholder="이름을 입력하세요" autocomplete="off" inputmode="search" />
+      </div>
+
+      <div class="match-list" id="matchListGh"></div>
+      <p class="empty-hint" id="emptyHintGh">이름을 입력하면 후보가 표시됩니다. 동명이인이 있으면 목록에서 본부를 확인하고 선택하세요.</p>
+
+      <div class="result-card" id="resultCardGh">
+        <span class="back-link" id="backLinkGh">‹ 다시 검색</span>
+        <div class="result-top">
+          <div class="group-badge"><span id="rGroupGh">-</span><span class="unit">조</span></div>
+          <div>
+            <p class="result-name" id="rNameGh">-</p>
+            <p class="result-meta" id="rMetaGh">-</p>
+          </div>
+        </div>
+        <div class="badge-row" id="rBadgesGh"></div>
+        <button class="tablemates-toggle" id="tmToggleGh">
+          같은 조 명단 보기 <span class="chevron" id="tmChevronGh">⌄</span>
+        </button>
+        <div class="tablemates" id="tmListGh"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="subPanelAllGh">
+      <button class="expand-all-btn" id="expandAllBtnGh" type="button">전체 열기</button>
+      <div class="all-groups" id="allGroupsGh"></div>
+    </section>
+  </section>
+
+  <section class="panel" id="panelDn">
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active" id="subSearchDnBtn" role="tab" aria-selected="true">이름으로 찾기</button>
+      <button class="tab-btn" id="subAllDnBtn" role="tab" aria-selected="false">전체 조 보기</button>
+    </div>
+
+    <section class="panel active" id="subPanelSearchDn">
+      <div class="search-box">
+        <input type="text" id="searchInputDn" placeholder="이름을 입력하세요" autocomplete="off" inputmode="search" />
+      </div>
+
+      <div class="match-list" id="matchListDn"></div>
+      <p class="empty-hint" id="emptyHintDn">이름을 입력하면 후보가 표시됩니다. 동명이인이 있으면 목록에서 본부를 확인하고 선택하세요.</p>
+
+      <div class="result-card" id="resultCardDn">
+        <span class="back-link" id="backLinkDn">‹ 다시 검색</span>
+        <div class="result-top">
+          <div class="group-badge"><span id="rGroupDn">-</span><span class="unit">조</span></div>
+          <div>
+            <p class="result-name" id="rNameDn">-</p>
+            <p class="result-meta" id="rMetaDn">-</p>
+          </div>
+        </div>
+        <div class="badge-row" id="rBadgesDn"></div>
+        <button class="tablemates-toggle" id="tmToggleDn">
+          같은 조 명단 보기 <span class="chevron" id="tmChevronDn">⌄</span>
+        </button>
+        <div class="tablemates" id="tmListDn"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="subPanelAllDn">
+      <button class="expand-all-btn" id="expandAllBtnDn" type="button">전체 열기</button>
+      <div class="all-groups" id="allGroupsDn"></div>
+    </section>
+  </section>
+
+  <div class="admin-toggle-row">
+    <button class="admin-link" id="adminLinkBtn" type="button">관리자</button>
+  </div>
+
+  <section class="admin-panel" id="adminPanel" hidden>
+    <p class="admin-title">참석자 명단 갱신</p>
+    <p class="admin-desc">
+      원본 워크숍 엑셀 파일(3.참석명단 · 3.1사용자 · 1.스케줄 시트 포함)을 올리면, Grand Hall 조배정과 석식(BBQ) 조배정을
+      각각 기존 배정을 최대한 유지하면서 빠진 인원만 빼고 새 인원만 채워 넣고, 프로그램(일정) 탭도 함께 갱신합니다.
+      미리보기로 결과를 확인한 뒤 게시해 주세요.
+    </p>
+    <div class="admin-field">
+      <label for="xlsxInput">엑셀 파일(.xlsx)</label>
+      <input type="file" id="xlsxInput" accept=".xlsx" />
+    </div>
+    <div class="admin-field">
+      <label class="admin-check">
+        <input type="checkbox" id="forceFreshCheck" />
+        기존 조배정을 무시하고 처음부터 새로 배정
+      </label>
+    </div>
+    <div class="admin-btn-row">
+      <button class="admin-btn" id="previewBtn" type="button">미리보기</button>
+      <button class="admin-btn primary" id="publishBtn" type="button" disabled>게시하기</button>
+    </div>
+    <div class="admin-status" id="adminStatus"></div>
+    <div class="admin-preview" id="adminPreview">
+      <div class="pv-row"><span class="pv-label">유지된 인원</span><span class="pv-val" id="pvKept">-</span></div>
+      <div class="pv-row"><span class="pv-label">신규 인원</span><span class="pv-val" id="pvAdded">-</span></div>
+      <div class="pv-row"><span class="pv-label">제외된 인원</span><span class="pv-val" id="pvRemoved">-</span></div>
+      <p class="pv-names" id="pvAddedNames"></p>
+      <p class="pv-names" id="pvRemovedNames"></p>
+      <div class="pv-row"><span class="pv-label">Grand Hall 조 수</span><span class="pv-val" id="pvGroupCount">-</span></div>
+      <div class="admin-sizes" id="pvSizes"></div>
+      <div class="pv-row" style="margin-top:10px;"><span class="pv-label">석식(BBQ) 조 수</span><span class="pv-val" id="pvDinnerGroupCount">-</span></div>
+      <div class="admin-sizes" id="pvDinnerSizes"></div>
+      <div class="pv-row"><span class="pv-label">프로그램(일정)</span><span class="pv-val" id="pvProgram">-</span></div>
+      <div id="pvWarnings"></div>
+    </div>
+  </section>
+</div>
+<!--BODY_END-->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  const META = %%META_JSON%%;
+  const PEOPLE = %%PEOPLE_JSON%%;
+  const PROGRAM = %%PROGRAM_JSON%%;
+  const DINNER = %%DINNER_JSON%%;
+  const RAW_TEMPLATE = %%SELF_JSON%%;
+
+  // ---- build group index (Grand Hall = PEOPLE, 석식/BBQ = DINNER) ----
+  const groups = {};
+  PEOPLE.forEach(p => {
+    if (!groups[p.group]) groups[p.group] = [];
+    groups[p.group].push(p);
+  });
+  const groupNums = Object.keys(groups).map(Number).sort((a,b) => a-b);
+
+  const dinnerGroups = {};
+  DINNER.forEach(p => {
+    if (!dinnerGroups[p.group]) dinnerGroups[p.group] = [];
+    dinnerGroups[p.group].push(p);
+  });
+  const dinnerGroupNums = Object.keys(dinnerGroups).map(Number).sort((a,b) => a-b);
+
+  const norm = s => (s || '').trim();
+
+  // ---- top-level tabs: Program / Grand Hall / 석식 ----
+  const tabProgramBtn = document.getElementById('tabProgramBtn');
+  const tabGhBtn = document.getElementById('tabGhBtn');
+  const tabDnBtn = document.getElementById('tabDnBtn');
+  const panelProgram = document.getElementById('panelProgram');
+  const panelGh = document.getElementById('panelGh');
+  const panelDn = document.getElementById('panelDn');
+  const mainTitle = document.getElementById('mainTitle');
+  const mainSub = document.getElementById('mainSub');
+  function showTopTab(which) {
+    const isProgram = which === 'program';
+    const isGh = which === 'gh';
+    const isDn = which === 'dn';
+    panelProgram.classList.toggle('active', isProgram);
+    panelGh.classList.toggle('active', isGh);
+    panelDn.classList.toggle('active', isDn);
+    tabProgramBtn.classList.toggle('active', isProgram);
+    tabGhBtn.classList.toggle('active', isGh);
+    tabDnBtn.classList.toggle('active', isDn);
+    tabProgramBtn.setAttribute('aria-selected', isProgram);
+    tabGhBtn.setAttribute('aria-selected', isGh);
+    tabDnBtn.setAttribute('aria-selected', isDn);
+    if (isProgram) {
+      mainTitle.textContent = 'Program';
+      mainSub.style.display = 'none';
+    } else {
+      mainTitle.textContent = '내 조 찾기';
+      mainSub.style.display = '';
+      mainSub.textContent = '이름을 검색하면 배정된 조를 바로 확인할 수 있습니다.';
+    }
+  }
+  tabProgramBtn.addEventListener('click', () => showTopTab('program'));
+  tabGhBtn.addEventListener('click', () => showTopTab('gh'));
+  tabDnBtn.addEventListener('click', () => showTopTab('dn'));
+
+  // ---- nested sub-tabs (이름으로 찾기 / 전체 조 보기), reused for Grand Hall and 석식 ----
+  function wireSubTabs(searchBtn, allBtn, searchPanel, allPanel) {
+    function set(isSearch) {
+      searchPanel.classList.toggle('active', isSearch);
+      allPanel.classList.toggle('active', !isSearch);
+      searchBtn.classList.toggle('active', isSearch);
+      allBtn.classList.toggle('active', !isSearch);
+      searchBtn.setAttribute('aria-selected', isSearch);
+      allBtn.setAttribute('aria-selected', !isSearch);
+    }
+    searchBtn.addEventListener('click', () => set(true));
+    allBtn.addEventListener('click', () => set(false));
+  }
+  wireSubTabs(
+    document.getElementById('subSearchGhBtn'), document.getElementById('subAllGhBtn'),
+    document.getElementById('subPanelSearchGh'), document.getElementById('subPanelAllGh')
+  );
+  wireSubTabs(
+    document.getElementById('subSearchDnBtn'), document.getElementById('subAllDnBtn'),
+    document.getElementById('subPanelSearchDn'), document.getElementById('subPanelAllDn')
+  );
+
+  // ---- program (schedule) view ----
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function splitSubLine(s) {
+    if (!s) return { main: '', sub: '' };
+    const idx = s.indexOf('\n');
+    if (idx === -1) return { main: s, sub: '' };
+    return { main: s.slice(0, idx), sub: s.slice(idx + 1) };
+  }
+
+  function renderProgram() {
+    const body = document.getElementById('programBody');
+    if (!PROGRAM || !PROGRAM.days || !PROGRAM.days.length) {
+      body.innerHTML = '<p class="empty-hint">등록된 프로그램 일정이 없습니다.</p>';
+      return;
+    }
+    const yearMatch = (PROGRAM.dateRange || '').match(/\d{4}/);
+    const eyebrow = yearMatch ? yearMatch[0] : '';
+
+    let html = '<div class="program-hero"><div class="program-hero-content">';
+    if (eyebrow) html += '<p class="program-eyebrow">' + escHtml(eyebrow) + '</p>';
+    if (PROGRAM.title) html += '<h2 class="program-hero-title">' + escHtml(PROGRAM.title) + '</h2>';
+    if (PROGRAM.dateRange) html += '<p class="program-hero-date">' + escHtml(PROGRAM.dateRange) + '</p>';
+    html += '</div></div>';
+
+    html += '<h3 class="program-section-head">일정 안내</h3>';
+    html += '<div class="program-day-grid">';
+    PROGRAM.days.forEach(day => {
+      if (!day.rows || !day.rows.length) return;
+      const parts = (day.label || '').split(/\s{2,}/).filter(Boolean);
+      const dayName = parts[0] || day.label || '';
+      const dayDate = parts.length > 1 ? parts[parts.length - 1] : '';
+      html += '<div class="program-day-card">';
+      html += '<div class="program-day-card-head"><span class="program-day-name">' + escHtml(dayName) + '</span><span class="program-day-date">' + escHtml(dayDate) + '</span></div>';
+      html += '<table class="program-schedule">';
+      day.rows.forEach(row => {
+        const noteOnly = !row.time;
+        if (noteOnly) {
+          html += '<tr class="alert"><td colspan="3"><span class="alert-text">' + escHtml(row.content) + '</span></td></tr>';
+          return;
+        }
+        const c = splitSubLine(row.content);
+        const n = splitSubLine(row.note);
+        const isPlain = /^break time/i.test(c.main.trim());
+        html += '<tr' + (isPlain ? ' class="plain"' : '') + '>';
+        html += '<td class="time">' + escHtml(row.time) + '</td>';
+        html += '<td class="content">' + escHtml(c.main) + (c.sub ? '<span class="sub">' + escHtml(c.sub) + '</span>' : '') + '</td>';
+        html += '<td class="note">' + escHtml(n.main) + (n.sub ? '<span class="sub">' + escHtml(n.sub) + '</span>' : '') + '</td>';
+        html += '</tr>';
+      });
+      html += '</table></div>';
+    });
+    html += '</div>';
+
+    html += renderLineup(PROGRAM.lineup);
+    body.innerHTML = html;
+  }
+
+  function renderLineup(lineupGroups) {
+    if (!lineupGroups || !lineupGroups.length) return '';
+    const multi = lineupGroups.filter(g => g.items.length > 1);
+    const single = lineupGroups.filter(g => g.items.length === 1);
+    let html = '<h3 class="program-section-head">AI Workshop 세부 프로그램</h3>';
+    multi.forEach(g => {
+      html += '<div class="lineup-card"><div class="lineup-card-head"><span class="name">' + escHtml(g.category) + '</span></div>';
+      html += '<table class="lineup">';
+      g.items.forEach(it => {
+        html += '<tr>'
+          + '<td class="speaker">' + escHtml(it.speaker) + '</td>'
+          + '<td class="dept">' + escHtml(it.dept) + '</td>'
+          + '<td class="topic">' + escHtml(it.topic) + '</td>'
+          + '</tr>';
+      });
+      html += '</table></div>';
+    });
+    if (single.length) {
+      // Order single-speaker sessions to match when they actually happen in the
+      // schedule (the lecture-lineup sheet's own row order doesn't always match).
+      const flatRows = [];
+      (PROGRAM.days || []).forEach(day => (day.rows || []).forEach(row => flatRows.push(row.content || '')));
+      const scheduleIndex = cat => {
+        const idx = flatRows.findIndex(c => c.indexOf(cat) !== -1);
+        return idx === -1 ? Infinity : idx;
+      };
+      const singleOrdered = single.slice().sort((a, b) => scheduleIndex(a.category) - scheduleIndex(b.category));
+      html += '<div class="feature-grid">';
+      singleOrdered.forEach(g => {
+        const it = g.items[0];
+        html += '<div class="feature-card">'
+          + '<p class="name">' + escHtml(g.category) + '</p>'
+          + '<p class="speaker">' + escHtml((it.dept + ' ' + it.speaker).trim()) + '</p>'
+          + (it.topic ? '<p class="topic">' + escHtml(it.topic) + '</p>' : '')
+          + '</div>';
+      });
+      html += '</div>';
+    }
+    return html;
+  }
+  renderProgram();
+
+  // ---- search + all-groups view, reused for Grand Hall (PEOPLE) and 석식 (DINNER) ----
+  function createGroupView(people, groupsLocal, groupNumsLocal, ids) {
+    const searchInput = document.getElementById(ids.searchInput);
+    const matchList = document.getElementById(ids.matchList);
+    const emptyHint = document.getElementById(ids.emptyHint);
+    const resultCard = document.getElementById(ids.resultCard);
+    const backLink = document.getElementById(ids.backLink);
+    const rGroup = document.getElementById(ids.rGroup);
+    const rName = document.getElementById(ids.rName);
+    const rMeta = document.getElementById(ids.rMeta);
+    const rBadges = document.getElementById(ids.rBadges);
+    const tmList = document.getElementById(ids.tmList);
+    const tmToggle = document.getElementById(ids.tmToggle);
+    const tmChevron = document.getElementById(ids.tmChevron);
+    const allGroupsEl = document.getElementById(ids.allGroupsEl);
+    const expandAllBtn = document.getElementById(ids.expandAllBtn);
+
+    function renderMatches(q) {
+      matchList.innerHTML = '';
+      resultCard.classList.remove('active');
+      const query = norm(q);
+      if (!query) {
+        emptyHint.style.display = 'block';
+        emptyHint.textContent = '이름을 입력하면 후보가 표시됩니다. 동명이인이 있으면 목록에서 본부를 확인하고 선택하세요.';
+        return;
+      }
+      const hits = people.filter(p => p.name.includes(query));
+      if (hits.length === 0) {
+        emptyHint.style.display = 'block';
+        emptyHint.textContent = '"' + query + '" 이름을 찾을 수 없습니다. 철자를 확인해 주세요.';
+        return;
+      }
+      emptyHint.style.display = 'none';
+      if (hits.length === 1) {
+        showResult(hits[0]);
+        return;
+      }
+      hits.forEach(p => {
+        const row = document.createElement('button');
+        row.className = 'match-row';
+        row.type = 'button';
+        row.innerHTML = '<span><span class="match-name">' + p.name + '</span> &nbsp;'
+          + '<span class="match-meta">' + p.pos + ' · ' + p.hub + '</span></span>'
+          + '<span class="match-arrow">' + (p.groupLabel || (p.group + '조')) + ' ›</span>';
+        row.addEventListener('click', () => showResult(p));
+        matchList.appendChild(row);
+      });
+    }
+
+    function showResult(p) {
+      matchList.innerHTML = '';
+      emptyHint.style.display = 'none';
+      const badge = rGroup.parentElement;
+      const unitEl = badge ? badge.querySelector('.unit') : null;
+      if (p.groupLabel) {
+        rGroup.textContent = p.groupLabel;
+        if (badge) badge.classList.add('is-label');
+        if (unitEl) unitEl.style.display = 'none';
+      } else {
+        rGroup.textContent = p.group;
+        if (badge) badge.classList.remove('is-label');
+        if (unitEl) unitEl.style.display = '';
+      }
+      rName.textContent = p.name;
+      rMeta.textContent = p.pos + ' · ' + p.hub;
+      rBadges.innerHTML = '';
+      const posChip = document.createElement('span');
+      posChip.className = 'chip';
+      posChip.textContent = p.groupSize + '명 테이블';
+      rBadges.appendChild(posChip);
+      if (p.ai) {
+        const aiChip = document.createElement('span');
+        aiChip.className = 'chip ai';
+        aiChip.textContent = '★ AI 활용 유경험자';
+        rBadges.appendChild(aiChip);
+      }
+      tmList.innerHTML = '';
+      tmList.classList.remove('open');
+      tmChevron.classList.remove('open');
+      tmToggle.firstChild.textContent = '같은 조 명단 보기 ';
+      groupsLocal[p.group].forEach(m => {
+        const row = document.createElement('div');
+        row.className = 'tm-row';
+        const nameSpan = m.name === p.name ? '<span class="tm-name me">' + m.name + ' (나)</span>' : '<span class="tm-name">' + m.name + '</span>';
+        row.innerHTML = nameSpan + '<span class="tm-meta">' + m.pos + ' · ' + m.hub + '</span>';
+        tmList.appendChild(row);
+      });
+      resultCard.classList.add('active');
+    }
+
+    tmToggle.addEventListener('click', () => {
+      const open = tmList.classList.toggle('open');
+      tmChevron.classList.toggle('open', open);
+    });
+
+    backLink.addEventListener('click', () => {
+      resultCard.classList.remove('active');
+      searchInput.value = '';
+      searchInput.focus();
+      renderMatches('');
+    });
+
+    searchInput.addEventListener('input', e => renderMatches(e.target.value));
+
+    // ---- all groups view ----
+    const allBodies = [];
+    groupNumsLocal.forEach(gn => {
+      const members = groupsLocal[gn];
+      const card = document.createElement('div');
+      card.className = 'g-card';
+      const head = document.createElement('button');
+      head.className = 'g-head';
+      head.type = 'button';
+      const label = members[0] && members[0].groupLabel;
+      head.innerHTML = '<span class="g-num">' + (label || (gn + '조')) + '</span><span class="g-count">' + members.length + '명</span><span class="chevron">⌄</span>';
+      const body = document.createElement('div');
+      body.className = 'g-body';
+      members.forEach(m => {
+        const row = document.createElement('div');
+        row.className = 'g-member';
+        row.innerHTML = '<span class="g-member-name">' + m.name + (m.ai ? ' <span style="color:var(--highlight-text)">★</span>' : '') + '</span>'
+          + '<span class="g-member-meta">' + m.pos + ' · ' + m.hub + '</span>';
+        body.appendChild(row);
+      });
+      head.addEventListener('click', () => {
+        body.classList.toggle('open');
+        head.querySelector('.chevron').classList.toggle('open');
+        syncExpandAllLabel();
+      });
+      card.appendChild(head);
+      card.appendChild(body);
+      allGroupsEl.appendChild(card);
+      allBodies.push({ head, body });
+    });
+
+    function syncExpandAllLabel() {
+      const allOpen = allBodies.every(({ body }) => body.classList.contains('open'));
+      expandAllBtn.textContent = allOpen ? '전체 닫기' : '전체 열기';
+    }
+
+    expandAllBtn.addEventListener('click', () => {
+      const shouldOpen = expandAllBtn.textContent === '전체 열기';
+      allBodies.forEach(({ head, body }) => {
+        body.classList.toggle('open', shouldOpen);
+        head.querySelector('.chevron').classList.toggle('open', shouldOpen);
+      });
+      expandAllBtn.textContent = shouldOpen ? '전체 닫기' : '전체 열기';
+    });
+
+    return { renderMatches, showResult, searchInput };
+  }
+
+  const ghView = createGroupView(PEOPLE, groups, groupNums, {
+    searchInput: 'searchInputGh', matchList: 'matchListGh', emptyHint: 'emptyHintGh',
+    resultCard: 'resultCardGh', backLink: 'backLinkGh', rGroup: 'rGroupGh', rName: 'rNameGh',
+    rMeta: 'rMetaGh', rBadges: 'rBadgesGh', tmList: 'tmListGh', tmToggle: 'tmToggleGh',
+    tmChevron: 'tmChevronGh', allGroupsEl: 'allGroupsGh', expandAllBtn: 'expandAllBtnGh',
+  });
+  const dnView = createGroupView(DINNER, dinnerGroups, dinnerGroupNums, {
+    searchInput: 'searchInputDn', matchList: 'matchListDn', emptyHint: 'emptyHintDn',
+    resultCard: 'resultCardDn', backLink: 'backLinkDn', rGroup: 'rGroupDn', rName: 'rNameDn',
+    rMeta: 'rMetaDn', rBadges: 'rBadgesDn', tmList: 'tmListDn', tmToggle: 'tmToggleDn',
+    tmChevron: 'tmChevronDn', allGroupsEl: 'allGroupsDn', expandAllBtn: 'expandAllBtnDn',
+  });
+
+  // ---- deep link via ?n= (search a name, Grand Hall) / ?view=program / ?view=dinner ----
+  showTopTab('gh');
+  const params = new URLSearchParams(window.location.search);
+  const preset = params.get('n');
+  const presetView = params.get('view');
+  if (preset) {
+    const hit = PEOPLE.find(p => p.name === preset);
+    if (hit) {
+      ghView.showResult(hit);
+    } else {
+      ghView.searchInput.value = preset;
+      ghView.renderMatches(preset);
+    }
+  } else if (presetView === 'program') {
+    showTopTab('program');
+  } else if (presetView === 'dinner') {
+    showTopTab('dn');
+  }
+
+  // =====================================================================
+  // Group-assignment engine (mixing + sticky-diff placement for updates)
+  // =====================================================================
+  const TIER = {
+    '파트너': 1, '전무': 1,
+    '상무': 2, '이사': 2,
+    'MANAGER': 3,
+    'SENIOR': 4,
+    'ASSOCIATE': 5, '컨설턴트': 5,
+  };
+  function classifyTier(pos) {
+    const p = (pos || '').trim();
+    if (TIER[p] !== undefined) return TIER[p];
+    const upper = p.toUpperCase();
+    if (TIER[upper] !== undefined) return TIER[upper];
+    return 6;
+  }
+
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function shuffleArr(arr, rng) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function buildAiMatcher(aiNames) {
+    const exact = new Set(aiNames);
+    const strippedToExact = new Set();
+    aiNames.forEach(n => {
+      const stripped = n.replace(/\d+$/, '');
+      if (stripped !== n) strippedToExact.add(stripped);
+    });
+    return function isAi(name) {
+      if (exact.has(name)) return true;
+      const stripped = name.replace(/\d+$/, '');
+      if (stripped !== name && exact.has(stripped)) return true;
+      if (strippedToExact.has(name)) return true;
+      return false;
+    };
+  }
+
+  function computeGroupCount(total) {
+    if (total <= 0) return 0;
+    if (total <= 8) return 1;
+    const upperBound = Math.ceil(total / 6) + 1;
+    for (let T = Math.ceil(total / 8); T <= upperBound; T++) {
+      if (7 * T <= total && total <= 8 * T) return T;
+    }
+    return Math.max(1, Math.round(total / 7.5));
+  }
+
+  function splitCapacities(total, nGroups) {
+    if (nGroups <= 0) return [];
+    const base = Math.floor(total / nGroups);
+    const remainder = total - base * nGroups;
+    const caps = new Array(nGroups).fill(base);
+    if (remainder > 0) {
+      const step = nGroups / remainder;
+      const bigIdx = new Set();
+      for (let k = 0; k < remainder; k++) {
+        bigIdx.add(Math.min(nGroups - 1, Math.round(k * step + step / 2)));
+      }
+      let idx = 0;
+      while (bigIdx.size < remainder) {
+        if (!bigIdx.has(idx)) bigIdx.add(idx);
+        idx++;
+      }
+      bigIdx.forEach(i => { caps[i] = base + 1; });
+    }
+    return caps;
+  }
+
+  function interleaveByHub(people, rng) {
+    const byHub = new Map();
+    people.forEach(p => {
+      if (!byHub.has(p.hub)) byHub.set(p.hub, []);
+      byHub.get(p.hub).push(p);
+    });
+    const hubs = shuffleArr([...byHub.keys()], rng);
+    hubs.forEach(h => {
+      const list = byHub.get(h);
+      const ai = shuffleArr(list.filter(p => p.ai), rng);
+      const non = shuffleArr(list.filter(p => !p.ai), rng);
+      const merged = [];
+      while (ai.length || non.length) {
+        if (ai.length) merged.push(ai.pop());
+        if (non.length) merged.push(non.pop());
+      }
+      byHub.set(h, merged);
+    });
+    const seq = [];
+    let remaining = true;
+    while (remaining) {
+      remaining = false;
+      for (const h of hubs) {
+        const list = byHub.get(h);
+        if (list.length) { seq.push(list.shift()); remaining = true; }
+      }
+    }
+    return seq;
+  }
+
+  function freshAssign(attendees, seed) {
+    const rng = makeRng(seed || 42);
+    const total = attendees.length;
+    const nGroups = computeGroupCount(total);
+    if (nGroups === 0) return [];
+    const caps = splitCapacities(total, nGroups);
+    const groupsArr = Array.from({ length: nGroups }, () => []);
+    const tiers = [...new Set(attendees.map(a => classifyTier(a.pos)))].sort((a, b) => a - b);
+    let sequence = [];
+    tiers.forEach(t => {
+      const tierPeople = attendees.filter(a => classifyTier(a.pos) === t);
+      sequence = sequence.concat(interleaveByHub(tierPeople, rng));
+    });
+    let gi = 0;
+    sequence.forEach(p => {
+      let tries = 0;
+      while (groupsArr[gi].length >= caps[gi]) {
+        gi = (gi + 1) % nGroups;
+        tries++;
+        if (tries > nGroups) throw new Error('no space');
+      }
+      groupsArr[gi].push(p);
+      gi = (gi + 1) % nGroups;
+    });
+    return groupsArr;
+  }
+
+  function balanceAi(groupsArr, maxIter) {
+    maxIter = maxIter || 500;
+    for (let it = 0; it < maxIter; it++) {
+      const counts = groupsArr.map(g => g.filter(p => p.ai).length);
+      const mx = Math.max(...counts), mn = Math.min(...counts);
+      if (mx - mn <= 1) break;
+      const giMax = counts.indexOf(mx), giMin = counts.indexOf(mn);
+      const aiCands = groupsArr[giMax].filter(p => p.ai);
+      const nonCands = groupsArr[giMin].filter(p => !p.ai);
+      if (!aiCands.length || !nonCands.length) break;
+      let best = null;
+      for (const ap of aiCands) {
+        for (const np of nonCands) {
+          if (classifyTier(ap.pos) === classifyTier(np.pos)) { best = [ap, np]; break; }
+        }
+        if (best) break;
+      }
+      if (!best) best = [aiCands[0], nonCands[0]];
+      const [ap, np] = best;
+      groupsArr[giMax] = groupsArr[giMax].filter(p => p !== ap).concat([np]);
+      groupsArr[giMin] = groupsArr[giMin].filter(p => p !== np).concat([ap]);
+    }
+    return groupsArr;
+  }
+
+  function balanceHub(groupsArr, cap, maxIter) {
+    cap = cap || 3; maxIter = maxIter || 2000;
+    const hubCounts = g => {
+      const m = new Map();
+      g.forEach(p => m.set(p.hub, (m.get(p.hub) || 0) + 1));
+      return m;
+    };
+    for (let it = 0; it < maxIter; it++) {
+      let didSwap = false;
+      for (let gi = 0; gi < groupsArr.length; gi++) {
+        const counts = hubCounts(groupsArr[gi]);
+        let overHub = null;
+        for (const [h, n] of counts) if (n > cap) { overHub = h; break; }
+        if (!overHub) continue;
+        const candidates = groupsArr[gi].filter(p => p.hub === overHub);
+        let swapped = false;
+        for (const cand of candidates) {
+          const giCounts = hubCounts(groupsArr[gi]);
+          const order = groupsArr.map((g, idx) => idx).sort((a, b) => (hubCounts(groupsArr[a]).get(overHub) || 0) - (hubCounts(groupsArr[b]).get(overHub) || 0));
+          for (const gj of order) {
+            if (gj === gi) continue;
+            const cj = hubCounts(groupsArr[gj]);
+            if ((cj.get(overHub) || 0) >= cap) continue;
+            for (const partner of groupsArr[gj]) {
+              if (classifyTier(partner.pos) !== classifyTier(cand.pos)) continue;
+              if (partner.ai !== cand.ai) continue;
+              if (partner.hub === overHub) continue;
+              if ((giCounts.get(partner.hub) || 0) + 1 > cap) continue;
+              groupsArr[gi] = groupsArr[gi].filter(p => p !== cand).concat([partner]);
+              groupsArr[gj] = groupsArr[gj].filter(p => p !== partner).concat([cand]);
+              swapped = true; didSwap = true;
+              break;
+            }
+            if (swapped) break;
+          }
+          if (swapped) break;
+        }
+        if (swapped) break;
+      }
+      if (!didSwap) break;
+    }
+    return groupsArr;
+  }
+
+  function runFreshPipeline(attendees, seed) {
+    let g = freshAssign(attendees, seed);
+    g = balanceAi(g);
+    g = balanceHub(g, 3);
+    return g;
+  }
+
+  function diffAssign(oldPeopleList, newAttendees, seed) {
+    const rng = makeRng(seed || 7);
+    const oldByName = new Map(oldPeopleList.map(p => [p.name, p]));
+    const newByName = new Map(newAttendees.map(p => [p.name, p]));
+    const kept = [];
+    const added = [];
+    newAttendees.forEach(p => { if (oldByName.has(p.name)) kept.push(p); else added.push(p); });
+    const removed = oldPeopleList.filter(p => !newByName.has(p.name));
+
+    const oldGroupNums = [...new Set(oldPeopleList.map(p => p.group))].sort((a, b) => a - b);
+    const groupMap = new Map(oldGroupNums.map(g => [g, []]));
+    kept.forEach(p => {
+      const g = oldByName.get(p.name).group;
+      if (!groupMap.has(g)) groupMap.set(g, []);
+      groupMap.get(g).push(p);
+    });
+
+    const newTotal = newAttendees.length;
+    const targetGroups = computeGroupCount(newTotal);
+    let groupNumsLocal = [...groupMap.keys()].sort((a, b) => a - b);
+    const warnings = [];
+
+    while (groupNumsLocal.length < targetGroups) {
+      const nextNum = Math.max(0, ...groupNumsLocal) + 1;
+      groupMap.set(nextNum, []);
+      groupNumsLocal.push(nextNum);
+    }
+
+    if (groupNumsLocal.length > targetGroups) {
+      groupNumsLocal.sort((a, b) => groupMap.get(a).length - groupMap.get(b).length);
+      while (groupNumsLocal.length > targetGroups && groupMap.get(groupNumsLocal[0]).length <= 1) {
+        const dissolveNum = groupNumsLocal.shift();
+        const survivors = groupMap.get(dissolveNum);
+        groupMap.delete(dissolveNum);
+        survivors.forEach(s => added.unshift(s));
+      }
+      groupNumsLocal = [...groupMap.keys()].sort((a, b) => a - b);
+      if (groupNumsLocal.length > targetGroups) {
+        warnings.push(`인원이 크게 줄어 ${groupNumsLocal.length}개 조가 남았습니다(권장 ${targetGroups}개). 자동으로는 더 합치지 않았으니 필요하면 수동으로 조정해 주세요.`);
+      }
+    }
+
+    const addedOrdered = interleaveByHub(added, rng).sort((a, b) => classifyTier(a.pos) - classifyTier(b.pos));
+
+    function scoreGroup(gnum, p) {
+      const g = groupMap.get(gnum);
+      let score = 0;
+      score += -g.length * 10;
+      const hubCount = g.filter(m => m.hub === p.hub).length;
+      score += -hubCount * 6;
+      const aiCount = g.filter(m => m.ai).length;
+      if (p.ai) score += -aiCount * 4;
+      const tierCount = g.filter(m => classifyTier(m.pos) === classifyTier(p.pos)).length;
+      score += -tierCount * 2;
+      return score;
+    }
+
+    addedOrdered.forEach(p => {
+      let bestG = null, bestScore = -Infinity;
+      groupNumsLocal.forEach(gnum => {
+        const g = groupMap.get(gnum);
+        if (g.length >= 9) return;
+        const s = scoreGroup(gnum, p);
+        if (s > bestScore) { bestScore = s; bestG = gnum; }
+      });
+      if (bestG === null) {
+        const nextNum = Math.max(0, ...groupNumsLocal) + 1;
+        groupMap.set(nextNum, []);
+        groupNumsLocal.push(nextNum);
+        bestG = nextNum;
+        warnings.push(`정원(9명)을 초과해 ${nextNum}조를 새로 열었습니다.`);
+      }
+      groupMap.get(bestG).push(p);
+    });
+
+    groupNumsLocal = [...groupMap.keys()].sort((a, b) => a - b);
+    const groupsOut = groupNumsLocal.map(g => groupMap.get(g));
+
+    const outOfBand = groupsOut.filter(g => g.length < 6 || g.length > 9).length;
+    if (outOfBand > 0) {
+      warnings.push(`${outOfBand}개 조가 권장 인원(7~8명) 범위를 벗어났습니다. 필요하면 수동으로 확인해 주세요.`);
+    }
+
+    return {
+      groups: groupsOut,
+      summary: {
+        keptCount: kept.length,
+        addedCount: added.length,
+        removedCount: removed.length,
+        removedNames: removed.map(p => p.name),
+        addedNames: added.map(p => p.name),
+        oldGroupCount: oldGroupNums.length,
+        newGroupCount: groupsOut.length,
+      },
+      warnings,
+    };
+  }
+
+  // =====================================================================
+  // 석식(BBQ) group-assignment engine — same attendee population as Grand
+  // Hall, but grouped by similar rank tier + 가나다(alphabetical) order
+  // within tier, filled sequentially into tables (per "비슷한 직급별, ㄱㄴㄷ").
+  // =====================================================================
+  function sortByTierThenName(attendees) {
+    return attendees.slice().sort((a, b) => {
+      const ta = classifyTier(a.pos), tb = classifyTier(b.pos);
+      if (ta !== tb) return ta - tb;
+      return a.name.localeCompare(b.name, 'ko');
+    });
+  }
+
+  function freshAssignDinner(attendees) {
+    const total = attendees.length;
+    const nGroups = computeGroupCount(total);
+    if (nGroups === 0) return [];
+    const caps = splitCapacities(total, nGroups);
+    const sorted = sortByTierThenName(attendees);
+    const groupsArr = [];
+    let idx = 0;
+    caps.forEach(cap => { groupsArr.push(sorted.slice(idx, idx + cap)); idx += cap; });
+    return groupsArr;
+  }
+
+  function diffAssignDinner(oldPeopleList, newAttendees) {
+    const oldByName = new Map(oldPeopleList.map(p => [p.name, p]));
+    const newByName = new Map(newAttendees.map(p => [p.name, p]));
+    const kept = [];
+    const added = [];
+    newAttendees.forEach(p => { if (oldByName.has(p.name)) kept.push(p); else added.push(p); });
+    const removed = oldPeopleList.filter(p => !newByName.has(p.name));
+
+    const oldGroupNums = [...new Set(oldPeopleList.map(p => p.group))].sort((a, b) => a - b);
+    const groupMap = new Map(oldGroupNums.map(g => [g, []]));
+    kept.forEach(p => {
+      const g = oldByName.get(p.name).group;
+      if (!groupMap.has(g)) groupMap.set(g, []);
+      groupMap.get(g).push(p);
+    });
+
+    const newTotal = newAttendees.length;
+    const targetGroups = computeGroupCount(newTotal);
+    let groupNumsLocal = [...groupMap.keys()].sort((a, b) => a - b);
+    const warnings = [];
+
+    while (groupNumsLocal.length < targetGroups) {
+      const nextNum = Math.max(0, ...groupNumsLocal) + 1;
+      groupMap.set(nextNum, []);
+      groupNumsLocal.push(nextNum);
+    }
+    if (groupNumsLocal.length > targetGroups) {
+      groupNumsLocal.sort((a, b) => groupMap.get(a).length - groupMap.get(b).length);
+      while (groupNumsLocal.length > targetGroups && groupMap.get(groupNumsLocal[0]).length <= 1) {
+        const dissolveNum = groupNumsLocal.shift();
+        const survivors = groupMap.get(dissolveNum);
+        groupMap.delete(dissolveNum);
+        survivors.forEach(s => added.unshift(s));
+      }
+      groupNumsLocal = [...groupMap.keys()].sort((a, b) => a - b);
+      if (groupNumsLocal.length > targetGroups) {
+        warnings.push(`석식: 인원이 크게 줄어 ${groupNumsLocal.length}개 테이블이 남았습니다(권장 ${targetGroups}개). 필요하면 수동으로 조정해 주세요.`);
+      }
+    }
+
+    // new attendees are placed in tier+가나다 order, into whichever existing
+    // table already leans toward their tier (keeps the "rank tier" grouping
+    // intact while disturbing as few existing seats as possible)
+    const addedOrdered = sortByTierThenName(added);
+
+    function scoreGroup(gnum, p) {
+      const g = groupMap.get(gnum);
+      let score = -g.length * 10;
+      const tierCount = g.filter(m => classifyTier(m.pos) === classifyTier(p.pos)).length;
+      score += tierCount * 5;
+      return score;
+    }
+
+    addedOrdered.forEach(p => {
+      let bestG = null, bestScore = -Infinity;
+      groupNumsLocal.forEach(gnum => {
+        const g = groupMap.get(gnum);
+        if (g.length >= 9) return;
+        const s = scoreGroup(gnum, p);
+        if (s > bestScore) { bestScore = s; bestG = gnum; }
+      });
+      if (bestG === null) {
+        const nextNum = Math.max(0, ...groupNumsLocal) + 1;
+        groupMap.set(nextNum, []);
+        groupNumsLocal.push(nextNum);
+        bestG = nextNum;
+        warnings.push(`석식: 정원(9명)을 초과해 ${nextNum}번 테이블을 새로 열었습니다.`);
+      }
+      groupMap.get(bestG).push(p);
+    });
+
+    groupNumsLocal = [...groupMap.keys()].sort((a, b) => a - b);
+    const groupsOut = groupNumsLocal.map(g => groupMap.get(g));
+    const outOfBand = groupsOut.filter(g => g.length < 6 || g.length > 9).length;
+    if (outOfBand > 0) {
+      warnings.push(`석식: ${outOfBand}개 테이블이 권장 인원(7~8명) 범위를 벗어났습니다. 필요하면 수동으로 확인해 주세요.`);
+    }
+
+    return {
+      groups: groupsOut,
+      summary: {
+        keptCount: kept.length,
+        addedCount: added.length,
+        removedCount: removed.length,
+        removedNames: removed.map(p => p.name),
+        addedNames: added.map(p => p.name),
+        oldGroupCount: oldGroupNums.length,
+        newGroupCount: groupsOut.length,
+      },
+      warnings,
+    };
+  }
+
+  // =====================================================================
+  // xlsx parsing (mirrors the "3.참석명단" / "3.1사용자" sheet layout)
+  // =====================================================================
+  function readSheetAOA(wb, sheetName) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) return null;
+    return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  }
+
+  function parseAttendeesFromWorkbook(wb) {
+    const rows = readSheetAOA(wb, '3.참석명단');
+    if (!rows) throw new Error('시트를 찾을 수 없습니다: 3.참석명단');
+    const attendees = [];
+    for (let i = 6; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const dept = r[2];
+      const hub = r[3];
+      const pos = r[4];
+      const name = r[6];
+      const gender = r[7];
+      const attend = r[12];
+      if (!name) continue;
+      if (attend !== 'Y(참석)') continue;
+      if (dept === '법인 품질관리실' || dept === '경영기획본부') continue;
+      attendees.push({
+        name: String(name).trim(),
+        pos: pos ? String(pos).trim() : '',
+        gender: gender ? String(gender).trim() : '',
+        hub: hub ? String(hub).trim() : '',
+        dept: dept ? String(dept).trim() : '',
+      });
+    }
+    return attendees;
+  }
+
+  function parseAiNamesFromWorkbook(wb) {
+    const rows = readSheetAOA(wb, '3.1사용자');
+    if (!rows) return [];
+    const names = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const raw = r[0];
+      if (!raw) continue;
+      const kor = String(raw).split('[')[0].trim();
+      if (kor) names.push(kor);
+    }
+    return names;
+  }
+
+  // "4.조배정" (Grand Hall seminar-table seating) is a manually-maintained chart —
+  // the workshop team decides and edits these groups by hand in Excel, including
+  // which people to leave unassigned. Rather than recomputing group membership with
+  // our own balancing algorithm, we read this sheet directly and mirror it exactly.
+  //
+  // Every block — a numbered table ("1조 (8명)"), or a special group with no fixed
+  // seminar-table number ("QRM (7명)", "안내데스크 조") — has the same shape: a header
+  // cell, then immediately below it a 직위/성명/성별/본부 label row, then data rows.
+  // We detect blocks structurally (header cell whose next row down, same column, reads
+  // "직위") rather than by matching "N조" text, so a differently-named special group
+  // added later is still picked up. A block's size comes from its own "(M명)" suffix
+  // when present; special groups without one (안내데스크 조) are read until the first
+  // blank 성명 cell. AI-experience is marked by a yellow fill on the 성명 cell rather
+  // than a text column (see the sheet's own note: "노란색 배경 성명 = 3.1 사용자").
+  function parseGroupsFromWorkbook(wb) {
+    const ws = wb.Sheets['4.조배정'];
+    if (!ws) return null;
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+    const cellStr = (r, c) => {
+      const row = rows[r] || [];
+      const v = row[c];
+      return v == null ? '' : String(v).trim();
+    };
+    const headers = [];
+    for (let r = 0; r < rows.length - 1; r++) {
+      const row = rows[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        const label = cellStr(r, c);
+        if (!label) continue;
+        if (cellStr(r + 1, c) !== '직위') continue; // structural check: real block header
+        headers.push({ r, c, label, scanOrder: headers.length });
+      }
+    }
+    if (!headers.length) return null;
+
+    const blocks = headers.map(h => {
+      const m = h.label.match(/^(.*?)\s*\((\d+)\s*명\)\s*$/);
+      const baseLabel = m ? m[1].trim() : h.label;
+      const knownSize = m ? parseInt(m[2], 10) : null;
+      const numMatch = baseLabel.match(/^(\d+)\s*조$/);
+      const groupNum = numMatch ? parseInt(numMatch[1], 10) : null;
+      const dataStart = h.r + 2; // header row, then the 직위/성명/성별/본부 label row
+      const members = [];
+      const maxRows = knownSize !== null ? knownSize : 60; // safety cap for unsized blocks
+      for (let i = 0; i < maxRows; i++) {
+        const r = dataStart + i;
+        const name = cellStr(r, h.c + 1);
+        if (!name) { if (knownSize === null) break; else continue; }
+        const pos = cellStr(r, h.c);
+        const gender = cellStr(r, h.c + 2);
+        const hub = cellStr(r, h.c + 3);
+        const addr = XLSX.utils.encode_cell({ r, c: h.c + 1 });
+        const cell = ws[addr];
+        const ai = !!(cell && cell.s && cell.s.patternType === 'solid');
+        members.push({ name, pos, gender, hub, ai });
+      }
+      return {
+        // numbered tables use the default "N조" display (label: null); special
+        // groups (QRM, 안내데스크 조, ...) carry their own sheet label through.
+        label: groupNum !== null ? null : baseLabel,
+        groupNum,
+        scanOrder: h.scanOrder,
+        members,
+      };
+    });
+
+    blocks.sort((a, b) => {
+      if (a.groupNum !== null && b.groupNum !== null) return a.groupNum - b.groupNum;
+      if (a.groupNum !== null) return -1;
+      if (b.groupNum !== null) return 1;
+      return a.scanOrder - b.scanOrder;
+    });
+    return blocks;
+  }
+
+  function parseProgramFromWorkbook(wb) {
+    const rows = readSheetAOA(wb, '1.스케줄');
+    if (!rows) return null;
+    const cell = (r, c) => {
+      const row = rows[r] || [];
+      const v = row[c];
+      return v == null ? '' : String(v).trim();
+    };
+    const rowLen = r => (rows[r] || []).length;
+
+    // ---- title (row 2): take the first non-empty cell, whatever column it's in —
+    // a column inserted elsewhere in the sheet must not shift this off a hardcoded index.
+    let titleRaw = '';
+    for (let c = 0; c < rowLen(1); c++) { const v = cell(1, c); if (v) { titleRaw = v; break; } }
+    const parts = titleRaw.split(/\s{2,}/).filter(Boolean);
+    const title = parts[0] || titleRaw;
+    const dateRange = parts.length > 1 ? parts[parts.length - 1] : '';
+
+    // ---- day labels (row 4): two non-empty cells, left-to-right ----
+    const labelRow = 3;
+    const labelCols = [];
+    for (let c = 0; c < rowLen(labelRow); c++) { if (cell(labelRow, c)) labelCols.push(c); }
+    const day1Label = labelCols.length > 0 ? cell(labelRow, labelCols[0]) : '';
+    const day2Label = labelCols.length > 1 ? cell(labelRow, labelCols[1]) : '';
+
+    // ---- column layout (row 5 header: "시간"/"내용"/"비고"): locate by header text
+    // instead of fixed column numbers, so an inserted column (e.g. a duration column)
+    // doesn't silently shift every reading off by one.
+    const headerRow = 4;
+    const timeHeaderCols = [];
+    for (let c = 0; c < rowLen(headerRow); c++) { if (cell(headerRow, c) === '시간') timeHeaderCols.push(c); }
+    const day1Cols = timeHeaderCols.length > 0 ? [timeHeaderCols[0], timeHeaderCols[0] + 1, timeHeaderCols[0] + 2] : [1, 2, 3];
+    const day2Cols = timeHeaderCols.length > 1 ? [timeHeaderCols[1], timeHeaderCols[1] + 1, timeHeaderCols[1] + 2] : [5, 6, 7];
+
+    // find the boundary row (0-based) where the lecture-list sub-table starts —
+    // scanning every column, since that marker can land in either day's columns
+    // depending on how the sheet is laid out, and its exact wording ("강의목록" /
+    // "강의프로그램") has already varied between file versions.
+    let boundary = rows.length;
+    for (let r = 5; r < rows.length; r++) {
+      const row = rows[r] || [];
+      if (row.some(v => v != null && (String(v).trim() === '강의목록' || String(v).trim() === '강의프로그램'))) { boundary = r; break; }
+    }
+    function collect(cols) {
+      const out = [];
+      for (let r = 5; r < boundary; r++) {
+        const t = cell(r, cols[0]);
+        const c = cell(r, cols[1]);
+        const n = cell(r, cols[2]);
+        if (!t && !c && !n) continue;
+        out.push({ time: t, content: c, note: n });
+      }
+      return out;
+    }
+
+    // ---- lecture lineup (below the boundary): header row right after the marker,
+    // columns located by header text ("구분"/"본부"/"강사"/주제/시간), since these
+    // too have varied ("강의 주제" vs "주제", "배정시간" vs "시간") between files.
+    // "구분" (session name) is only filled on a group's first row — blank cells
+    // below it belong to the last named group (a merged-cell convention).
+    let lineup = [];
+    if (boundary < rows.length) {
+      const lineupHeaderRow = boundary + 1;
+      const headerMap = {};
+      for (let c = 0; c < rowLen(lineupHeaderRow); c++) {
+        const v = cell(lineupHeaderRow, c);
+        if (v) headerMap[v] = c;
+      }
+      const catCol = headerMap['구분'];
+      const deptCol = headerMap['본부'];
+      const speakerCol = headerMap['강사'];
+      // "강의 주제" header text has been seen sitting one column to the right of
+      // where the topic values actually are (a merged-cell quirk in the source
+      // sheet) — the column right after "강사" is the reliable position, so prefer
+      // that over the header lookup.
+      const topicCol = speakerCol !== undefined ? speakerCol + 1 : (headerMap['강의 주제'] !== undefined ? headerMap['강의 주제'] : headerMap['주제']);
+      const durCol = headerMap['배정시간'] !== undefined ? headerMap['배정시간'] : headerMap['시간'];
+      if (catCol !== undefined && deptCol !== undefined && speakerCol !== undefined) {
+        const groupsByCat = [];
+        const groupIndex = {};
+        let lastCat = '';
+        for (let r = lineupHeaderRow + 1; r < rows.length; r++) {
+          const catRaw = cell(r, catCol);
+          const dept = cell(r, deptCol);
+          const speaker = cell(r, speakerCol);
+          const topic = topicCol !== undefined ? cell(r, topicCol) : '';
+          const duration = durCol !== undefined ? cell(r, durCol) : '';
+          if (!catRaw && !dept && !speaker && !topic) continue;
+          if (catRaw) lastCat = catRaw;
+          if (!lastCat) continue;
+          if (groupIndex[lastCat] === undefined) {
+            groupIndex[lastCat] = groupsByCat.length;
+            groupsByCat.push({ category: lastCat, items: [] });
+          }
+          groupsByCat[groupIndex[lastCat]].items.push({ dept, speaker, topic, duration });
+        }
+        lineup = groupsByCat;
+      }
+    }
+
+    return {
+      title,
+      dateRange,
+      days: [
+        { label: day1Label, rows: collect(day1Cols) },
+        { label: day2Label, rows: collect(day2Cols) },
+      ],
+      lineup,
+    };
+  }
+
+  // =====================================================================
+  // admin panel wiring
+  // =====================================================================
+  const adminLinkBtn = document.getElementById('adminLinkBtn');
+  const adminPanel = document.getElementById('adminPanel');
+  const xlsxInput = document.getElementById('xlsxInput');
+  const forceFreshCheck = document.getElementById('forceFreshCheck');
+  const previewBtn = document.getElementById('previewBtn');
+  const publishBtn = document.getElementById('publishBtn');
+  const adminStatus = document.getElementById('adminStatus');
+  const adminPreview = document.getElementById('adminPreview');
+  const pvKept = document.getElementById('pvKept');
+  const pvAdded = document.getElementById('pvAdded');
+  const pvRemoved = document.getElementById('pvRemoved');
+  const pvAddedNames = document.getElementById('pvAddedNames');
+  const pvRemovedNames = document.getElementById('pvRemovedNames');
+  const pvGroupCount = document.getElementById('pvGroupCount');
+  const pvSizes = document.getElementById('pvSizes');
+  const pvProgram = document.getElementById('pvProgram');
+  const pvDinnerGroupCount = document.getElementById('pvDinnerGroupCount');
+  const pvDinnerSizes = document.getElementById('pvDinnerSizes');
+  const pvWarnings = document.getElementById('pvWarnings');
+
+  adminLinkBtn.addEventListener('click', () => {
+    adminPanel.hidden = !adminPanel.hidden;
+  });
+
+  // Outside the claude.ai artifact runtime there's no self-publish capability,
+  // so label the button for what it will actually do here: download the file.
+  if (typeof claude === 'undefined' || !claude.use) {
+    publishBtn.textContent = '업데이트 파일 다운로드';
+  }
+
+  function setStatus(msg, kind) {
+    adminStatus.textContent = msg;
+    adminStatus.className = 'admin-status show' + (kind ? ' ' + kind : '');
+  }
+  function clearStatus() {
+    adminStatus.className = 'admin-status';
+    adminStatus.textContent = '';
+  }
+
+  let pendingPublish = null; // { newPeople, newMeta, newProgram, newDinner }
+
+  previewBtn.addEventListener('click', async () => {
+    clearStatus();
+    adminPreview.classList.remove('show');
+    publishBtn.disabled = true;
+    pendingPublish = null;
+
+    const file = xlsxInput.files && xlsxInput.files[0];
+    if (!file) { setStatus('엑셀 파일을 선택해 주세요.', 'error'); return; }
+    if (typeof XLSX === 'undefined') { setStatus('엑셀 라이브러리를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.', 'error'); return; }
+
+    setStatus('파일을 분석하는 중...', 'info');
+    let wb;
+    try {
+      const buf = await file.arrayBuffer();
+      // cellStyles is needed to read the "4.조배정" sheet's cell fill color,
+      // which is how that sheet marks AI-experienced attendees (see parseGroupsFromWorkbook).
+      wb = XLSX.read(buf, { type: 'array', cellStyles: true });
+    } catch (e) {
+      setStatus('파일을 읽을 수 없습니다: ' + (e && e.message ? e.message : e), 'error');
+      return;
+    }
+
+    let attendees;
+    try {
+      attendees = parseAttendeesFromWorkbook(wb);
+    } catch (e) {
+      setStatus(e.message, 'error');
+      return;
+    }
+    if (!attendees.length) {
+      setStatus('참석 대상자를 찾지 못했습니다. "3.참석명단" 시트 형식을 확인해 주세요.', 'error');
+      return;
+    }
+
+    const aiNames = parseAiNamesFromWorkbook(wb);
+    const isAi = buildAiMatcher(aiNames);
+    attendees.forEach(a => { a.ai = isAi(a.name); });
+
+    let newProgram = null;
+    try {
+      newProgram = parseProgramFromWorkbook(wb);
+    } catch (e) {
+      newProgram = null;
+    }
+
+    const nameCounts = {};
+    attendees.forEach(a => { nameCounts[a.name] = (nameCounts[a.name] || 0) + 1; });
+    const dupNames = Object.keys(nameCounts).filter(n => nameCounts[n] > 1);
+
+    const forceFresh = forceFreshCheck.checked || PEOPLE.length === 0;
+    let resultGroups, summary, warnings;
+    const seed = Date.now() % 100000;
+
+    // Grand Hall: mirror the "4.조배정" sheet directly — it's a manually-maintained
+    // seating chart, not something we should recompute with our own algorithm.
+    const sheetGroups = parseGroupsFromWorkbook(wb);
+    // parallel to resultGroups: the sheet's own label for a special group (QRM,
+    // 안내데스크 조, ...), or null for a plain numbered table / the fallback path.
+    let groupLabels = null;
+    if (sheetGroups && sheetGroups.length) {
+      resultGroups = sheetGroups.map(b => b.members);
+      groupLabels = sheetGroups.map(b => b.label);
+      const oldByName = new Map(PEOPLE.map(p => [p.name, p]));
+      const newNames = new Set();
+      resultGroups.forEach(g => g.forEach(p => newNames.add(p.name)));
+      const added = [];
+      resultGroups.forEach(g => g.forEach(p => { if (!oldByName.has(p.name)) added.push(p.name); }));
+      const removed = PEOPLE.filter(p => !newNames.has(p.name)).map(p => p.name);
+      const keptCount = newNames.size - added.length;
+      summary = {
+        keptCount,
+        addedCount: added.length,
+        removedCount: removed.length,
+        removedNames: removed,
+        addedNames: added,
+        oldGroupCount: groupNums.length,
+        newGroupCount: resultGroups.length,
+      };
+      warnings = [];
+      const outOfBand = resultGroups.filter((g, gi) => !groupLabels[gi] && (g.length < 6 || g.length > 9)).length;
+      if (outOfBand > 0) {
+        warnings.push(`${outOfBand}개 조가 권장 인원(7~8명) 범위를 벗어났습니다. "4.조배정" 시트를 확인해 주세요.`);
+      }
+    } else {
+      warnings = ['"4.조배정" 시트를 찾지 못해 자동 배정 로직으로 대신 계산했습니다. 시트 이름/형식을 확인해 주세요.'];
+      if (forceFresh) {
+        resultGroups = runFreshPipeline(attendees, seed);
+        summary = {
+          keptCount: 0,
+          addedCount: attendees.length,
+          removedCount: 0,
+          removedNames: [],
+          addedNames: attendees.map(a => a.name),
+          oldGroupCount: groupNums.length,
+          newGroupCount: resultGroups.length,
+        };
+      } else {
+        const res = diffAssign(PEOPLE, attendees, seed);
+        resultGroups = res.groups;
+        summary = res.summary;
+        warnings = warnings.concat(res.warnings);
+      }
+    }
+    if (dupNames.length) {
+      warnings = warnings.concat(['이름이 중복된 참석자가 있습니다: ' + dupNames.join(', ') + ' — 조배정이 부정확할 수 있으니 확인해 주세요.']);
+    }
+
+    const newPeople = [];
+    resultGroups.forEach((g, gi) => {
+      const label = groupLabels ? groupLabels[gi] : null;
+      g.forEach(p => newPeople.push({
+        name: p.name, pos: p.pos, gender: p.gender, hub: p.hub, dept: p.dept || '',
+        ai: !!p.ai, group: gi + 1, groupSize: g.length, groupLabel: label || null,
+      }));
+    });
+    const newMeta = {
+      total: newPeople.length,
+      groupCount: resultGroups.length,
+      aiTotal: newPeople.filter(p => p.ai).length,
+      buildDate: new Date().toISOString().slice(0, 10),
+    };
+
+    // ---- 석식(BBQ) grouping: same attendee population, tier + 가나다 order ----
+    let dinnerResultGroups, dinnerSummary, dinnerWarnings;
+    if (forceFresh) {
+      dinnerResultGroups = freshAssignDinner(attendees);
+      dinnerSummary = {
+        keptCount: 0,
+        addedCount: attendees.length,
+        removedCount: 0,
+        removedNames: [],
+        addedNames: attendees.map(a => a.name),
+        oldGroupCount: dinnerGroupNums.length,
+        newGroupCount: dinnerResultGroups.length,
+      };
+      dinnerWarnings = [];
+    } else {
+      const dres = diffAssignDinner(DINNER, attendees);
+      dinnerResultGroups = dres.groups;
+      dinnerSummary = dres.summary;
+      dinnerWarnings = dres.warnings;
+    }
+    const newDinner = [];
+    dinnerResultGroups.forEach((g, gi) => {
+      g.forEach(p => newDinner.push({
+        name: p.name, pos: p.pos, gender: p.gender, hub: p.hub, dept: p.dept || '',
+        ai: !!p.ai, group: gi + 1, groupSize: g.length,
+      }));
+    });
+
+    pendingPublish = { newPeople, newMeta, newProgram: newProgram || PROGRAM, newDinner };
+
+    const programDayCount = newProgram && newProgram.days
+      ? newProgram.days.reduce((sum, d) => sum + (d.rows ? d.rows.length : 0), 0) : 0;
+    pvProgram.textContent = newProgram
+      ? '갱신됨 (일정 ' + programDayCount + '건)'
+      : '"1.스케줄" 시트를 찾지 못해 기존 일정 유지';
+
+    pvKept.textContent = summary.keptCount + '명';
+    pvAdded.textContent = summary.addedCount + '명';
+    pvRemoved.textContent = summary.removedCount + '명';
+    pvAddedNames.textContent = summary.addedNames.length ? '+ ' + summary.addedNames.join(', ') : '';
+    pvRemovedNames.textContent = summary.removedNames.length ? '- ' + summary.removedNames.join(', ') : '';
+    pvGroupCount.textContent = summary.oldGroupCount + ' → ' + summary.newGroupCount + '개';
+    pvSizes.innerHTML = '';
+    resultGroups.forEach((g, gi) => {
+      const span = document.createElement('span');
+      const label = groupLabels ? groupLabels[gi] : null;
+      const outOfBand = !label && (g.length < 7 || g.length > 8);
+      span.className = outOfBand ? 'warn' : '';
+      span.textContent = (label || ((gi + 1) + '조')) + ':' + g.length;
+      pvSizes.appendChild(span);
+    });
+
+    pvDinnerGroupCount.textContent = dinnerSummary.oldGroupCount + ' → ' + dinnerSummary.newGroupCount + '개';
+    pvDinnerSizes.innerHTML = '';
+    dinnerResultGroups.forEach((g, gi) => {
+      const span = document.createElement('span');
+      const outOfBand = g.length < 7 || g.length > 8;
+      span.className = outOfBand ? 'warn' : '';
+      span.textContent = (gi + 1) + '조:' + g.length;
+      pvDinnerSizes.appendChild(span);
+    });
+
+    pvWarnings.innerHTML = '';
+    warnings.concat(dinnerWarnings).forEach(w => {
+      const div = document.createElement('div');
+      div.className = 'pv-warn';
+      div.textContent = w;
+      pvWarnings.appendChild(div);
+    });
+
+    adminPreview.classList.add('show');
+    setStatus('미리보기가 준비되었습니다. 확인 후 게시해 주세요.', 'info');
+    publishBtn.disabled = false;
+  });
+
+  function buildHtml(newPeople, newMeta, newProgram, newDinner) {
+    const escSlash = s => s.replace(/<\//g, '<\\/');
+    const selfJson = escSlash(JSON.stringify(RAW_TEMPLATE));
+    const peopleJson = escSlash(JSON.stringify(newPeople));
+    const metaJson = escSlash(JSON.stringify(newMeta));
+    const programJson = escSlash(JSON.stringify(newProgram || PROGRAM));
+    const dinnerJson = escSlash(JSON.stringify(newDinner || DINNER));
+    let html = RAW_TEMPLATE;
+    html = html.replace('%%PEOPLE_JSON%%', peopleJson);
+    html = html.replace('%%META_JSON%%', metaJson);
+    html = html.replace('%%PROGRAM_JSON%%', programJson);
+    html = html.replace('%%DINNER_JSON%%', dinnerJson);
+    html = html.replace('%%SELF_JSON%%', selfJson);
+    return html;
+  }
+
+  function downloadUpdatedHtml() {
+    const html = buildHtml(pendingPublish.newPeople, pendingPublish.newMeta, pendingPublish.newProgram, pendingPublish.newDinner);
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'index.html';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    setStatus('업데이트된 index.html 파일이 다운로드되었습니다. 이 파일로 사이트에 올려진 파일을 교체해 주세요.', 'success');
+  }
+
+  publishBtn.addEventListener('click', async () => {
+    if (!pendingPublish) return;
+    publishBtn.disabled = true;
+    // Outside the claude.ai artifact runtime (e.g. hosted on the company's own site),
+    // there is no self-publish capability — fall back to a plain file download so
+    // whoever manages the hosting can upload the new file in its place.
+    if (typeof claude === 'undefined' || !claude.use) {
+      downloadUpdatedHtml();
+      publishBtn.disabled = false;
+      return;
+    }
+    setStatus('게시하는 중...', 'info');
+    try {
+      const cap = await claude.use('artifact');
+      if (!cap) {
+        setStatus('이 화면에서는 게시 기능을 사용할 수 없습니다.', 'error');
+        publishBtn.disabled = false;
+        return;
+      }
+      const html = buildHtml(pendingPublish.newPeople, pendingPublish.newMeta, pendingPublish.newProgram, pendingPublish.newDinner);
+      await cap.publish(html);
+      setStatus('게시되었습니다. 잠시 후 화면이 새로고침됩니다.', 'success');
+    } catch (e) {
+      const code = e && e.code;
+      if (code === 'not_granted' || code === 'not_writer' || code === 'consent_required') {
+        setStatus('이 계정에는 편집 권한이 없어 게시할 수 없습니다.', 'error');
+      } else if (code === 'conflict') {
+        setStatus('다른 곳에서 이미 최신 버전이 게시되었습니다. 잠시 후 자동으로 새로고침됩니다.', 'error');
+      } else if (code === 'too_large') {
+        setStatus('데이터가 너무 커서 게시할 수 없습니다.', 'error');
+      } else {
+        setStatus('게시에 실패했습니다: ' + (e && e.message ? e.message : e), 'error');
+      }
+      publishBtn.disabled = false;
+    }
+  });
+</script>

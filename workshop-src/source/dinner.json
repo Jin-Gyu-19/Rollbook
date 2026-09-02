@@ -1,0 +1,1672 @@
+[
+{
+"name": "김민호",
+"pos": "부장",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인 품질관리실(desk)",
+"ai": false,
+"group": 1,
+"groupSize": 8
+},
+{
+"name": "권태우",
+"pos": "전무",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1기업금융4",
+"ai": false,
+"group": 1,
+"groupSize": 8
+},
+{
+"name": "고승균",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": false,
+"group": 1,
+"groupSize": 8
+},
+{
+"name": "김성건",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사3",
+"ai": false,
+"group": 1,
+"groupSize": 8
+},
+{
+"name": "김도형",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 1,
+"groupSize": 8
+},
+{
+"name": "감정훈",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 1,
+"groupSize": 8
+},
+{
+"name": "김명희",
+"pos": "파트너",
+"gender": "여",
+"hub": "서울6팀",
+"dept": "서울6감사2",
+"ai": false,
+"group": 1,
+"groupSize": 8
+},
+{
+"name": "권순도",
+"pos": "파트너",
+"gender": "남",
+"hub": "창원지사",
+"dept": "창원1감사",
+"ai": true,
+"group": 1,
+"groupSize": 8
+},
+{
+"name": "박영아",
+"pos": "파트너",
+"gender": "여",
+"hub": "서울1본부",
+"dept": "서울1BSO1",
+"ai": true,
+"group": 2,
+"groupSize": 8
+},
+{
+"name": "박일영",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2세무",
+"ai": false,
+"group": 2,
+"groupSize": 8
+},
+{
+"name": "김우식",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2PS",
+"ai": true,
+"group": 2,
+"groupSize": 8
+},
+{
+"name": "김학연",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-2",
+"ai": false,
+"group": 2,
+"groupSize": 8
+},
+{
+"name": "김지현1",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": false,
+"group": 2,
+"groupSize": 8
+},
+{
+"name": "김소진",
+"pos": "파트너",
+"gender": "여",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 2,
+"groupSize": 8
+},
+{
+"name": "나상원",
+"pos": "파트너",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 2,
+"groupSize": 8
+},
+{
+"name": "남기정",
+"pos": "파트너",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": true,
+"group": 2,
+"groupSize": 8
+},
+{
+"name": "송광혁",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인공통(DA)",
+"ai": true,
+"group": 3,
+"groupSize": 8
+},
+{
+"name": "오창걸",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인 재무",
+"ai": true,
+"group": 3,
+"groupSize": 8
+},
+{
+"name": "백승교",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": true,
+"group": 3,
+"groupSize": 8
+},
+{
+"name": "신형욱",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2세무",
+"ai": false,
+"group": 3,
+"groupSize": 8
+},
+{
+"name": "오유진",
+"pos": "파트너",
+"gender": "여",
+"hub": "서울2본부",
+"dept": "서울2회계",
+"ai": true,
+"group": 3,
+"groupSize": 8
+},
+{
+"name": "서동건",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-2",
+"ai": false,
+"group": 3,
+"groupSize": 8
+},
+{
+"name": "서승관",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사3",
+"ai": false,
+"group": 3,
+"groupSize": 8
+},
+{
+"name": "박철",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "해성BSO",
+"ai": true,
+"group": 3,
+"groupSize": 8
+},
+{
+"name": "김지수",
+"pos": "책임",
+"gender": "여",
+"hub": "서울본사",
+"dept": "법인 품질관리실(desk)",
+"ai": false,
+"group": 4,
+"groupSize": 8
+},
+{
+"name": "이경철",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 4,
+"groupSize": 8
+},
+{
+"name": "윤동춘",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4공통1",
+"ai": false,
+"group": 4,
+"groupSize": 8
+},
+{
+"name": "이현승",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": false,
+"group": 4,
+"groupSize": 8
+},
+{
+"name": "이용희",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사2",
+"ai": false,
+"group": 4,
+"groupSize": 8
+},
+{
+"name": "이상린",
+"pos": "파트너",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 4,
+"groupSize": 8
+},
+{
+"name": "유민수",
+"pos": "파트너",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1세무",
+"ai": true,
+"group": 4,
+"groupSize": 8
+},
+{
+"name": "이동운",
+"pos": "파트너",
+"gender": "남",
+"hub": "대구지사",
+"dept": "임원",
+"ai": false,
+"group": 4,
+"groupSize": 8
+},
+{
+"name": "임영욱",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사2",
+"ai": false,
+"group": 5,
+"groupSize": 8
+},
+{
+"name": "조홍식",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1기업금융4",
+"ai": false,
+"group": 5,
+"groupSize": 8
+},
+{
+"name": "이현진",
+"pos": "파트너",
+"gender": "여",
+"hub": "서울2본부",
+"dept": "서울2GR",
+"ai": false,
+"group": 5,
+"groupSize": 8
+},
+{
+"name": "전상원",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2회계",
+"ai": false,
+"group": 5,
+"groupSize": 8
+},
+{
+"name": "조인현",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": false,
+"group": 5,
+"groupSize": 8
+},
+{
+"name": "최현우",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-2",
+"ai": true,
+"group": 5,
+"groupSize": 8
+},
+{
+"name": "장성욱",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 5,
+"groupSize": 8
+},
+{
+"name": "임철준",
+"pos": "파트너",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 5,
+"groupSize": 8
+},
+{
+"name": "김몽연",
+"pos": "이사",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": true,
+"group": 6,
+"groupSize": 8
+},
+{
+"name": "김형곤",
+"pos": "이사",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": true,
+"group": 6,
+"groupSize": 8
+},
+{
+"name": "강지훈",
+"pos": "이사",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": false,
+"group": 6,
+"groupSize": 8
+},
+{
+"name": "김수동",
+"pos": "이사",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": false,
+"group": 6,
+"groupSize": 8
+},
+{
+"name": "류건열",
+"pos": "이사",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": false,
+"group": 6,
+"groupSize": 8
+},
+{
+"name": "황규동",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사3",
+"ai": false,
+"group": 6,
+"groupSize": 8
+},
+{
+"name": "도성록",
+"pos": "이사",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사2",
+"ai": false,
+"group": 6,
+"groupSize": 8
+},
+{
+"name": "명성찬",
+"pos": "이사",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1세무",
+"ai": false,
+"group": 6,
+"groupSize": 8
+},
+{
+"name": "안진호",
+"pos": "이사",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": true,
+"group": 7,
+"groupSize": 8
+},
+{
+"name": "이욱근",
+"pos": "이사",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사2",
+"ai": false,
+"group": 7,
+"groupSize": 8
+},
+{
+"name": "이동주",
+"pos": "상무",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1기업금융4",
+"ai": false,
+"group": 7,
+"groupSize": 8
+},
+{
+"name": "양민환",
+"pos": "이사",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2세무",
+"ai": true,
+"group": 7,
+"groupSize": 8
+},
+{
+"name": "우경국",
+"pos": "상무",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2회계",
+"ai": true,
+"group": 7,
+"groupSize": 8
+},
+{
+"name": "박재석",
+"pos": "상무",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": true,
+"group": 7,
+"groupSize": 8
+},
+{
+"name": "오영택",
+"pos": "이사",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 7,
+"groupSize": 8
+},
+{
+"name": "신기택",
+"pos": "이사",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 7,
+"groupSize": 8
+},
+{
+"name": "임희선",
+"pos": "이사",
+"gender": "여",
+"hub": "서울본사",
+"dept": "법인공통(DA)",
+"ai": true,
+"group": 8,
+"groupSize": 8
+},
+{
+"name": "김진규",
+"pos": "책임",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인 품질관리실(desk)",
+"ai": false,
+"group": 8,
+"groupSize": 8
+},
+{
+"name": "정재욱",
+"pos": "이사",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사2",
+"ai": false,
+"group": 8,
+"groupSize": 8
+},
+{
+"name": "이희성",
+"pos": "상무",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4공통1",
+"ai": false,
+"group": 8,
+"groupSize": 8
+},
+{
+"name": "정윤성",
+"pos": "이사",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": true,
+"group": 8,
+"groupSize": 8
+},
+{
+"name": "정성경",
+"pos": "상무",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4세무2",
+"ai": false,
+"group": 8,
+"groupSize": 8
+},
+{
+"name": "최민혁",
+"pos": "이사",
+"gender": "남",
+"hub": "대구지사",
+"dept": "대구1감사",
+"ai": false,
+"group": 8,
+"groupSize": 8
+},
+{
+"name": "임세호",
+"pos": "이사",
+"gender": "남",
+"hub": "창원지사",
+"dept": "창원1감사",
+"ai": true,
+"group": 8,
+"groupSize": 8
+},
+{
+"name": "강용현",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2GR",
+"ai": true,
+"group": 9,
+"groupSize": 8
+},
+{
+"name": "허경필",
+"pos": "이사",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사3",
+"ai": false,
+"group": 9,
+"groupSize": 8
+},
+{
+"name": "권성민",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": true,
+"group": 9,
+"groupSize": 8
+},
+{
+"name": "강다현",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 9,
+"groupSize": 8
+},
+{
+"name": "황지현",
+"pos": "이사",
+"gender": "여",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": true,
+"group": 9,
+"groupSize": 8
+},
+{
+"name": "강민수",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 9,
+"groupSize": 8
+},
+{
+"name": "강석진",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 9,
+"groupSize": 8
+},
+{
+"name": "홍일권",
+"pos": "이사",
+"gender": "남",
+"hub": "대구지사",
+"dept": "대구1감사",
+"ai": false,
+"group": 9,
+"groupSize": 8
+},
+{
+"name": "김광희",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인 재무",
+"ai": false,
+"group": 10,
+"groupSize": 8
+},
+{
+"name": "김가훈",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": true,
+"group": 10,
+"groupSize": 8
+},
+{
+"name": "김재우",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1기업금융4",
+"ai": false,
+"group": 10,
+"groupSize": 8
+},
+{
+"name": "김지훈",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2회계",
+"ai": true,
+"group": 10,
+"groupSize": 8
+},
+{
+"name": "김웅대",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": false,
+"group": 10,
+"groupSize": 8
+},
+{
+"name": "김세호",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 10,
+"groupSize": 8
+},
+{
+"name": "김종수",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 10,
+"groupSize": 8
+},
+{
+"name": "김미정",
+"pos": "Manager",
+"gender": "여",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 10,
+"groupSize": 8
+},
+{
+"name": "김진솔",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인공통(DA)",
+"ai": true,
+"group": 11,
+"groupSize": 8
+},
+{
+"name": "류호준",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 11,
+"groupSize": 8
+},
+{
+"name": "나재웅",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": false,
+"group": 11,
+"groupSize": 8
+},
+{
+"name": "김휘용",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-2",
+"ai": false,
+"group": 11,
+"groupSize": 8
+},
+{
+"name": "박종민",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": false,
+"group": 11,
+"groupSize": 8
+},
+{
+"name": "박병규",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사3",
+"ai": false,
+"group": 11,
+"groupSize": 8
+},
+{
+"name": "문성호",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": true,
+"group": 11,
+"groupSize": 8
+},
+{
+"name": "나준기",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 11,
+"groupSize": 8
+},
+{
+"name": "심주홍",
+"pos": "책임",
+"gender": "여",
+"hub": "서울본사",
+"dept": "법인 품질관리실(desk)",
+"ai": false,
+"group": 12,
+"groupSize": 8
+},
+{
+"name": "백지은",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 12,
+"groupSize": 8
+},
+{
+"name": "박지환",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1기업금융4",
+"ai": false,
+"group": 12,
+"groupSize": 8
+},
+{
+"name": "손지형",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울2본부",
+"dept": "서울2세무",
+"ai": false,
+"group": 12,
+"groupSize": 8
+},
+{
+"name": "봉미란",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4세무2",
+"ai": false,
+"group": 12,
+"groupSize": 8
+},
+{
+"name": "변차누",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": true,
+"group": 12,
+"groupSize": 8
+},
+{
+"name": "방다슬",
+"pos": "Manager",
+"gender": "여",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 12,
+"groupSize": 8
+},
+{
+"name": "백승민",
+"pos": "Manager",
+"gender": "남",
+"hub": "창원지사",
+"dept": "창원1감사",
+"ai": true,
+"group": 12,
+"groupSize": 8
+},
+{
+"name": "안다예",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울본사",
+"dept": "법인공통(DA)",
+"ai": false,
+"group": 13,
+"groupSize": 8
+},
+{
+"name": "원석훈",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 13,
+"groupSize": 8
+},
+{
+"name": "유원식",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2공통",
+"ai": true,
+"group": 13,
+"groupSize": 8
+},
+{
+"name": "심현수",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2공통",
+"ai": true,
+"group": 13,
+"groupSize": 8
+},
+{
+"name": "심성국",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2회계",
+"ai": true,
+"group": 13,
+"groupSize": 8
+},
+{
+"name": "오진우",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4세무2",
+"ai": false,
+"group": 13,
+"groupSize": 8
+},
+{
+"name": "양진석",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": true,
+"group": 13,
+"groupSize": 8
+},
+{
+"name": "안지원",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 13,
+"groupSize": 8
+},
+{
+"name": "이영진",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1기업금융4",
+"ai": false,
+"group": 14,
+"groupSize": 8
+},
+{
+"name": "이희영",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울2본부",
+"dept": "서울2GR",
+"ai": true,
+"group": 14,
+"groupSize": 8
+},
+{
+"name": "이지선",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울2본부",
+"dept": "서울2세무",
+"ai": true,
+"group": 14,
+"groupSize": 8
+},
+{
+"name": "이군도",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2회계",
+"ai": true,
+"group": 14,
+"groupSize": 8
+},
+{
+"name": "이기백",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": false,
+"group": 14,
+"groupSize": 8
+},
+{
+"name": "이상웅",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": true,
+"group": 14,
+"groupSize": 8
+},
+{
+"name": "이종원",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4세무2",
+"ai": false,
+"group": 14,
+"groupSize": 8
+},
+{
+"name": "임태진",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 14,
+"groupSize": 8
+},
+{
+"name": "허장욱",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인공통(DA)",
+"ai": false,
+"group": 15,
+"groupSize": 8
+},
+{
+"name": "허정",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인 재무",
+"ai": false,
+"group": 15,
+"groupSize": 8
+},
+{
+"name": "조윤선",
+"pos": "책임",
+"gender": "여",
+"hub": "서울본사",
+"dept": "법인 품질관리실(desk)",
+"ai": false,
+"group": 15,
+"groupSize": 8
+},
+{
+"name": "허서윤",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4감사1-2",
+"ai": false,
+"group": 15,
+"groupSize": 8
+},
+{
+"name": "최혜진",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 15,
+"groupSize": 8
+},
+{
+"name": "장성원",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 15,
+"groupSize": 8
+},
+{
+"name": "최재훈",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": true,
+"group": 15,
+"groupSize": 8
+},
+{
+"name": "최현수",
+"pos": "Manager",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 15,
+"groupSize": 8
+},
+{
+"name": "홍승환",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": true,
+"group": 16,
+"groupSize": 8
+},
+{
+"name": "박응주",
+"pos": "Senior",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": false,
+"group": 16,
+"groupSize": 8
+},
+{
+"name": "김명진",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4세무2",
+"ai": false,
+"group": 16,
+"groupSize": 8
+},
+{
+"name": "황병태",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 16,
+"groupSize": 8
+},
+{
+"name": "김석현",
+"pos": "Senior",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": true,
+"group": 16,
+"groupSize": 8
+},
+{
+"name": "문혜성",
+"pos": "Senior",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 16,
+"groupSize": 8
+},
+{
+"name": "김진한",
+"pos": "Senior",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1세무",
+"ai": false,
+"group": 16,
+"groupSize": 8
+},
+{
+"name": "강준현",
+"pos": "Senior",
+"gender": "남",
+"hub": "창원지사",
+"dept": "창원1감사",
+"ai": false,
+"group": 16,
+"groupSize": 8
+},
+{
+"name": "이상협",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 17,
+"groupSize": 8
+},
+{
+"name": "옥종현",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 17,
+"groupSize": 8
+},
+{
+"name": "신동헌",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사2",
+"ai": true,
+"group": 17,
+"groupSize": 8
+},
+{
+"name": "오창환",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": false,
+"group": 17,
+"groupSize": 8
+},
+{
+"name": "송현아",
+"pos": "Senior",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": true,
+"group": 17,
+"groupSize": 8
+},
+{
+"name": "이계진",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-2",
+"ai": false,
+"group": 17,
+"groupSize": 8
+},
+{
+"name": "오지현",
+"pos": "Senior",
+"gender": "여",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 17,
+"groupSize": 8
+},
+{
+"name": "이석호",
+"pos": "SENIOR",
+"gender": "남",
+"hub": "대구지사",
+"dept": "대구1감사",
+"ai": true,
+"group": 17,
+"groupSize": 8
+},
+{
+"name": "정재우",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울4본부",
+"dept": "서울4감사1-1",
+"ai": false,
+"group": 18,
+"groupSize": 8
+},
+{
+"name": "이지선2",
+"pos": "Senior",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4감사1-3",
+"ai": true,
+"group": 18,
+"groupSize": 8
+},
+{
+"name": "이연수",
+"pos": "Senior",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4감사3",
+"ai": false,
+"group": 18,
+"groupSize": 8
+},
+{
+"name": "정혜리",
+"pos": "Senior",
+"gender": "여",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 18,
+"groupSize": 8
+},
+{
+"name": "이성제",
+"pos": "Senior",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": true,
+"group": 18,
+"groupSize": 8
+},
+{
+"name": "정지훈",
+"pos": "Senior",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 18,
+"groupSize": 8
+},
+{
+"name": "이준석",
+"pos": "SENIOR",
+"gender": "남",
+"hub": "대구지사",
+"dept": "대구1감사",
+"ai": false,
+"group": 18,
+"groupSize": 8
+},
+{
+"name": "이인호",
+"pos": "Senior",
+"gender": "남",
+"hub": "창원지사",
+"dept": "창원1감사",
+"ai": true,
+"group": 18,
+"groupSize": 8
+},
+{
+"name": "홍석준",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인 금융본부1",
+"ai": false,
+"group": 19,
+"groupSize": 7
+},
+{
+"name": "최인애",
+"pos": "Senior",
+"gender": "여",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 19,
+"groupSize": 7
+},
+{
+"name": "진상우",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2GR",
+"ai": false,
+"group": 19,
+"groupSize": 7
+},
+{
+"name": "허예린",
+"pos": "Senior",
+"gender": "여",
+"hub": "서울2본부",
+"dept": "서울2세무",
+"ai": true,
+"group": 19,
+"groupSize": 7
+},
+{
+"name": "하다연",
+"pos": "Senior",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4감사3",
+"ai": true,
+"group": 19,
+"groupSize": 7
+},
+{
+"name": "조홍윤",
+"pos": "Senior",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사2",
+"ai": true,
+"group": 19,
+"groupSize": 7
+},
+{
+"name": "최호준",
+"pos": "Senior",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 19,
+"groupSize": 7
+},
+{
+"name": "곽다경",
+"pos": "Associate",
+"gender": "여",
+"hub": "서울본사",
+"dept": "법인 재무",
+"ai": false,
+"group": 20,
+"groupSize": 8
+},
+{
+"name": "박민",
+"pos": "Associate",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 20,
+"groupSize": 8
+},
+{
+"name": "김한빛",
+"pos": "Associate",
+"gender": "남",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": false,
+"group": 20,
+"groupSize": 8
+},
+{
+"name": "나영은",
+"pos": "Associate",
+"gender": "여",
+"hub": "서울6팀",
+"dept": "서울6감사1",
+"ai": true,
+"group": 20,
+"groupSize": 8
+},
+{
+"name": "박경도",
+"pos": "Associate",
+"gender": "남",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 20,
+"groupSize": 8
+},
+{
+"name": "김은형",
+"pos": "Associate",
+"gender": "여",
+"hub": "부산지사",
+"dept": "부산1세무",
+"ai": false,
+"group": 20,
+"groupSize": 8
+},
+{
+"name": "김동건",
+"pos": "Associate",
+"gender": "남",
+"hub": "창원지사",
+"dept": "창원1감사",
+"ai": true,
+"group": 20,
+"groupSize": 8
+},
+{
+"name": "김예지2",
+"pos": "Associate",
+"gender": "여",
+"hub": "창원지사",
+"dept": "창원1감사",
+"ai": true,
+"group": 20,
+"groupSize": 8
+},
+{
+"name": "선금빈",
+"pos": "컨설턴트",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인 재무",
+"ai": false,
+"group": 21,
+"groupSize": 8
+},
+{
+"name": "윤준섭",
+"pos": "Associate",
+"gender": "남",
+"hub": "서울1본부",
+"dept": "서울1감사1",
+"ai": false,
+"group": 21,
+"groupSize": 8
+},
+{
+"name": "박진건",
+"pos": "Associate",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2공통",
+"ai": true,
+"group": 21,
+"groupSize": 8
+},
+{
+"name": "한호진",
+"pos": "Associate",
+"gender": "남",
+"hub": "서울2본부",
+"dept": "서울2공통",
+"ai": true,
+"group": 21,
+"groupSize": 8
+},
+{
+"name": "조혜연",
+"pos": "Associate",
+"gender": "여",
+"hub": "서울2본부",
+"dept": "서울2GR",
+"ai": true,
+"group": 21,
+"groupSize": 8
+},
+{
+"name": "이영규",
+"pos": "Associate",
+"gender": "여",
+"hub": "서울4본부",
+"dept": "서울4감사1-2",
+"ai": false,
+"group": 21,
+"groupSize": 8
+},
+{
+"name": "안혜원2",
+"pos": "Associate",
+"gender": "여",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 21,
+"groupSize": 8
+},
+{
+"name": "이은비2",
+"pos": "Associate",
+"gender": "여",
+"hub": "부산지사",
+"dept": "부산1감사",
+"ai": false,
+"group": 21,
+"groupSize": 8
+}
+]

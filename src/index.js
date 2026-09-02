@@ -283,6 +283,9 @@ function requiredRole(pathname, method) {
   if (pathname.startsWith('/vendor/')) return null;
   if (pathname === '/api/logo' && method === 'GET') return null;
   if (pathname.startsWith('/api/auth/')) return null;
+  // 워크샵 프로그램·조배정 화면 — 참석자가 명찰 QR 로 로그인 없이 여는 것이 목적이라 공개.
+  // 로그인 뒤에만 열리게 하려면 이 줄의 null 을 'admin' 으로 바꾸면 된다.
+  if (pathname === '/workshop' || pathname.startsWith('/workshop/')) return null;
   if (pathname === '/' || pathname === '/index.html' || pathname === '/scanner.js') return 'scanner';
   if (pathname === '/api/status' || pathname === '/api/recent' || pathname === '/api/checkin') return 'scanner';
   return 'admin';

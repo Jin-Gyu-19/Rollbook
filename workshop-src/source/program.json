@@ -1,0 +1,238 @@
+{
+"title": "BDO 성현 AI 워크샵 Program",
+"dateRange": "2026. 9. 21.(월) ~ 22.(화)",
+"days": [
+{
+"label": "Day 1   9/21(월)",
+"rows": [
+{
+"time": "10:00 출발",
+"content": "버스 이용 기준",
+"note": "자차 이용자는 09:30 출발 권고"
+},
+{
+"time": "12:00 도착",
+"content": "짐 보관 장소: B2층(분수대가 있는 층) 그랜드홀 뒤편",
+"note": ""
+},
+{
+"time": "12:00~13:00",
+"content": "중식(1h)",
+"note": "몬도키친(B1)"
+},
+{
+"time": "13:00~13:15",
+"content": "Registration",
+"note": "그랜드홀(B2)\r\n출석 및 명찰 수령"
+},
+{
+"time": "",
+"content": "13:15까지 착석해 주시기 바랍니다.",
+"note": ""
+},
+{
+"time": "13:20~13:40",
+"content": "Opening 기조연설(20m)",
+"note": "대표이사 윤길배"
+},
+{
+"time": "13:40~15:10",
+"content": "외부강사 특강 Ⅰ\r\n클로드코드 활용(90m)",
+"note": "외부강사 김효건 회계사"
+},
+{
+"time": "15:10~15:25",
+"content": "Break time(15m)",
+"note": "객실 키 수령"
+},
+{
+"time": "15:25~16:25",
+"content": "AI 활용사례 발표 Ⅰ(1h)",
+"note": "각본부 강사"
+},
+{
+"time": "16:25~16:40",
+"content": "Break time(15m)",
+"note": "객실 키 수령"
+},
+{
+"time": "16:40~17:40",
+"content": "AI 활용사례 발표 Ⅱ(1h)",
+"note": "각본부 강사"
+},
+{
+"time": "17:40~17:55",
+"content": "Break time(15m)",
+"note": ""
+},
+{
+"time": "17:55~18:45",
+"content": "외부강사 특강 Ⅱ\r\nAI 개발사례 소개(50m)",
+"note": "invector 배규태 대표"
+},
+{
+"time": "18:45~19:25",
+"content": "Break time(40m)",
+"note": "객실 짐 이동 및 휴식"
+},
+{
+"time": "19:25~21:30",
+"content": "석식- 바비큐",
+"note": "포레스트 리솜 4F \r\n더그릴 720"
+},
+{
+"time": "21:30~",
+"content": "자유시간",
+"note": ""
+}
+]
+},
+{
+"label": "Day 2   9/22(화)",
+"rows": [
+{
+"time": "08:00~09:00",
+"content": "조식(1h)\r\n(한시간만 이용가능)",
+"note": "포레스트 리솜 2F\r\n선데이브리즈"
+},
+{
+"time": "09:00~09:15",
+"content": "짐 이동 및 객실 키 반납",
+"note": "그랜드홀(B2)"
+},
+{
+"time": "",
+"content": "09:15까지 착석해 주시기 바랍니다.",
+"note": ""
+},
+{
+"time": "09:20~9:50",
+"content": "내가 AI 선수다(30m)",
+"note": "DA 김진솔"
+},
+{
+"time": "09:50~10:00",
+"content": "Break time(10m)",
+"note": ""
+},
+{
+"time": "10:00~10:30",
+"content": "AI 나도 할수있다(30m)\r\n실습교육",
+"note": "QRM 서민수"
+},
+{
+"time": "10:30~10:40",
+"content": "Break time(10m)",
+"note": ""
+},
+{
+"time": "10:40~11:20",
+"content": "Debriefing 토론(40m)",
+"note": "조별 발표 및 Q&A"
+},
+{
+"time": "11:20~11:30",
+"content": "Closing 시상 및 마무리 연설",
+"note": "대표이사 윤길배"
+},
+{
+"time": "11:30~12:00",
+"content": "단체 사진 촬영",
+"note": "분수대 앞"
+},
+{
+"time": "12:00~13:00",
+"content": "중식(1h)",
+"note": "몬도키친(B1)"
+},
+{
+"time": "13:00~",
+"content": "버스 탑승 및 자차 이용자 귀가",
+"note": ""
+}
+]
+}
+],
+"lineup": [
+{
+"category": "AI 나도 할수있다",
+"items": [
+{
+"dept": "QRM",
+"speaker": "서민수",
+"topic": "PBC 관리 APP 만들어보기",
+"duration": ""
+}
+]
+},
+{
+"category": "AI 활용사례 Ⅰ",
+"items": [
+{
+"dept": "경기부",
+"speaker": "김진규",
+"topic": "경영기획본부 관리 Tool",
+"duration": "15"
+},
+{
+"dept": "QRM",
+"speaker": "서민수",
+"topic": "사전심리도우미 or Open Dart API 조회",
+"duration": "15"
+},
+{
+"dept": "1본부",
+"speaker": "김가훈",
+"topic": "JET Tool",
+"duration": "15"
+},
+{
+"dept": "부산본부",
+"speaker": "남기정",
+"topic": "유사상장자 선정, 베타∙주가변동성 산출 자동화도구",
+"duration": "15"
+}
+]
+},
+{
+"category": "AI 활용사례 Ⅱ",
+"items": [
+{
+"dept": "4본부",
+"speaker": "이지선",
+"topic": "원장가공, 리스계산, Tickmark 등 Toolkit, 채권채무조회서",
+"duration": "15"
+},
+{
+"dept": "1본부",
+"speaker": "권숙정",
+"topic": "Footing Tool",
+"duration": "15"
+},
+{
+"dept": "부산본부",
+"speaker": "황지현",
+"topic": "1118호 자동화 Tool, Claud in Excel",
+"duration": "15"
+},
+{
+"dept": "부산본부",
+"speaker": "양진석",
+"topic": "DSD 이월기입자동화",
+"duration": "15"
+}
+]
+},
+{
+"category": "내가 AI 선수다",
+"items": [
+{
+"dept": "DA팀",
+"speaker": "김진솔",
+"topic": "XBRL 비교 Tool",
+"duration": ""
+}
+]
+}
+]
+}
