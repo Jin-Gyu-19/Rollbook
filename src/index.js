@@ -283,9 +283,9 @@ function requiredRole(pathname, method) {
   if (pathname.startsWith('/vendor/')) return null;
   if (pathname === '/api/logo' && method === 'GET') return null;
   if (pathname.startsWith('/api/auth/')) return null;
-  // 워크샵 프로그램·조배정 화면 — 참석자가 명찰 QR 로 로그인 없이 여는 것이 목적이라 공개.
-  // 로그인 뒤에만 열리게 하려면 이 줄의 null 을 'admin' 으로 바꾸면 된다.
-  if (pathname === '/workshop' || pathname.startsWith('/workshop/')) return null;
+  // 워크샵 참석자 화면 — 명찰 QR 로 로그인 없이 여는 것이 목적이라 이 세 주소만 공개.
+  // 관리 화면(/workshop/admin)은 아래 기본값대로 관리자만 연다.
+  if (pathname === '/workshop' || pathname === '/workshop/' || pathname === '/workshop/index.html') return null;
   if (pathname === '/' || pathname === '/index.html' || pathname === '/scanner.js') return 'scanner';
   if (pathname === '/api/status' || pathname === '/api/recent' || pathname === '/api/checkin') return 'scanner';
   return 'admin';
@@ -310,6 +310,10 @@ export default {
         }
       }
 
+      // 워크샵 화면은 한 파일을 두 가지로 내보낸다 — 참석자용(관리 도구 제거) / 관리자용
+      const wsView = workshopView(pathname);
+      if (wsView) return serveWorkshop(request, env, wsView);
+
       if (!pathname.startsWith('/api/')) {
         return env.ASSETS.fetch(request);
       }
@@ -325,6 +329,65 @@ export default {
     }
   },
 };
+
+// ── 워크샵 화면 ──────────────────────────────────────
+// 다른 사람이 만든 단일 파일 앱(public/workshop/index.html)을 손대지 않고,
+// 내보낼 때만 두 가지로 가공한다.
+//   'public' : 참석자용 — 관리자 버튼·관리 패널·엑셀 라이브러리를 뺀다
+//   'admin'  : 관리자용 — 위에 메뉴 줄을 얹고 관리 패널을 바로 연다
+function workshopView(pathname) {
+  if (pathname === '/workshop' || pathname === '/workshop/' || pathname === '/workshop/index.html') return 'public';
+  if (pathname === '/workshop/admin' || pathname === '/workshop/admin/') return 'admin';
+  return null;
+}
+
+const WS_ADMIN_BAR_CSS = `
+  .rb-adminbar { position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; gap: 14px;
+    padding: 10px 16px; background: #111827; color: #fff; font: 600 14px/1 system-ui, sans-serif; }
+  .rb-adminbar a { color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 9px; background: rgba(255,255,255,.12); }
+  .rb-adminbar a:hover { background: rgba(255,255,255,.22); }
+  .rb-adminbar .t { flex: 1; font-weight: 800; letter-spacing: -.01em; }
+  .rb-adminbar .s { font-weight: 500; opacity: .7; margin-left: 8px; }`;
+
+async function serveWorkshop(request, env, view) {
+  // 주소를 한 가지로 맞춘다 (참석자 QR 에는 /workshop/ 만 쓴다)
+  if (view === 'public' && new URL(request.url).pathname !== '/workshop/') {
+    return Response.redirect(new URL('/workshop/', request.url).toString(), 301);
+  }
+  const asset = await env.ASSETS.fetch(new Request(new URL('/workshop/', request.url), { headers: request.headers }));
+  if (!asset.ok) return asset;
+
+  const rw = new HTMLRewriter();
+  if (view === 'public') {
+    rw.on('head', { element(el) { el.append('<style>#adminLinkBtn,#adminPanel{display:none!important}</style>', { html: true }); } })
+      .on('#adminLinkBtn', { element(el) { el.setAttribute('hidden', ''); el.setAttribute('aria-hidden', 'true'); } })
+      .on('#adminPanel', { element(el) { el.setAttribute('hidden', ''); el.setAttribute('aria-hidden', 'true'); } })
+      // 엑셀 업로드용 라이브러리는 참석자에게 필요 없다 (관리 패널이 없으니 부르지도 않는다)
+      .on('script[src*="xlsx"]', { element(el) { el.remove(); } });
+  } else {
+    rw.on('head', { element(el) { el.append(`<style>${WS_ADMIN_BAR_CSS}</style>`, { html: true }); } })
+      .on('body', {
+        element(el) {
+          el.prepend(
+            '<div class="rb-adminbar"><a href="/start">← 메뉴</a>' +
+            '<span class="t">워크샵 관리<span class="s">엑셀을 올려 프로그램·조배정을 갱신합니다</span></span>' +
+            '<a href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>',
+            { html: true },
+          );
+          // 관리 패널을 바로 열어 둔다 (원본은 맨 아래 '관리자' 글자를 눌러야 열린다)
+          el.append(
+            '<script>(function(){var p=document.getElementById("adminPanel");if(p){p.hidden=false;}' +
+            'var b=document.getElementById("adminLinkBtn");if(b){b.hidden=true;}})();</script>',
+            { html: true },
+          );
+        },
+      });
+  }
+  const out = rw.transform(asset);
+  const h = new Headers(out.headers);
+  h.set('cache-control', 'no-store');   // 두 가지 화면이 같은 파일에서 나오므로 캐시하지 않는다
+  return new Response(out.body, { status: out.status, headers: h });
+}
 
 async function route(request, env, pathname) {
   const db = env.DB;
