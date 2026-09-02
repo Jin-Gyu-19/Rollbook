@@ -842,11 +842,15 @@
   // 37칸에서는 폭 0.64 가 한계다. 여유를 두어 0.60 으로 잡는다.
   // 격자를 49칸으로 올리면 0.70(폭 68%)까지 가능하지만 점이 잘아져 소형 인쇄에서
   // 여유가 줄고 인상도 달라지므로 쓰지 않는다.
-  const POSTER_GRID_VERSION = 5; // 37 x 37 — 칸이 커서 소형 인쇄에 유리
-  const POSTER_LOGO_W = 0.60;
+  // 흰 배경은 예전 그대로 37칸 · 0.60 (실제 QR 폭의 58%).
+  // 색 배경에서만 49칸 · 0.70 (폭 68%) 을 써서 로고를 키운다 — 칸이 잘아지는
+  // 대신 로고 면적이 1.4배가 된다. 대신 18mm 미만으로 인쇄하면 여유가 모자란다.
+  const POSTER_GRID = { light: 5, dark: 8 };   // 37 x 37 / 49 x 49
+  const POSTER_W    = { light: 0.60, dark: 0.70 };
 
   async function buildPosterCanvas(m, size) {
-    const grid = makeQrGrid(m.code, POSTER_GRID_VERSION);
+    const tier = isDarkBg() ? 'dark' : 'light';
+    const grid = makeQrGrid(m.code, POSTER_GRID[tier]);
     const count = grid.getModuleCount();
     const margin = Math.round(size / 60);
     const mod = (size - margin * 2) / count;
@@ -883,7 +887,7 @@
     if (!lw || !lh) return canvas;
 
     // 2) 로고 크기·위치 (가운데, 파인더는 건드리지 않는 높이로 제한)
-    const k = Math.min((count * mod * POSTER_LOGO_W) / lw, ((count - 16) * mod) / lh);
+    const k = Math.min((count * mod * POSTER_W[tier]) / lw, ((count - 16) * mod) / lh);
     const dw = lw * k;
     const dh = lh * k;
     const dx = (size - dw) / 2;
