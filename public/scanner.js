@@ -1,6 +1,8 @@
 /* Rollbook 스캐너 — 상시 카메라 + QR 인식 → 출석 체크 */
 (() => {
   const video = document.getElementById('video');
+  const videoClear = document.getElementById('videoClear');
+  const frameBox = document.querySelector('.scan-frame .box');
   const canvas = document.getElementById('frame');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const offline = document.getElementById('cameraOffline');
@@ -120,7 +122,7 @@
   const panelCount = document.getElementById('panelCount');
   const panelSheetTitle = document.getElementById('panelSheetTitle');
   const panelSheetSub = document.getElementById('panelSheetSub');
-  let latestCheckedAt = ''; // 마지막으로 본 최신 기록
+  let latestCheckedAt = null; // 마지막으로 본 최신 기록 (null = 아직 한 번도 안 읽음)
   let glowCheckedAt = null; // 지금 네온 글로우 중인 기록 (10초 or 다음 출석까지)
   let glowTimer = null;
 
@@ -159,9 +161,11 @@
         latestCheckedAt = '';
         return;
       }
-      // 새 출석이 생기면 글로우가 그 사람에게 넘어가고, 없으면 10초 후 꺼진다
+      // 새 출석이 생기면 글로우가 그 사람에게 넘어가고, 없으면 10초 후 꺼진다.
+      // 첫 화면을 띄운 순간의 기록에는 켜지 않지만(null), 빈 출석부에서 처음
+      // 출석한 사람('' 과 비교)에게는 켜 준다.
       const top = d.entries[0].checked_at;
-      if (latestCheckedAt && top > latestCheckedAt) {
+      if (latestCheckedAt !== null && top > latestCheckedAt) {
         glowCheckedAt = top;
         clearTimeout(glowTimer);
         glowTimer = setTimeout(() => {
@@ -211,9 +215,17 @@
       });
       video.srcObject = stream;
       await video.play();
+      // 같은 영상을 '또렷한 창' 에도 물린다 (테두리 안쪽만 보이도록 오려 쓴다)
+      if (videoClear) {
+        videoClear.srcObject = stream;
+        videoClear.play().catch(() => {});
+      }
       // 전면 카메라면 미리보기만 거울 모드로 (인식은 원본 영상 사용)
       const settings = stream.getVideoTracks()[0]?.getSettings?.() || {};
-      video.classList.toggle('mirror', settings.facingMode !== 'environment');
+      const mirror = settings.facingMode !== 'environment';
+      video.classList.toggle('mirror', mirror);
+      videoClear?.classList.toggle('mirror', mirror);
+      syncClearWindow();
       showCamRes(settings);
       offline.classList.add('hidden');
       setCam('명찰을 테두리 안에 맞춰 주세요', 'ok');
@@ -224,6 +236,23 @@
       btnRetry.classList.remove('hidden');
     }
   }
+  // 명찰 테두리 위치에 맞춰 '또렷한 창' 을 오려 낸다.
+  // 테두리 크기가 화면에 따라 달라지므로 실제 위치를 재서 맞춘다.
+  function syncClearWindow() {
+    if (!videoClear || !frameBox) return;
+    const r = frameBox.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const top = Math.max(0, r.top);
+    const left = Math.max(0, r.left);
+    const right = Math.max(0, window.innerWidth - r.right);
+    const bottom = Math.max(0, window.innerHeight - r.bottom);
+    videoClear.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px round 18px)`;
+  }
+  window.addEventListener('resize', syncClearWindow);
+  window.addEventListener('orientationchange', syncClearWindow);
+  if (window.ResizeObserver && frameBox) new ResizeObserver(syncClearWindow).observe(frameBox);
+  syncClearWindow();
+
   btnRetry.addEventListener('click', startCamera);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && (!stream || !stream.active)) startCamera();

@@ -16,8 +16,16 @@
 /* ── 스캐너 화면 (전체화면 카메라) ───────────────────── */
 .scan-full { overflow: hidden; height: 100dvh; }
 .scan-stage { position: fixed; inset: 0; background: #111827; z-index: 0; }
-.scan-stage video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-stage video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+/* 바탕 영상 : 흐리고 어둡게 — 화면 가장자리에 흐림 테두리가 생기지 않도록 살짝 확대 */
+#video { filter: blur(11px) brightness(.42) saturate(.85); transform: scale(1.08); }
+/* 오려낸 창 : 명찰 테두리 안쪽만 원본 그대로 (clip-path 는 scanner.js 가 맞춘다) */
+#videoClear { clip-path: inset(50% round 18px); }
 .scan-stage video.mirror { transform: scaleX(-1); } /* 전면 카메라 거울 모드 */
+#video.mirror { transform: scale(1.08) scaleX(-1); }
 .scan-frame {
   position: absolute; inset: 0; display: flex;
   align-items: center; justify-content: center;
@@ -35,7 +43,8 @@
   /* 명찰 비율 (가로 15 : 세로 20) 의 세로형 프레임 — 화면 정중앙, 크게 */
   position: relative; width: min(63vmin, 525px); aspect-ratio: 3 / 4;
   border-radius: 18px;
-  box-shadow: 0 0 0 9999px rgba(17, 24, 39, .32);
+  /* 바깥은 영상 자체를 흐리게 처리하므로, 여기서는 경계선만 얇게 남긴다 */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .18), 0 0 40px rgba(0, 0, 0, .35);
 }
 /* 명찰 목걸이 구멍 표시 — 프레임이 명찰임을 직관적으로 */
 .scan-frame .slot {
