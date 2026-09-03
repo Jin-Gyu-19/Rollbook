@@ -557,18 +557,42 @@ function wsFindSpans(html) {
 }
 
 function wsExtract(html) {
-  const spans = wsFindSpans(html);
-  if (!spans) return null;
+  const read = wsRead(html);
+  return read.error ? null : read.data;
+}
+
+// 실패했을 때 '무엇이 잘못됐는지' 까지 돌려준다 — 관리 화면에 그대로 띄운다
+function wsRead(html) {
+  const text = String(html ?? '');
+  if (!text.trim()) return { error: '보낸 파일이 비어 있습니다.', detail: '내용이 0바이트입니다.' };
+  if (!/<html|<!doctype/i.test(text.slice(0, 400))) {
+    return {
+      error: 'HTML 파일이 아닙니다.',
+      detail: `파일 앞부분이 “${text.slice(0, 60).replace(/\s+/g, ' ')}” 입니다. 워크샵 관리 화면이 만든 index.html 을 넣어 주세요.`,
+    };
+  }
+  const spans = wsFindSpans(text);
+  if (!spans) {
+    const missing = WS_KEYS.filter((k) => text.indexOf(`const ${k} = `) === -1);
+    return {
+      error: '워크샵 앱이 만든 index.html 이 아닙니다.',
+      detail: missing.length
+        ? `파일 안에서 ${missing.join(', ')} 자료를 찾지 못했습니다.`
+        : '자료 선언은 있으나 형태가 예상과 다릅니다 (앱 버전이 다를 수 있습니다).',
+    };
+  }
   const out = {};
   for (const k of WS_KEYS) {
     try {
-      out[k] = JSON.parse(html.slice(spans[k][0], spans[k][1]));
-    } catch {
-      return null;
+      out[k] = JSON.parse(text.slice(spans[k][0], spans[k][1]));
+    } catch (e) {
+      return { error: `${k} 자료를 읽지 못했습니다.`, detail: `${e.message} — 파일이 도중에 잘렸을 수 있습니다.` };
     }
   }
-  if (!Array.isArray(out.PEOPLE) || !out.PEOPLE.length || !out.PEOPLE[0]?.name) return null;
-  return out;
+  if (!Array.isArray(out.PEOPLE)) return { error: '명단(PEOPLE)이 목록 형태가 아닙니다.', detail: `받은 형태: ${typeof out.PEOPLE}` };
+  if (!out.PEOPLE.length) return { error: '명단이 비어 있습니다.', detail: '엑셀에서 참석자를 한 명도 읽지 못한 파일입니다.' };
+  if (!out.PEOPLE[0]?.name) return { error: '명단에 이름 칸이 없습니다.', detail: `첫 줄: ${JSON.stringify(out.PEOPLE[0]).slice(0, 120)}` };
+  return { data: out };
 }
 
 function wsReplace(html, data) {
@@ -644,49 +668,133 @@ const WS_PUBLISH_SHIM = `(function(){
   window.claude = { use: async function(name){
     if (name !== 'artifact') return null;
     return { publish: async function(html){
-      var r = await fetch('/api/workshop/publish', {
-        method: 'POST', headers: { 'content-type': 'text/plain; charset=utf-8' }, body: html });
+      var r;
+      try {
+        r = await fetch('/api/workshop/publish', {
+          method: 'POST', headers: { 'content-type': 'text/plain; charset=utf-8' }, body: html });
+      } catch (e) {
+        var netInfo = { step: '전송', error: '서버에 연결하지 못했습니다.', detail: e.message, status: 0 };
+        if (window.rbFail) window.rbFail(netInfo);
+        throw new Error(netInfo.error);
+      }
       var d = await r.json().catch(function(){ return {}; });
-      if (!r.ok) throw new Error(d.error || '참석자 화면에 반영하지 못했습니다.');
-      setTimeout(function(){ location.reload(); }, 1200);
+      if (!r.ok) {
+        var info = { step: d.step || '서버 반영',
+          error: d.error || ('서버가 ' + r.status + ' 로 응답했습니다.'),
+          detail: d.detail || '', status: r.status };
+        if (window.rbFail) window.rbFail(info);
+        throw new Error(info.error + (info.detail ? ' — ' + info.detail : ''));
+      }
+      // 적용 내역은 화면에 띄우고, 새로고침은 관리자가 그 창을 닫을 때 한다
+      if (window.rbDone) window.rbDone(d);
+      else setTimeout(function(){ location.reload(); }, 1200);
       return d;
     } };
   } };
 })();`;
 
 
-// 편집 화면이 보낸 자료가 쓸 만한지만 확인한다 (내용은 관리자가 책임진다)
+// 워크샵 반영 실패 — 어느 단계에서 왜 막혔는지 화면에 그대로 띄울 수 있게 내려보낸다
+function wsFail(info, step) {
+  return json({ error: info.error, detail: info.detail ?? '', step }, info.status ?? 400);
+}
+
+// 편집 화면이 보낸 자료가 쓸 만한지 확인한다 (내용은 관리자가 책임진다).
+// 어긋나면 어느 칸이 문제인지까지 돌려준다.
 function wsCheckData(body) {
-  if (!body || typeof body !== 'object') return null;
+  const bad = (error, detail) => ({ error, detail });
+  if (!body || typeof body !== 'object') return bad('보낸 자료를 읽지 못했습니다.', 'JSON 본문이 아닙니다.');
   const { META, PEOPLE, PROGRAM, DINNER } = body;
-  if (!Array.isArray(PEOPLE) || !PEOPLE.length) return null;
-  if (!PEOPLE.every((p) => p && typeof p.name === 'string' && p.name.trim())) return null;
-  if (!Array.isArray(DINNER)) return null;
-  if (!PROGRAM || typeof PROGRAM !== 'object' || !Array.isArray(PROGRAM.days)) return null;
+  if (!Array.isArray(PEOPLE)) return bad('명단이 목록 형태가 아닙니다.', `받은 형태: ${typeof PEOPLE}`);
+  if (!PEOPLE.length) return bad('명단이 비어 있습니다.', '한 명 이상은 있어야 저장할 수 있습니다.');
+  const noName = PEOPLE.findIndex((p) => !p || typeof p.name !== 'string' || !p.name.trim());
+  if (noName !== -1) return bad('이름이 비어 있는 줄이 있습니다.', `${noName + 1}번째 줄 — 이름을 채우거나 그 줄을 지워 주세요.`);
+  if (!Array.isArray(DINNER)) return bad('석식 명단이 목록 형태가 아닙니다.', `받은 형태: ${typeof DINNER}`);
+  if (!PROGRAM || typeof PROGRAM !== 'object') return bad('프로그램 자료가 없습니다.', `받은 형태: ${typeof PROGRAM}`);
+  if (!Array.isArray(PROGRAM.days)) return bad('프로그램의 일자 목록이 없습니다.', '일자를 하나 이상 두어야 합니다.');
+  return { data: { META: META && typeof META === 'object' ? META : {}, PEOPLE, PROGRAM, DINNER } };
+}
+
+// 한 벌이 어떤 내용인지 한눈에 (관리 화면의 '적용 내역' 에 그대로 쓴다)
+function wsSummary(data) {
+  const count = (list) => new Set(list.map((x) => x.groupLabel || x.group).filter((x) => x != null)).size;
+  const days = (data.PROGRAM?.days ?? []).map((d) => ({ label: d.label ?? '', rows: (d.rows ?? []).length }));
   return {
-    META: META && typeof META === 'object' ? META : {},
-    PEOPLE,
-    PROGRAM,
-    DINNER,
+    people: data.PEOPLE.length,
+    groups: count(data.PEOPLE),
+    dinner: data.DINNER.length,
+    dinnerGroups: count(data.DINNER),
+    title: data.PROGRAM?.title ?? '',
+    dateRange: data.PROGRAM?.dateRange ?? '',
+    days,
+    rows: days.reduce((n, d) => n + d.rows, 0),
+    lineup: (data.PROGRAM?.lineup ?? []).reduce((n, g) => n + (g.items?.length ?? 0), 0),
   };
 }
 
-// 한 벌을 새 버전으로 쌓고 그것만 사용 중으로 둔다 (엑셀 게시·직접 편집 공용)
+// 지금 쓰고 있는 한 벌과 견줘 무엇이 달라지는지 (동명이인 때문에 본부까지 묶어 센다)
+const WS_DIFF_CAP = 40;
+function wsDiff(prev, next) {
+  if (!Array.isArray(prev) || !Array.isArray(next)) return null;
+  const key = (p) => `${p.name}|${p.hub ?? ''}`;
+  const where = (p) => p.groupLabel || `${p.group}조`;
+  const before = new Map(prev.map((p) => [key(p), p]));
+  const after = new Map(next.map((p) => [key(p), p]));
+  const added = [];
+  const moved = [];
+  const removed = [];
+  next.forEach((p) => {
+    const o = before.get(key(p));
+    if (!o) added.push(p.name);
+    else if (where(o) !== where(p)) moved.push({ name: p.name, from: where(o), to: where(p) });
+  });
+  prev.forEach((p) => { if (!after.has(key(p))) removed.push(p.name); });
+  return {
+    addedCount: added.length,
+    removedCount: removed.length,
+    movedCount: moved.length,
+    kept: next.length - added.length,
+    added: added.slice(0, WS_DIFF_CAP),
+    removed: removed.slice(0, WS_DIFF_CAP),
+    moved: moved.slice(0, WS_DIFF_CAP),
+  };
+}
+
+// 한 벌을 새 버전으로 쌓고 그것만 사용 중으로 둔다 (엑셀 게시·직접 편집 공용).
+// 실패하면 던지지 않고 { error, detail } 로 돌려준다 — 화면에 그대로 띄우기 위해서다.
 async function wsSaveDataset(env, data) {
-  await ensureWsSchema(env);
-  const groups = new Set(data.PEOPLE.map((x) => x.groupLabel || x.group).filter((x) => x != null)).size;
-  const res = await env.WSDB.prepare(
-    `INSERT INTO ws_dataset (note, people_count, group_count, meta_json, people_json, program_json, dinner_json, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-  ).bind(
-    data.PROGRAM?.title ?? '', data.PEOPLE.length, groups,
-    JSON.stringify(data.META), JSON.stringify(data.PEOPLE),
-    JSON.stringify(data.PROGRAM), JSON.stringify(data.DINNER),
-  ).run();
-  const id = res.meta?.last_row_id;
-  await env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0 WHERE id <> ?').bind(id).run();
+  let prev = null;
+  try {
+    await ensureWsSchema(env);
+    prev = await wsActiveData(env);
+  } catch (e) {
+    return { error: '워크샵 데이터베이스를 준비하지 못했습니다.', detail: e.message, status: 503 };
+  }
+  const sum = wsSummary(data);
+  let id;
+  try {
+    const res = await env.WSDB.prepare(
+      `INSERT INTO ws_dataset (note, people_count, group_count, meta_json, people_json, program_json, dinner_json, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    ).bind(
+      sum.title, sum.people, sum.groups,
+      JSON.stringify(data.META), JSON.stringify(data.PEOPLE),
+      JSON.stringify(data.PROGRAM), JSON.stringify(data.DINNER),
+    ).run();
+    id = res.meta?.last_row_id;
+    await env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0 WHERE id <> ?').bind(id).run();
+  } catch (e) {
+    return { error: '데이터베이스에 저장하지 못했습니다.', detail: e.message, status: 500 };
+  }
   wsCache = { id: null, html: null };
-  return { id, people: data.PEOPLE.length, groups };
+  return {
+    id,
+    prevId: prev?.id ?? null,
+    at: new Date().toISOString(),
+    ...sum,
+    diff: wsDiff(prev?.PEOPLE, data.PEOPLE),
+    dinnerDiff: wsDiff(prev?.DINNER, data.DINNER),
+  };
 }
 
 async function serveWorkshop(request, env, view) {
@@ -798,21 +906,22 @@ async function route(request, env, pathname) {
 
   // ── 워크샵 데이터 (전용 데이터베이스, 관리자 전용) ──
   if (pathname === '/api/workshop/publish' && request.method === 'POST') {
-    if (!env.WSDB) return err('워크샵 데이터베이스가 연결되어 있지 않습니다.', 503);
-    const html = await request.text();
-    const data = wsExtract(html);
-    if (!data) return err('워크샵 앱이 만든 index.html 이 아닙니다. 관리 화면에서 내려받은 파일을 넣어 주세요.', 400);
-    const saved = await wsSaveDataset(env, data);
-    return json({ ok: true, ...saved });
+    if (!env.WSDB) return wsFail({ error: '워크샵 데이터베이스가 연결되어 있지 않습니다.', detail: 'WSDB 바인딩이 없습니다 — 배포 설정을 확인해 주세요.', status: 503 }, '준비');
+    const read = wsRead(await request.text());
+    if (read.error) return wsFail({ ...read, status: 400 }, '파일 읽기');
+    const saved = await wsSaveDataset(env, read.data);
+    if (saved.error) return wsFail(saved, '저장');
+    return json({ ok: true, source: 'excel', ...saved });
   }
 
   // 관리 화면의 '직접 편집' — 고친 자료를 그대로 받아 새 버전으로 쌓는다
   if (pathname === '/api/workshop/save' && request.method === 'POST') {
-    if (!env.WSDB) return err('워크샵 데이터베이스가 연결되어 있지 않습니다.', 503);
-    const data = wsCheckData(await readBody(request));
-    if (!data) return err('보낸 자료의 형식이 올바르지 않습니다.', 400);
-    const saved = await wsSaveDataset(env, data);
-    return json({ ok: true, ...saved });
+    if (!env.WSDB) return wsFail({ error: '워크샵 데이터베이스가 연결되어 있지 않습니다.', detail: 'WSDB 바인딩이 없습니다 — 배포 설정을 확인해 주세요.', status: 503 }, '준비');
+    const checked = wsCheckData(await readBody(request));
+    if (checked.error) return wsFail({ ...checked, status: 400 }, '내용 확인');
+    const saved = await wsSaveDataset(env, checked.data);
+    if (saved.error) return wsFail(saved, '저장');
+    return json({ ok: true, source: 'editor', ...saved });
   }
 
   if (pathname === '/api/workshop/versions' && request.method === 'GET') {

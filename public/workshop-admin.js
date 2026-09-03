@@ -59,6 +59,32 @@
     '.rbed .grp .n { color: #6B7280; font-size: 12.5px; }',
     '.rbed .ai { width: 16px; height: 16px; }',
     '.rbed .warn { color: #B91C1C; font-size: 12.5px; margin-top: 6px; }',
+    '.rbrep { position: fixed; inset: 0; z-index: 4000; background: rgba(15,23,42,.55); display: flex;',
+    '  align-items: center; justify-content: center; padding: 24px;',
+    '  font: 400 13.5px/1.6 system-ui, -apple-system, "Noto Sans KR", sans-serif; color: #111827; }',
+    '.rbrep[hidden] { display: none; }',
+    '.rbrep .card { width: min(720px, 100%); max-height: 88vh; overflow: auto; background: #fff;',
+    '  border-radius: 14px; box-shadow: 0 24px 60px -20px rgba(2,6,23,.5); padding: 20px 22px 18px; }',
+    '.rbrep h3 { margin: 0 0 2px; font-size: 17px; }',
+    '.rbrep .when { color: #6B7280; font-size: 12.5px; margin: 0 0 14px; }',
+    '.rbrep dl { display: grid; grid-template-columns: 88px 1fr; gap: 6px 12px; margin: 0 0 14px; }',
+    '.rbrep dt { color: #6B7280; font-size: 12.5px; }',
+    '.rbrep dd { margin: 0; }',
+    '.rbrep .sec { border-top: 1px solid #F1F5F9; padding-top: 12px; margin-top: 12px; }',
+    '.rbrep .sec > b { display: block; margin-bottom: 6px; font-size: 13px; }',
+    '.rbrep .line { display: flex; gap: 8px; margin-bottom: 5px; align-items: baseline; }',
+    '.rbrep .line .k { flex: none; width: 92px; color: #6B7280; font-size: 12.5px; }',
+    '.rbrep .line .v { color: #111827; }',
+    '.rbrep .names { color: #475569; font-size: 12.5px; }',
+    '.rbrep .none { color: #94A3B8; }',
+    '.rbrep .why { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }',
+    '.rbrep .why .k { color: #7F1D1D; font-size: 12px; font-weight: 600; }',
+    '.rbrep .why .v { color: #111827; margin-bottom: 8px; word-break: break-word; }',
+    '.rbrep .todo { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; color: #334155; }',
+    '.rbrep .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }',
+    '.rbrep .btns button { padding: 9px 16px; border: 0; border-radius: 9px; background: #111827; color: #fff;',
+    '  font: 600 13px system-ui, sans-serif; cursor: pointer; }',
+    '.rbrep .btns button.ghost { background: #E5E7EB; color: #111827; }',
   ].join('\n');
 
   var $ = function (id) { return document.getElementById(id); };
@@ -468,19 +494,28 @@
     };
     saveBtn.disabled = true;
     tell('저장하는 중…');
+    var r;
     try {
-      var r = await fetch('/api/workshop/save', {
+      r = await fetch('/api/workshop/save', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
       });
-      var d = await r.json().catch(function () { return {}; });
-      if (!r.ok) throw new Error(d.error || '저장하지 못했습니다.');
-      dirty = false;
-      tell('참석자 화면에 반영되었습니다 (버전 ' + d.id + '). 잠시 후 새로고침됩니다.', 'ok');
-      setTimeout(function () { location.reload(); }, 1200);
     } catch (e) {
-      tell(e.message, 'err');
+      tell('서버에 연결하지 못했습니다.', 'err');
       saveBtn.disabled = false;
+      showFail({ step: '전송', error: '서버에 연결하지 못했습니다.', detail: e.message, status: 0 });
+      return;
     }
+    var d = await r.json().catch(function () { return {}; });
+    if (!r.ok) {
+      tell(d.error || '저장하지 못했습니다.', 'err');
+      saveBtn.disabled = false;
+      showFail({ step: d.step || '저장', error: d.error || ('서버가 ' + r.status + ' 로 응답했습니다.'),
+                 detail: d.detail || '', status: r.status });
+      return;
+    }
+    dirty = false;
+    tell('반영되었습니다 (버전 ' + d.id + ').', 'ok');
+    showDone(d);
   });
 
   window.addEventListener('beforeunload', function (e) {
@@ -488,6 +523,137 @@
     e.preventDefault();
     e.returnValue = '';
   });
+
+  // ── 적용 내역 · 실패 원인 ────────────────────────────
+  // 엑셀 게시(원본 앱의 '게시하기')와 직접 편집이 함께 쓴다.
+  var rep = el('div', 'rbrep');
+  rep.hidden = true;
+  rep.innerHTML = '<div class="card"></div>';
+  document.body.appendChild(rep);
+  var repCard = rep.querySelector('.card');
+
+  function closeReport(reload) {
+    rep.hidden = true;
+    if (reload) location.reload();
+  }
+  rep.addEventListener('click', function (e) { if (e.target === rep) closeReport(rep.dataset.reload === '1'); });
+
+  function line(k, v, cls) {
+    var w = el('div', 'line');
+    w.appendChild(el('span', 'k', k));
+    w.appendChild(el('span', 'v' + (cls ? ' ' + cls : ''), v));
+    return w;
+  }
+  function names(list, total) {
+    if (!list || !list.length) return '';
+    var t = list.join(', ');
+    if (total > list.length) t += ' 외 ' + (total - list.length) + '명';
+    return t;
+  }
+  function diffSection(title, d, unit) {
+    var box = el('div', 'sec');
+    box.appendChild(el('b', null, title));
+    if (!d) {
+      box.appendChild(el('div', 'none', '처음 올린 자료라 견줄 이전 버전이 없습니다.'));
+      return box;
+    }
+    if (!d.addedCount && !d.removedCount && !d.movedCount) {
+      box.appendChild(el('div', 'none', unit + ' 변동 없음 (' + d.kept + '명 그대로)'));
+      return box;
+    }
+    var add = line('새로 들어옴', d.addedCount + '명');
+    if (d.addedCount) add.appendChild(el('span', 'names', ' — ' + names(d.added, d.addedCount)));
+    box.appendChild(add);
+    var rm = line('빠짐', d.removedCount + '명');
+    if (d.removedCount) rm.appendChild(el('span', 'names', ' — ' + names(d.removed, d.removedCount)));
+    box.appendChild(rm);
+    var mv = line('조가 바뀜', d.movedCount + '명');
+    if (d.movedCount) {
+      mv.appendChild(el('span', 'names', ' — ' + names(d.moved.map(function (m) {
+        return m.name + ' ' + m.from + '→' + m.to;
+      }), d.movedCount)));
+    }
+    box.appendChild(mv);
+    box.appendChild(line('그대로', d.kept + '명'));
+    return box;
+  }
+
+  function showDone(d) {
+    repCard.innerHTML = '';
+    repCard.appendChild(el('h3', null, '참석자 화면에 반영되었습니다'));
+    repCard.appendChild(el('p', 'when',
+      '버전 ' + d.id + (d.prevId ? ' (이전 버전 ' + d.prevId + ')' : '') + ' · '
+      + new Date(d.at || Date.now()).toLocaleString('ko-KR')
+      + ' · ' + (d.source === 'editor' ? '직접 편집' : '엑셀 파일')));
+
+    var dl = el('dl');
+    var put = function (k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); };
+    put('명단', d.people + '명 · ' + d.groups + '개 조');
+    put('석식', d.dinner + '명 · ' + d.dinnerGroups + '개 조');
+    put('프로그램', (d.title || '(제목 없음)') + (d.dateRange ? ' · ' + d.dateRange : ''));
+    put('일정', (d.days || []).length + '일 · ' + d.rows + '개 항목'
+      + ((d.days || []).length ? ' (' + d.days.map(function (x) { return (x.label || '') + ' ' + x.rows + '개'; }).join(' / ') + ')' : ''));
+    put('강의 목록', d.lineup + '건');
+    repCard.appendChild(dl);
+
+    repCard.appendChild(diffSection('명단 변동 (Grand Hall)', d.diff, '조배정'));
+    repCard.appendChild(diffSection('명단 변동 (석식)', d.dinnerDiff, '석식 조배정'));
+
+    var btns = el('div', 'btns');
+    var b1 = el('button', null, '닫고 새로고침');
+    b1.type = 'button';
+    b1.addEventListener('click', function () { closeReport(true); });
+    var b2 = el('button', 'ghost', '이 내역 더 보기');
+    b2.type = 'button';
+    b2.addEventListener('click', function () { closeReport(false); });
+    btns.appendChild(b2);
+    btns.appendChild(b1);
+    repCard.appendChild(btns);
+    rep.dataset.reload = '1';
+    rep.hidden = false;
+  }
+
+  function showFail(info) {
+    var status = info.status || 0;
+    var todo = '파일이나 입력한 내용을 확인한 뒤 다시 시도해 주세요.';
+    if (status === 401) todo = '로그인이 풀렸습니다. 새 창에서 다시 로그인한 뒤, 이 화면으로 돌아와 한 번 더 누르면 됩니다. (지금 창을 닫지 마세요 — 고친 내용이 남아 있습니다.)';
+    else if (status === 503) todo = '워크샵 데이터베이스가 연결되지 않았습니다. 배포 설정(WSDB)을 확인해야 합니다.';
+    else if (status === 500) todo = '서버에서 저장하다 막혔습니다. 잠시 뒤 다시 시도하고, 그래도 안 되면 아래 “자세히” 내용을 그대로 알려 주세요.';
+    else if (status === 413) todo = '보낸 자료가 너무 큽니다. 명단을 나눠 올리거나 담당자에게 알려 주세요.';
+    else if (!status) todo = '서버에 닿지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주세요. 고친 내용은 그대로 남아 있습니다.';
+
+    repCard.innerHTML = '';
+    repCard.appendChild(el('h3', null, '반영하지 못했습니다'));
+    repCard.appendChild(el('p', 'when', new Date().toLocaleString('ko-KR')
+      + ' · 참석자 화면은 그대로입니다 (바뀐 것이 없습니다)'));
+
+    var why = el('div', 'why');
+    why.appendChild(el('div', 'k', '단계'));
+    why.appendChild(el('div', 'v', info.step || '알 수 없음'));
+    why.appendChild(el('div', 'k', '원인'));
+    why.appendChild(el('div', 'v', info.error || '알 수 없는 오류'));
+    if (info.detail) {
+      why.appendChild(el('div', 'k', '자세히'));
+      why.appendChild(el('div', 'v', info.detail));
+    }
+    why.appendChild(el('div', 'k', '응답 코드'));
+    why.appendChild(el('div', 'v', status ? String(status) : '(응답 없음)'));
+    repCard.appendChild(why);
+    repCard.appendChild(el('div', 'todo', todo));
+
+    var btns = el('div', 'btns');
+    var b = el('button', null, '닫기');
+    b.type = 'button';
+    b.addEventListener('click', function () { closeReport(false); });
+    btns.appendChild(b);
+    repCard.appendChild(btns);
+    rep.dataset.reload = '0';
+    rep.hidden = false;
+  }
+
+  // 원본 앱의 '게시하기' 를 잇는 다리(head 에 먼저 실린다)가 불러 쓴다
+  window.rbDone = showDone;
+  window.rbFail = showFail;
 
   var openBtn = $('rbEditOpen');
   if (openBtn) {
