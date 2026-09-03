@@ -136,7 +136,7 @@
   function toLogin() {
     if (authRedirected) return;
     authRedirected = true;
-    location.href = '/login?next=%2F';
+    location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
   }
 
   async function loadRecent() {

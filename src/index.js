@@ -302,7 +302,7 @@ function requiredRole(pathname, method) {
   // 워크샵 참석자 화면 — 명찰 QR 로 로그인 없이 여는 것이 목적이라 이 세 주소만 공개.
   // 관리 화면(/workshop/admin)은 아래 기본값대로 관리자만 연다.
   if (pathname === '/workshop' || pathname === '/workshop/' || pathname === '/workshop/index.html') return null;
-  if (pathname === '/' || pathname === '/index.html' || pathname === '/scanner.js') return 'scanner';
+  if (pathname === '/' || pathname === '/index.html' || pathname === '/scan' || pathname === '/scanner.js') return 'scanner';
   if (pathname === '/api/status' || pathname === '/api/recent' || pathname === '/api/checkin') return 'scanner';
   return 'admin';
 }
@@ -317,13 +317,24 @@ export default {
 
       // 접속 권한 검사 — 페이지는 로그인 화면으로, API 는 401 로
       const need = requiredRole(pathname, request.method);
+      let session = null;
       if (need) {
-        const session = await getSession(env.DB, request);
+        session = await getSession(env.DB, request);
         const allowed = session && (session.role === 'admin' || (need === 'scanner' && session.role === 'scanner'));
         if (!allowed) {
           if (pathname.startsWith('/api/')) return json({ error: '로그인이 필요합니다.', auth: true }, 401);
           return Response.redirect(new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url).toString(), 302);
         }
+      }
+
+      // 관리자가 주소만 치고 들어오면 스캔 화면이 아니라 메뉴가 뜨게 한다.
+      // 스캐너 PC(스캐너 권한)는 예전처럼 '/' 가 곧 스캔 화면이다.
+      if ((pathname === '/' || pathname === '/index.html') && session?.role === 'admin') {
+        return Response.redirect(new URL('/start', request.url).toString(), 302);
+      }
+      // 관리자가 메뉴에서 스캔 화면을 열 때 쓰는 주소 (여기서는 되돌리지 않는다)
+      if (pathname === '/scan') {
+        return env.ASSETS.fetch(new Request(new URL('/index.html', request.url), { headers: request.headers }));
       }
 
       // 워크샵 화면은 한 파일을 두 가지로 내보낸다 — 참석자용(관리 도구 제거) / 관리자용

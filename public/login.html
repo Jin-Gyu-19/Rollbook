@@ -141,9 +141,14 @@
   const $ = (id) => document.getElementById(id);
   const next = new URLSearchParams(location.search).get('next');
   const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : null;
+  // 주소만 치고 들어오면 next 가 '/'(스캔 화면)로 잡힌다.
+  // 관리자는 그럴 때 스캔 화면이 아니라 메뉴로 보낸다 — 특정 페이지를 열려다
+  // 로그인으로 튕긴 경우(예: /admin)에는 그 페이지로 그대로 돌려보낸다.
+  const rootish = !safeNext || safeNext === '/' || safeNext === '/index.html';
 
   function go(role) {
-    location.replace(safeNext || (role === 'admin' ? '/start' : '/'));
+    if (role === 'admin') return location.replace(rootish ? '/start' : safeNext);
+    location.replace(safeNext || '/');
   }
 
   async function post(path, body) {
