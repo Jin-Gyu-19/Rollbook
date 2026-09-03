@@ -622,43 +622,48 @@ const WS_ADMIN_BAR_CSS = `
   .rb-adminbar a:hover { background: rgba(255,255,255,.22); }
   .rb-adminbar .t { flex: 1; font-weight: 800; letter-spacing: -.01em; }
   .rb-adminbar .s { font-weight: 500; opacity: .7; margin-left: 8px; }
+  .rb-adminbar button { color: #fff; padding: 7px 12px; border: 0; border-radius: 9px;
+    background: rgba(255,255,255,.12); font: 600 14px/1 system-ui, sans-serif; cursor: pointer; }
+  .rb-adminbar button:hover { background: rgba(255,255,255,.22); }
   .rb-pub { margin: 0; padding: 14px 16px; background: #F3F4F6; border-bottom: 1px solid #E5E7EB;
     font: 400 13px/1.5 system-ui, sans-serif; color: #374151; }
-  .rb-pub b { display: block; font-size: 14px; color: #111827; }
-  .rb-pub .d { display: block; margin: 3px 0 9px; color: #6B7280; font-size: 12.5px; }
-  .rb-pub .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .rb-pub button { padding: 8px 13px; border: 1px solid #D1D5DB; border-radius: 9px;
     background: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
   .rb-pub button:hover { background: #F9FAFB; }
-  .rb-pub #rbPubSend { background: #111827; color: #fff; border-color: #111827; }
   .rb-pub .msg { display: block; margin-top: 8px; font-size: 12.5px; }
   .rb-pub .msg.ok { color: #166534; } .rb-pub .msg.err { color: #991B1B; }
   .rb-pub table { margin-top: 9px; border-collapse: collapse; font-size: 12.5px; }
   .rb-pub td { padding: 5px 10px 5px 0; }`;
 
+// 원본 앱은 claude.ai 아티팩트 안에서 돌 때만 '게시하기' 로 스스로를 갱신하고,
+// 그 밖에서는 파일을 내려받게 되어 있다. 파일을 고치지 않고 그 갈림길만 빌려 쓴다 —
+// claude.use('artifact').publish(html) 를 우리 서버 반영으로 연결하면
+// 관리자는 '게시하기' 한 번으로 참석자 화면까지 바꾼다.
+const WS_PUBLISH_SHIM = `(function(){
+  if (window.claude) return;
+  window.claude = { use: async function(name){
+    if (name !== 'artifact') return null;
+    return { publish: async function(html){
+      var r = await fetch('/api/workshop/publish', {
+        method: 'POST', headers: { 'content-type': 'text/plain; charset=utf-8' }, body: html });
+      var d = await r.json().catch(function(){ return {}; });
+      if (!r.ok) throw new Error(d.error || '참석자 화면에 반영하지 못했습니다.');
+      setTimeout(function(){ location.reload(); }, 1200);
+      return d;
+    } };
+  } };
+})();`;
+
 // 관리자 화면에만 넣는 스크립트 — 원본 앱은 건드리지 않는다
 const WS_ADMIN_JS = `(function(){
   var p=document.getElementById('adminPanel'); if(p){p.hidden=false;}
   var b=document.getElementById('adminLinkBtn'); if(b){b.hidden=true;}
-  var f=document.getElementById('rbPubFile'), send=document.getElementById('rbPubSend'),
-      list=document.getElementById('rbPubList'), msg=document.getElementById('rbPubMsg'),
-      vers=document.getElementById('rbPubVers');
-  function say(t,k){ msg.textContent=t; msg.className='msg'+(k?' '+k:''); }
-  send.addEventListener('click', async function(){
-    var file=f.files && f.files[0];
-    if(!file){ say('먼저 내려받은 index.html 파일을 골라 주세요.','err'); return; }
-    send.disabled=true; say('반영하는 중…');
-    try{
-      var text=await file.text();
-      var r=await fetch('/api/workshop/publish',{method:'POST',headers:{'content-type':'text/plain; charset=utf-8'},body:text});
-      var d=await r.json();
-      if(!r.ok) throw new Error(d.error||'반영하지 못했습니다.');
-      say('참석자 화면에 반영되었습니다 — 명단 '+d.people+'명, 조 '+d.groups+'개. (버전 '+d.id+')','ok');
-    }catch(e){ say(e.message,'err'); }
-    send.disabled=false;
-  });
+  var list=document.getElementById('rbPubList'), box=document.getElementById('rbPubBox'),
+      msg=document.getElementById('rbPubMsg'), vers=document.getElementById('rbPubVers');
+  function say(t,k){ box.hidden=false; msg.textContent=t; msg.className='msg'+(k?' '+k:''); }
   list.addEventListener('click', async function(){
-    if(vers.innerHTML){ vers.innerHTML=''; return; }
+    if(!box.hidden){ box.hidden=true; vers.innerHTML=''; msg.textContent=''; return; }
+    box.hidden=false; msg.textContent='';
     try{
       var r=await fetch('/api/workshop/versions'); var d=await r.json();
       if(!d.versions || !d.versions.length){ vers.innerHTML='<p>아직 올린 버전이 없습니다. 지금은 파일에 들어 있던 원래 명단을 쓰고 있습니다.</p>'; return; }
@@ -672,7 +677,7 @@ const WS_ADMIN_JS = `(function(){
           btn.disabled=true;
           var r2=await fetch('/api/workshop/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:Number(btn.dataset.id)})});
           var d2=await r2.json();
-          if(r2.ok){ say('버전 '+btn.dataset.id+' 로 되돌렸습니다.','ok'); vers.innerHTML=''; }
+          if(r2.ok){ say('버전 '+btn.dataset.id+' 로 되돌렸습니다. 잠시 후 새로고침됩니다.','ok'); setTimeout(function(){ location.reload(); }, 1200); }
           else { say(d2.error||'되돌리지 못했습니다.','err'); btn.disabled=false; }
         });
       });
@@ -707,19 +712,22 @@ async function serveWorkshop(request, env, view) {
       // 엑셀 업로드용 라이브러리는 참석자에게 필요 없다 (관리 패널이 없으니 부르지도 않는다)
       .on('script[src*="xlsx"]', { element(el) { el.remove(); } });
   } else {
-    rw.on('head', { element(el) { el.append(`<style>${WS_ADMIN_BAR_CSS}</style>`, { html: true }); } })
+    rw.on('head', {
+      element(el) {
+        // 다리는 원본 스크립트(문서 끝)보다 먼저 놓여야 '게시하기' 라벨이 그대로 남는다
+        el.append(`<script>${WS_PUBLISH_SHIM}</script>`, { html: true });
+        el.append(`<style>${WS_ADMIN_BAR_CSS}</style>`, { html: true });
+      },
+    })
       .on('body', {
         element(el) {
           el.prepend(
             '<div class="rb-adminbar"><a href="/start">← 메뉴</a>' +
-            '<span class="t">워크샵 관리<span class="s">엑셀을 올려 프로그램·조배정을 갱신합니다</span></span>' +
+            '<span class="t">워크샵 관리<span class="s">엑셀을 올리고 게시하면 참석자 화면에 바로 반영됩니다</span></span>' +
+            '<button type="button" id="rbPubList">지난 버전</button>' +
             '<a href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>' +
-            '<div class="rb-pub"><b>서버에 반영 — 마지막 단계</b>' +
-            '<span class="d">아래에서 미리보기 → 파일을 내려받은 뒤, 그 파일을 여기에 넣으면 참석자 화면이 바로 바뀝니다.</span>' +
-            '<span class="row"><input type="file" id="rbPubFile" accept=".html,text/html">' +
-            '<button type="button" id="rbPubSend">이 파일로 참석자 화면 갱신</button>' +
-            '<button type="button" id="rbPubList">지난 버전</button></span>' +
-            '<span class="msg" id="rbPubMsg"></span><div id="rbPubVers"></div></div>',
+            '<div class="rb-pub" id="rbPubBox" hidden><span class="msg" id="rbPubMsg"></span>' +
+            '<div id="rbPubVers"></div></div>',
             { html: true },
           );
           // 관리 패널을 바로 열어 둔다 (원본은 맨 아래 '관리자' 글자를 눌러야 열린다)
