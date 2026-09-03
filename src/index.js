@@ -643,24 +643,26 @@ const WS_ADMIN_BAR_CSS = `
   /* 관리 화면에서는 참석자 UI(제목·탭·조 찾기)를 감춘다 — 참석자 화면은 '참석자 화면 보기' 단추로만 연다 */
   .wrap > .eyebrow, .wrap > #mainTitle, .wrap > #mainSub, .wrap > .tabs, .wrap > .panel, .wrap > .admin-toggle-row { display: none !important; }
   .wrap > .admin-panel { margin-top: 18px; }
-  .rb-adminbar { position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; gap: 14px;
-    padding: 10px 16px; background: #111827; color: #fff; font: 600 14px/1 system-ui, sans-serif; }
-  .rb-adminbar a { color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 9px; background: rgba(255,255,255,.12); }
-  .rb-adminbar a:hover { background: rgba(255,255,255,.22); }
-  .rb-adminbar .t { flex: 1; font-weight: 800; letter-spacing: -.01em; }
-  .rb-adminbar .s { font-weight: 500; opacity: .7; margin-left: 8px; }
-  .rb-adminbar button { color: #fff; padding: 7px 12px; border: 0; border-radius: 9px;
-    background: rgba(255,255,255,.12); font: 600 14px/1 system-ui, sans-serif; cursor: pointer; }
-  .rb-adminbar button:hover { background: rgba(255,255,255,.22); }
-  .rb-pub { margin: 0; padding: 14px 16px; background: #F3F4F6; border-bottom: 1px solid #E5E7EB;
-    font: 400 13px/1.5 system-ui, sans-serif; color: #374151; }
-  .rb-pub button { padding: 8px 13px; border: 1px solid #D1D5DB; border-radius: 9px;
-    background: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
-  .rb-pub button:hover { background: #F9FAFB; }
+  /* 관리자 줄 — 원본 앱의 색·글꼴 변수를 그대로 써서 한 앱처럼 보이게 한다 */
+  .rb-adminbar { position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--surface); color: var(--text); border-bottom: 1px solid var(--border); box-shadow: var(--shadow);
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif; font-size: 13px; line-height: 1; }
+  .rb-adminbar a, .rb-adminbar button { display: inline-flex; align-items: center; color: var(--text); text-decoration: none; padding: 8px 12px;
+    border-radius: 10px; border: 1px solid var(--border); background: var(--surface-alt); font: inherit; font-weight: 700; cursor: pointer; }
+  .rb-adminbar a:hover, .rb-adminbar button:hover { background: var(--accent-soft); border-color: var(--accent-soft-border); color: var(--accent-strong); }
+  .rb-adminbar a.view { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .rb-adminbar a.view:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
+  .rb-adminbar .t { flex: 1; font-weight: 800; font-size: 15px; letter-spacing: -.01em; }
+  .rb-adminbar .s { display: inline-block; font-weight: 500; font-size: 12.5px; color: var(--text-muted); margin-left: 8px; }
+  .rb-pub { margin: 0; padding: 14px 16px; background: var(--surface-alt); border-bottom: 1px solid var(--border);
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif; font-size: 13px; line-height: 1.5; color: var(--text); }
+  .rb-pub button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 9px;
+    background: var(--surface); color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+  .rb-pub button:hover { background: var(--accent-soft); border-color: var(--accent-soft-border); color: var(--accent-strong); }
   .rb-pub .msg { display: block; margin-top: 8px; font-size: 12.5px; }
-  .rb-pub .msg.ok { color: #166534; } .rb-pub .msg.err { color: #991B1B; }
-  .rb-pub table { margin-top: 9px; border-collapse: collapse; font-size: 12.5px; }
-  .rb-pub td { padding: 5px 10px 5px 0; }`;
+  .rb-pub .msg.ok { color: #15803D; } .rb-pub .msg.err { color: #C81330; }
+  .rb-pub table { margin-top: 4px; border-collapse: collapse; font-size: 12.5px; }
+  .rb-pub td { padding: 5px 12px 5px 0; }`;
 
 // 원본 앱은 claude.ai 아티팩트 안에서 돌 때만 '게시하기' 로 스스로를 갱신하고,
 // 그 밖에서는 파일을 내려받게 되어 있다. 파일을 고치지 않고 그 갈림길만 빌려 쓴다 —
@@ -841,7 +843,7 @@ async function serveWorkshop(request, env, view) {
             '<span class="t">워크샵 관리<span class="s">엑셀로 한꺼번에 갱신하거나, 직접 편집으로 한 줄씩 고칩니다</span></span>' +
             '<button type="button" id="rbEditOpen">직접 편집</button>' +
             '<button type="button" id="rbPubList">지난 버전</button>' +
-            '<a href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>' +
+            '<a class="view" href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>' +
             '<div class="rb-pub" id="rbPubBox" hidden><span class="msg" id="rbPubMsg"></span>' +
             '<div id="rbPubVers"></div></div>',
             { html: true },
