@@ -1784,7 +1784,7 @@
     const box = $('backupList');
     box.innerHTML = '<p class="muted">불러오는 중…</p>';
     try {
-      const { backups, days, minKeep } = await api('/api/backup/list');
+      const { backups, days } = await api('/api/backup/list');
       if (!backups.length) {
         box.innerHTML = '<div class="empty"><span class="icon">🗄️</span>아직 백업이 없습니다<br>‘지금 백업 만들기’ 를 눌러 보세요</div>';
         return;
@@ -1804,7 +1804,7 @@
               <td class="right"><a class="mini-btn" href="/api/backup/download?id=${b.id}">내려받기</a></td>
             </tr>`).join('')}</tbody>
         </table>
-        <p class="hint">보관 기간 ${days}일 — 지난 것은 자동으로 지워지고, 가장 최근 ${minKeep}개는 항상 남습니다.</p>`;
+        <p class="hint">보관 기간 ${days}일 — 새 백업이 생길 때 지난 것을 함께 정리합니다. 변동이 없으면 정리도 하지 않으므로 마지막 백업이 사라질 일은 없습니다.</p>`;
     } catch (e) {
       box.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
     }

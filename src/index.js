@@ -356,10 +356,9 @@ export default {
       try {
         await ensureSchema(env.DB);
         const d = await saveSnapshot(env.DB, 'auto', { onlyIfChanged: true });
-        await pruneBackups(env.DB);
         console.log(d
           ? `자동 백업 완료 — 명단 ${d.members.length}명, 출석기록 ${d.attendance.length}건`
-          : '변동 없음 — 백업 건너뜀 (오래된 백업만 정리)');
+          : '변동 없음 — 백업도 정리도 하지 않음');
       } catch (e) {
         console.log('자동 백업 실패:', e.message);
       }
@@ -373,7 +372,6 @@ export default {
 // 백업 파일이 곧 관리자 열쇠가 되면 안 되기 때문. 복원할 때는 이미 있는
 // 관리자 QR 을 코드(code) 기준으로 다시 붙여 준다.
 const BACKUP_KEEP_DAYS = 7;        // 보관 기간 1주일
-const BACKUP_MIN_KEEP = 5;         // 오래됐어도 최근 것 몇 개는 항상 남긴다 (한 개도 없는 상황 방지)
 const BACKUP_COALESCE_MS = 60000;  // 1분 안에 여러 번 바뀌면 한 줄로 합친다 (출석 스캔이 몰릴 때)
 
 // 백업 내용의 지문 — 같은 내용을 또 저장하지 않기 위한 것
@@ -400,17 +398,13 @@ async function buildBackup(db) {
   };
 }
 
-// 1주일이 지난 백업을 지운다. 다만 최근 몇 개는 나이와 상관없이 남겨,
-// 한동안 아무 변동이 없었다고 해서 백업이 하나도 없어지는 일은 만들지 않는다.
+// 1주일이 지난 백업을 지운다.
+// 이 정리는 '새 백업을 방금 만들었을 때만' 부른다. 그래서 한동안 아무 변동이
+// 없으면 지우지도 않고, 방금 만든 백업은 0일짜리라 늘 살아남는다 —
+// 백업이 하나도 없어지는 상황이 구조적으로 생기지 않는다.
 async function pruneBackups(db) {
   const cutoff = new Date(Date.now() - BACKUP_KEEP_DAYS * 86400000).toISOString();
-  // 보호할 '최근 몇 개' 는 반드시 시각(created_at) 기준으로 골라야 한다.
-  // id 순으로 고르면 나중에 끼워 넣은 옛날 기록이 보호돼 정작 오래된 것이 남는다.
-  await db.prepare(
-    `DELETE FROM backups
-      WHERE created_at < ?
-        AND id NOT IN (SELECT id FROM backups ORDER BY created_at DESC, id DESC LIMIT ?)`,
-  ).bind(cutoff, BACKUP_MIN_KEEP).run();
+  await db.prepare('DELETE FROM backups WHERE created_at < ?').bind(cutoff).run();
 }
 
 // 백업 한 벌 저장.
@@ -425,8 +419,9 @@ async function saveSnapshot(db, kind = 'auto', { onlyIfChanged = false } = {}) {
   const { created_at: _at, ...content } = data;
   const fp = await backupFingerprint(JSON.stringify(content));
 
+  // '마지막 백업' 도 시각 기준으로 본다 (목록·정리와 같은 기준)
   const last = await db.prepare(
-    'SELECT id, kind, created_at, fingerprint FROM backups ORDER BY id DESC LIMIT 1',
+    'SELECT id, kind, created_at, fingerprint FROM backups ORDER BY created_at DESC, id DESC LIMIT 1',
   ).first();
 
   if (onlyIfChanged && last && last.fingerprint === fp) return null; // 바뀐 게 없다
@@ -736,7 +731,7 @@ async function route(request, env, pathname) {
     const r = await db.prepare(
       'SELECT id, created_at, kind, members, sheets, records, bytes, fingerprint FROM backups ORDER BY created_at DESC, id DESC LIMIT 60',
     ).all();
-    return json({ backups: r.results ?? [], days: BACKUP_KEEP_DAYS, minKeep: BACKUP_MIN_KEEP });
+    return json({ backups: r.results ?? [], days: BACKUP_KEEP_DAYS });
   }
 
   if (pathname === '/api/backup/snapshot' && request.method === 'POST') {
