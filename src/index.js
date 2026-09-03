@@ -654,36 +654,40 @@ const WS_PUBLISH_SHIM = `(function(){
   } };
 })();`;
 
-// 관리자 화면에만 넣는 스크립트 — 원본 앱은 건드리지 않는다
-const WS_ADMIN_JS = `(function(){
-  var p=document.getElementById('adminPanel'); if(p){p.hidden=false;}
-  var b=document.getElementById('adminLinkBtn'); if(b){b.hidden=true;}
-  var list=document.getElementById('rbPubList'), box=document.getElementById('rbPubBox'),
-      msg=document.getElementById('rbPubMsg'), vers=document.getElementById('rbPubVers');
-  function say(t,k){ box.hidden=false; msg.textContent=t; msg.className='msg'+(k?' '+k:''); }
-  list.addEventListener('click', async function(){
-    if(!box.hidden){ box.hidden=true; vers.innerHTML=''; msg.textContent=''; return; }
-    box.hidden=false; msg.textContent='';
-    try{
-      var r=await fetch('/api/workshop/versions'); var d=await r.json();
-      if(!d.versions || !d.versions.length){ vers.innerHTML='<p>아직 올린 버전이 없습니다. 지금은 파일에 들어 있던 원래 명단을 쓰고 있습니다.</p>'; return; }
-      vers.innerHTML='<table>'+d.versions.map(function(v){
-        return '<tr><td>'+(v.is_active?'● 사용 중':'')+'</td><td>버전 '+v.id+'</td><td>'+v.created_at.slice(0,16).replace('T',' ')+'</td>'+
-               '<td>'+v.people_count+'명 · '+v.group_count+'조</td><td>'+
-               (v.is_active?'':'<button type="button" data-id="'+v.id+'">이 버전으로</button>')+'</td></tr>';
-      }).join('')+'</table>';
-      vers.querySelectorAll('button[data-id]').forEach(function(btn){
-        btn.addEventListener('click', async function(){
-          btn.disabled=true;
-          var r2=await fetch('/api/workshop/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:Number(btn.dataset.id)})});
-          var d2=await r2.json();
-          if(r2.ok){ say('버전 '+btn.dataset.id+' 로 되돌렸습니다. 잠시 후 새로고침됩니다.','ok'); setTimeout(function(){ location.reload(); }, 1200); }
-          else { say(d2.error||'되돌리지 못했습니다.','err'); btn.disabled=false; }
-        });
-      });
-    }catch(e){ say(e.message,'err'); }
-  });
-})();`;
+
+// 편집 화면이 보낸 자료가 쓸 만한지만 확인한다 (내용은 관리자가 책임진다)
+function wsCheckData(body) {
+  if (!body || typeof body !== 'object') return null;
+  const { META, PEOPLE, PROGRAM, DINNER } = body;
+  if (!Array.isArray(PEOPLE) || !PEOPLE.length) return null;
+  if (!PEOPLE.every((p) => p && typeof p.name === 'string' && p.name.trim())) return null;
+  if (!Array.isArray(DINNER)) return null;
+  if (!PROGRAM || typeof PROGRAM !== 'object' || !Array.isArray(PROGRAM.days)) return null;
+  return {
+    META: META && typeof META === 'object' ? META : {},
+    PEOPLE,
+    PROGRAM,
+    DINNER,
+  };
+}
+
+// 한 벌을 새 버전으로 쌓고 그것만 사용 중으로 둔다 (엑셀 게시·직접 편집 공용)
+async function wsSaveDataset(env, data) {
+  await ensureWsSchema(env);
+  const groups = new Set(data.PEOPLE.map((x) => x.groupLabel || x.group).filter((x) => x != null)).size;
+  const res = await env.WSDB.prepare(
+    `INSERT INTO ws_dataset (note, people_count, group_count, meta_json, people_json, program_json, dinner_json, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+  ).bind(
+    data.PROGRAM?.title ?? '', data.PEOPLE.length, groups,
+    JSON.stringify(data.META), JSON.stringify(data.PEOPLE),
+    JSON.stringify(data.PROGRAM), JSON.stringify(data.DINNER),
+  ).run();
+  const id = res.meta?.last_row_id;
+  await env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0 WHERE id <> ?').bind(id).run();
+  wsCache = { id: null, html: null };
+  return { id, people: data.PEOPLE.length, groups };
+}
 
 async function serveWorkshop(request, env, view) {
   // 주소를 한 가지로 맞춘다 (참석자 QR 에는 /workshop/ 만 쓴다)
@@ -723,15 +727,17 @@ async function serveWorkshop(request, env, view) {
         element(el) {
           el.prepend(
             '<div class="rb-adminbar"><a href="/start">← 메뉴</a>' +
-            '<span class="t">워크샵 관리<span class="s">엑셀을 올리고 게시하면 참석자 화면에 바로 반영됩니다</span></span>' +
+            '<span class="t">워크샵 관리<span class="s">엑셀로 한꺼번에 갱신하거나, 직접 편집으로 한 줄씩 고칩니다</span></span>' +
+            '<button type="button" id="rbEditOpen">직접 편집</button>' +
             '<button type="button" id="rbPubList">지난 버전</button>' +
             '<a href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>' +
             '<div class="rb-pub" id="rbPubBox" hidden><span class="msg" id="rbPubMsg"></span>' +
             '<div id="rbPubVers"></div></div>',
             { html: true },
           );
-          // 관리 패널을 바로 열어 둔다 (원본은 맨 아래 '관리자' 글자를 눌러야 열린다)
-          el.append(`<script>${WS_ADMIN_JS}</script>`, { html: true });
+          // 관리자용 스크립트(관리 패널 펼치기·지난 버전·직접 편집)는 파일로 둔다.
+          // 원본 스크립트 뒤에 실려야 PEOPLE·PROGRAM·DINNER 를 읽을 수 있다.
+          el.append('<script src="/workshop-admin.js"></script>', { html: true });
         },
       });
   }
@@ -796,20 +802,17 @@ async function route(request, env, pathname) {
     const html = await request.text();
     const data = wsExtract(html);
     if (!data) return err('워크샵 앱이 만든 index.html 이 아닙니다. 관리 화면에서 내려받은 파일을 넣어 주세요.', 400);
-    await ensureWsSchema(env);
-    const groups = new Set(data.PEOPLE.map((x) => x.groupLabel || x.group).filter((x) => x != null)).size;
-    const res = await env.WSDB.prepare(
-      `INSERT INTO ws_dataset (note, people_count, group_count, meta_json, people_json, program_json, dinner_json, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-    ).bind(
-      data.PROGRAM?.title ?? '', data.PEOPLE.length, groups,
-      JSON.stringify(data.META), JSON.stringify(data.PEOPLE),
-      JSON.stringify(data.PROGRAM), JSON.stringify(data.DINNER),
-    ).run();
-    const id = res.meta?.last_row_id;
-    await env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0 WHERE id <> ?').bind(id).run();
-    wsCache = { id: null, html: null };
-    return json({ ok: true, id, people: data.PEOPLE.length, groups });
+    const saved = await wsSaveDataset(env, data);
+    return json({ ok: true, ...saved });
+  }
+
+  // 관리 화면의 '직접 편집' — 고친 자료를 그대로 받아 새 버전으로 쌓는다
+  if (pathname === '/api/workshop/save' && request.method === 'POST') {
+    if (!env.WSDB) return err('워크샵 데이터베이스가 연결되어 있지 않습니다.', 503);
+    const data = wsCheckData(await readBody(request));
+    if (!data) return err('보낸 자료의 형식이 올바르지 않습니다.', 400);
+    const saved = await wsSaveDataset(env, data);
+    return json({ ok: true, ...saved });
   }
 
   if (pathname === '/api/workshop/versions' && request.method === 'GET') {
