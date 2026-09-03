@@ -1784,18 +1784,19 @@
     const box = $('backupList');
     box.innerHTML = '<p class="muted">불러오는 중…</p>';
     try {
-      const { backups, keep } = await api('/api/backup/list');
+      const { backups, days, minKeep } = await api('/api/backup/list');
       if (!backups.length) {
         box.innerHTML = '<div class="empty"><span class="icon">🗄️</span>아직 백업이 없습니다<br>‘지금 백업 만들기’ 를 눌러 보세요</div>';
         return;
       }
       box.innerHTML = `
         <table>
-          <thead><tr><th>만든 때</th><th>방식</th><th class="right">명단</th><th class="right">출석부</th><th class="right">출석기록</th><th class="right">크기</th><th></th></tr></thead>
+          <thead><tr><th>만든 때</th><th>방식</th><th>내용</th><th class="right">명단</th><th class="right">출석부</th><th class="right">출석기록</th><th class="right">크기</th><th></th></tr></thead>
           <tbody>${backups.map((b) => `
             <tr>
               <td>${fmtTime(b.created_at)}</td>
               <td>${b.kind === 'auto' ? '자동' : '직접'}</td>
+              <td class="member-code">${(b.fingerprint || '').slice(0, 8)}</td>
               <td class="right">${b.members}</td>
               <td class="right">${b.sheets}</td>
               <td class="right">${b.records}</td>
@@ -1803,7 +1804,7 @@
               <td class="right"><a class="mini-btn" href="/api/backup/download?id=${b.id}">내려받기</a></td>
             </tr>`).join('')}</tbody>
         </table>
-        <p class="hint">자동 백업은 최근 ${keep}개까지만 남고, 직접 만든 백업은 계속 보관됩니다.</p>`;
+        <p class="hint">보관 기간 ${days}일 — 지난 것은 자동으로 지워지고, 가장 최근 ${minKeep}개는 항상 남습니다.</p>`;
     } catch (e) {
       box.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
     }

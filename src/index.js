@@ -60,6 +60,7 @@ async function ensureSchema(db) {
       sheets INTEGER NOT NULL DEFAULT 0,
       records INTEGER NOT NULL DEFAULT 0,
       bytes INTEGER NOT NULL DEFAULT 0,
+      fingerprint TEXT,
       json TEXT NOT NULL
     )`),
   ]);
@@ -71,6 +72,11 @@ async function ensureSchema(db) {
   }
   try {
     await db.prepare('ALTER TABLE members ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0').run();
+  } catch {
+    /* 이미 있으면 무시 */
+  }
+  try {
+    await db.prepare('ALTER TABLE backups ADD COLUMN fingerprint TEXT').run();
   } catch {
     /* 이미 있으면 무시 */
   }
@@ -302,7 +308,7 @@ function requiredRole(pathname, method) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname } = url;
 
@@ -329,6 +335,11 @@ export default {
       }
 
       const res = await route(request, env, pathname);
+      // 자료가 바뀌었으면 응답을 보낸 뒤 백업을 한 벌 떠 둔다 (내용이 같으면 건너뜀)
+      if (res && res.ok && changesData(pathname, request.method)) {
+        const after = saveSnapshot(env.DB, 'auto', { onlyIfChanged: true }).catch(() => {});
+        if (ctx?.waitUntil) ctx.waitUntil(after);
+      }
       return res ?? err('찾을 수 없는 API 경로입니다.', 404);
     } catch (e) {
       // 오류가 나도 공개 자산(로그인 화면·CSS 등)은 열리고, 보호 자산은 열리지 않는다
@@ -344,8 +355,11 @@ export default {
     ctx.waitUntil((async () => {
       try {
         await ensureSchema(env.DB);
-        const d = await saveSnapshot(env.DB, 'auto');
-        console.log(`자동 백업 완료 — 명단 ${d.members.length}명, 출석기록 ${d.attendance.length}건`);
+        const d = await saveSnapshot(env.DB, 'auto', { onlyIfChanged: true });
+        await pruneBackups(env.DB);
+        console.log(d
+          ? `자동 백업 완료 — 명단 ${d.members.length}명, 출석기록 ${d.attendance.length}건`
+          : '변동 없음 — 백업 건너뜀 (오래된 백업만 정리)');
       } catch (e) {
         console.log('자동 백업 실패:', e.message);
       }
@@ -358,7 +372,15 @@ export default {
 // 로그인 토큰·비밀번호 해시·복구 코드·세션은 일부러 넣지 않는다 —
 // 백업 파일이 곧 관리자 열쇠가 되면 안 되기 때문. 복원할 때는 이미 있는
 // 관리자 QR 을 코드(code) 기준으로 다시 붙여 준다.
-const BACKUP_KEEP = 30;
+const BACKUP_KEEP_DAYS = 7;        // 보관 기간 1주일
+const BACKUP_MIN_KEEP = 5;         // 오래됐어도 최근 것 몇 개는 항상 남긴다 (한 개도 없는 상황 방지)
+const BACKUP_COALESCE_MS = 60000;  // 1분 안에 여러 번 바뀌면 한 줄로 합친다 (출석 스캔이 몰릴 때)
+
+// 백업 내용의 지문 — 같은 내용을 또 저장하지 않기 위한 것
+async function backupFingerprint(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 async function buildBackup(db) {
   const [members, sheets, attendance, logo] = await Promise.all([
@@ -378,19 +400,64 @@ async function buildBackup(db) {
   };
 }
 
-async function saveSnapshot(db, kind = 'auto') {
+// 1주일이 지난 백업을 지운다. 다만 최근 몇 개는 나이와 상관없이 남겨,
+// 한동안 아무 변동이 없었다고 해서 백업이 하나도 없어지는 일은 만들지 않는다.
+async function pruneBackups(db) {
+  const cutoff = new Date(Date.now() - BACKUP_KEEP_DAYS * 86400000).toISOString();
+  // 보호할 '최근 몇 개' 는 반드시 시각(created_at) 기준으로 골라야 한다.
+  // id 순으로 고르면 나중에 끼워 넣은 옛날 기록이 보호돼 정작 오래된 것이 남는다.
+  await db.prepare(
+    `DELETE FROM backups
+      WHERE created_at < ?
+        AND id NOT IN (SELECT id FROM backups ORDER BY created_at DESC, id DESC LIMIT ?)`,
+  ).bind(cutoff, BACKUP_MIN_KEEP).run();
+}
+
+// 백업 한 벌 저장.
+//  - onlyIfChanged : 내용이 직전 백업과 같으면 아무 것도 하지 않는다
+//  - 1분 안에 또 바뀌면 새 줄을 만들지 않고 마지막 자동 백업을 최신 내용으로 갱신한다
+//    (출석 스캔이 몰릴 때 줄이 수백 개로 늘어나지 않도록)
+async function saveSnapshot(db, kind = 'auto', { onlyIfChanged = false } = {}) {
   const data = await buildBackup(db);
   const text = JSON.stringify(data);
-  await db.prepare(
-    'INSERT INTO backups (kind, members, sheets, records, bytes, json) VALUES (?, ?, ?, ?, ?, ?)',
-  ).bind(kind, data.members.length, data.sheets.length, data.attendance.length, text.length, text).run();
-  // 자동 백업은 최근 것만 남긴다 (직접 만든 것은 지우지 않는다)
-  await db.prepare(
-    `DELETE FROM backups WHERE kind = 'auto' AND id NOT IN (
-       SELECT id FROM backups WHERE kind = 'auto' ORDER BY id DESC LIMIT ?
-     )`,
-  ).bind(BACKUP_KEEP).run();
+  // 지문은 '내용' 만으로 낸다 — 뜬 시각(created_at)까지 넣으면 매번 달라져
+  // '바뀐 게 없으면 건너뛰기' 가 아예 동작하지 않는다.
+  const { created_at: _at, ...content } = data;
+  const fp = await backupFingerprint(JSON.stringify(content));
+
+  const last = await db.prepare(
+    'SELECT id, kind, created_at, fingerprint FROM backups ORDER BY id DESC LIMIT 1',
+  ).first();
+
+  if (onlyIfChanged && last && last.fingerprint === fp) return null; // 바뀐 게 없다
+
+  const fresh = last && Date.now() - Date.parse(last.created_at) < BACKUP_COALESCE_MS;
+  if (kind === 'auto' && last && last.kind === 'auto' && fresh) {
+    await db.prepare(
+      `UPDATE backups SET created_at = ?, members = ?, sheets = ?, records = ?, bytes = ?, fingerprint = ?, json = ?
+        WHERE id = ?`,
+    ).bind(
+      new Date().toISOString(), data.members.length, data.sheets.length, data.attendance.length,
+      text.length, fp, text, last.id,
+    ).run();
+  } else {
+    await db.prepare(
+      'INSERT INTO backups (kind, members, sheets, records, bytes, fingerprint, json) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).bind(kind, data.members.length, data.sheets.length, data.attendance.length, text.length, fp, text).run();
+  }
+  await pruneBackups(db);
   return data;
+}
+
+// 자료를 바꾸는 요청인지 — 그렇다면 응답을 보낸 뒤 백업을 한 벌 떠 둔다.
+// 로그인 관련(/api/auth/)·백업 자체·워크샵(다른 DB)은 제외한다.
+function changesData(pathname, method) {
+  if (method === 'GET' || method === 'HEAD') return false;
+  if (!pathname.startsWith('/api/')) return false;
+  if (pathname.startsWith('/api/auth/')) return false;
+  if (pathname.startsWith('/api/backup/')) return false;
+  if (pathname.startsWith('/api/workshop/')) return false;
+  return true;
 }
 
 // 백업 JSON 으로 되돌리기. 명단·출석부·출석기록을 통째로 갈아 끼우되,
@@ -667,9 +734,9 @@ async function route(request, env, pathname) {
   // ── 백업 (관리자 전용) ──────────────────────────────
   if (pathname === '/api/backup/list' && request.method === 'GET') {
     const r = await db.prepare(
-      'SELECT id, created_at, kind, members, sheets, records, bytes FROM backups ORDER BY id DESC LIMIT 60',
+      'SELECT id, created_at, kind, members, sheets, records, bytes, fingerprint FROM backups ORDER BY created_at DESC, id DESC LIMIT 60',
     ).all();
-    return json({ backups: r.results ?? [], keep: BACKUP_KEEP });
+    return json({ backups: r.results ?? [], days: BACKUP_KEEP_DAYS, minKeep: BACKUP_MIN_KEEP });
   }
 
   if (pathname === '/api/backup/snapshot' && request.method === 'POST') {
