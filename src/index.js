@@ -640,6 +640,9 @@ function workshopView(pathname) {
 }
 
 const WS_ADMIN_BAR_CSS = `
+  /* 관리 화면에서는 참석자 UI(제목·탭·조 찾기)를 감춘다 — 참석자 화면은 '참석자 화면 보기' 단추로만 연다 */
+  .wrap > .eyebrow, .wrap > #mainTitle, .wrap > #mainSub, .wrap > .tabs, .wrap > .panel, .wrap > .admin-toggle-row { display: none !important; }
+  .wrap > .admin-panel { margin-top: 18px; }
   .rb-adminbar { position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; gap: 14px;
     padding: 10px 16px; background: #111827; color: #fff; font: 600 14px/1 system-ui, sans-serif; }
   .rb-adminbar a { color: #fff; text-decoration: none; padding: 7px 12px; border-radius: 9px; background: rgba(255,255,255,.12); }

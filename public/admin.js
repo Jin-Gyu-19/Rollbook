@@ -148,7 +148,7 @@
       if (b.dataset.act === 'scan') {
         // 이 출석부로 기록 시작 + 촬영 화면 열기
         await api(`/api/sheets/${id}/activate`, { method: 'POST' });
-        location.href = '/';
+        location.href = '/scan';
       } else if (b.dataset.act === 'view') {
         switchTab('status');
         await loadStatusTab(id);
