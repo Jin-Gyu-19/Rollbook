@@ -949,8 +949,14 @@ async function route(request, env, pathname) {
   if (pathname === '/api/workshop/activate' && request.method === 'POST') {
     if (!env.WSDB) return err('워크샵 데이터베이스가 연결되어 있지 않습니다.', 503);
     const { id } = await request.json().catch(() => ({}));
-    if (!id) return err('버전을 골라 주세요.', 400);
+    if (id === undefined || id === null || id === '') return err('버전을 골라 주세요.', 400);
     await ensureWsSchema(env);
+    // id 0 = 올린 버전을 모두 쉬게 하고 앱 파일에 들어 있는 원래 자료를 쓴다
+    if (Number(id) === 0) {
+      await env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0').run();
+      wsCache = { id: null, html: null };
+      return json({ ok: true, id: 0, file: true });
+    }
     const hit = await env.WSDB.prepare('SELECT id FROM ws_dataset WHERE id = ?').bind(id).first();
     if (!hit) return err('그 버전을 찾을 수 없습니다.', 404);
     await env.WSDB.batch([

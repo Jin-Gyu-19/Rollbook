@@ -459,7 +459,7 @@
   .program-schedule { width: 100%; border-collapse: collapse; color: var(--p-ink); }
   .program-schedule tr { border-bottom: 1px solid var(--p-line); }
   .program-schedule tr:last-child { border-bottom: none; }
-  .program-schedule td { padding: 8px 12px; vertical-align: middle; font-size: 12px; line-height: 1.5; }
+  .program-schedule td { padding: 8px 12px; vertical-align: middle; font-size: 12px; line-height: 1.3; word-break: keep-all; overflow-wrap: break-word; }
   .program-schedule td.time {
     font-family: 'IBM Plex Mono', monospace;
     font-variant-numeric: tabular-nums;
@@ -488,6 +488,29 @@
     background: var(--p-tint);
   }
   .program-schedule tr.alert .alert-text { color: var(--p-red-ink); font-weight: 700; font-size: 11.5px; }
+  .attend-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--p-red);
+    color: #fff;
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 7px;
+    font-weight: 800;
+    line-height: 1.05;
+    text-align: center;
+    letter-spacing: -0.02em;
+    white-space: normal;
+    vertical-align: middle;
+    position: relative;
+    top: -2px;
+    margin-right: 4px;
+    box-shadow: 0 1px 3px rgba(43, 42, 40, 0.2);
+    flex: none;
+  }
 
   .lineup-card {
     background: var(--p-panel);
@@ -916,17 +939,25 @@
       html += '<table class="program-schedule">';
       day.rows.forEach(row => {
         const noteOnly = !row.time;
+        const badge = row.attend ? '<span class="attend-badge">출석<br>체크</span>' : '';
         if (noteOnly) {
-          html += '<tr class="alert"><td colspan="3"><span class="alert-text">' + escHtml(row.content) + '</span></td></tr>';
+          html += '<tr class="alert"><td colspan="3">' + badge + '<span class="alert-text">' + escHtml(row.content) + '</span></td></tr>';
           return;
         }
         const c = splitSubLine(row.content);
         const n = splitSubLine(row.note);
         const isPlain = /^break time/i.test(c.main.trim());
+        const hasNote = !!(n.main || n.sub);
         html += '<tr' + (isPlain ? ' class="plain"' : '') + '>';
         html += '<td class="time">' + escHtml(row.time) + '</td>';
-        html += '<td class="content">' + escHtml(c.main) + (c.sub ? '<span class="sub">' + escHtml(c.sub) + '</span>' : '') + '</td>';
-        html += '<td class="note">' + escHtml(n.main) + (n.sub ? '<span class="sub">' + escHtml(n.sub) + '</span>' : '') + '</td>';
+        // When there's no note text, give the content cell the note column's
+        // width too (colspan) instead of leaving it reserved and empty — long
+        // content text (like a room/location note) otherwise wraps sooner than
+        // it needs to.
+        html += '<td class="content"' + (hasNote ? '' : ' colspan="2"') + '>' + badge + escHtml(c.main) + (c.sub ? '<span class="sub">' + escHtml(c.sub) + '</span>' : '') + '</td>';
+        if (hasNote) {
+          html += '<td class="note">' + escHtml(n.main) + (n.sub ? '<span class="sub">' + escHtml(n.sub) + '</span>' : '') + '</td>';
+        }
         html += '</tr>';
       });
       html += '</table></div>';
@@ -1049,12 +1080,8 @@
       posChip.className = 'chip';
       posChip.textContent = p.groupSize + '명 테이블';
       rBadges.appendChild(posChip);
-      if (p.ai) {
-        const aiChip = document.createElement('span');
-        aiChip.className = 'chip ai';
-        aiChip.textContent = '★ AI 활용 유경험자';
-        rBadges.appendChild(aiChip);
-      }
+      // AI 활용 유경험자 표시는 화면에는 노출하지 않음 (조배정 로직 내부적으로만 사용) —
+      // p.ai 필드 자체는 그대로 두어, 나중에 다시 표시하고 싶을 때 조건만 되살리면 됨.
       tmList.innerHTML = '';
       tmList.classList.remove('open');
       tmChevron.classList.remove('open');
@@ -1099,7 +1126,7 @@
       members.forEach(m => {
         const row = document.createElement('div');
         row.className = 'g-member';
-        row.innerHTML = '<span class="g-member-name">' + m.name + (m.ai ? ' <span style="color:var(--highlight-text)">★</span>' : '') + '</span>'
+        row.innerHTML = '<span class="g-member-name">' + m.name + '</span>'
           + '<span class="g-member-meta">' + m.pos + ' · ' + m.hub + '</span>';
         body.appendChild(row);
       });
@@ -1658,7 +1685,32 @@
   // when present; special groups without one (안내데스크 조) are read until the first
   // blank 성명 cell. AI-experience is marked by a yellow fill on the 성명 cell rather
   // than a text column (see the sheet's own note: "노란색 배경 성명 = 3.1 사용자").
-  function parseGroupsFromWorkbook(wb) {
+  // The "4.조배정" sheet can hold TWO seating charts stacked in one tab: the Grand
+  // Hall (세미나) chart first, then — below a title cell containing "석식" (e.g.
+  // "2026 AI Workshop 조배정 (석식)") — a second, identically-shaped chart for the
+  // BBQ/석식 dinner seating. We find that title row once and use it as the
+  // boundary: blocks above it belong to Grand Hall, blocks at/after it belong to
+  // 석식. A sheet with no such title (the common case before this dinner chart
+  // existed, and any file that still doesn't have one) has everything treated as
+  // Grand Hall, exactly as before.
+  function findDinnerSectionRow(rows) {
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        const v = row[c];
+        if (v == null) continue;
+        const s = String(v);
+        // A real section title is short ("2026 AI Workshop 조배정 (석식)"), unlike
+        // an unrelated cell that merely happens to mention 석식 in passing (a memo,
+        // a long note someone pasted in) — so require both the keyword and a title-
+        // length cap to avoid matching those.
+        if (s.length <= 40 && s.indexOf('석식') !== -1) return r;
+      }
+    }
+    return null;
+  }
+
+  function parseGroupsFromWorkbook(wb, opts) {
     const ws = wb.Sheets['4.조배정'];
     if (!ws) return null;
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
@@ -1667,8 +1719,15 @@
       const v = row[c];
       return v == null ? '' : String(v).trim();
     };
+    const wantDinner = !!(opts && opts.dinner);
+    const splitRow = findDinnerSectionRow(rows);
+    // No "석식" title on the sheet at all: Grand Hall gets everything (unchanged
+    // legacy behavior), 석식 gets nothing (no chart yet -> caller falls back).
+    const minRow = wantDinner ? (splitRow === null ? Infinity : splitRow) : 0;
+    const maxRow = wantDinner ? Infinity : (splitRow === null ? Infinity : splitRow);
     const headers = [];
     for (let r = 0; r < rows.length - 1; r++) {
+      if (r < minRow || r >= maxRow) continue;
       const row = rows[r] || [];
       for (let c = 0; c < row.length; c++) {
         const label = cellStr(r, c);
@@ -1687,11 +1746,24 @@
       const groupNum = numMatch ? parseInt(numMatch[1], 10) : null;
       const dataStart = h.r + 2; // header row, then the 직위/성명/성별/본부 label row
       const members = [];
-      const maxRows = knownSize !== null ? knownSize : 60; // safety cap for unsized blocks
-      for (let i = 0; i < maxRows; i++) {
+      // The header's "(N명)" count is a label someone typed, not a hard boundary —
+      // if a row gets added or removed by hand and the count isn't updated to match,
+      // we must still read the real rows rather than silently truncating (or reading
+      // past the block into blank space). So we always read until the actual data
+      // stops, using the declared count only to tolerate a single accidental blank
+      // row *within* that range (a real gap) without stopping early; a second blank
+      // in a row, or any blank past the declared range, ends the block.
+      const safetyCap = 80; // absolute sanity bound, well past any real table size
+      let consecutiveBlank = 0;
+      for (let i = 0; i < safetyCap; i++) {
         const r = dataStart + i;
         const name = cellStr(r, h.c + 1);
-        if (!name) { if (knownSize === null) break; else continue; }
+        if (!name) {
+          consecutiveBlank++;
+          if (knownSize !== null && i < knownSize && consecutiveBlank < 2) continue;
+          break;
+        }
+        consecutiveBlank = 0;
         const pos = cellStr(r, h.c);
         const gender = cellStr(r, h.c + 2);
         const hub = cellStr(r, h.c + 3);
@@ -1707,6 +1779,7 @@
         groupNum,
         scanOrder: h.scanOrder,
         members,
+        knownSize,
       };
     });
 
@@ -1725,7 +1798,19 @@
     const cell = (r, c) => {
       const row = rows[r] || [];
       const v = row[c];
-      return v == null ? '' : String(v).trim();
+      if (v == null) return '';
+      // A time cell typed directly as an Excel time value (instead of plain text
+      // like everywhere else in this sheet) comes back from the raw:true read as
+      // a bare day-fraction number (e.g. 0.5555... for 13:20), not a string. Any
+      // other number in these columns (a lecture's duration in minutes, etc.) is
+      // always >= 1, so this only ever fires for a genuine bare time value.
+      if (typeof v === 'number' && v >= 0 && v < 1) {
+        const totalMinutes = Math.round(v * 24 * 60);
+        const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, '0');
+        const mm = String(totalMinutes % 60).padStart(2, '0');
+        return hh + ':' + mm;
+      }
+      return String(v).trim();
     };
     const rowLen = r => (rows[r] || []).length;
 
@@ -1769,7 +1854,14 @@
         const c = cell(r, cols[1]);
         const n = cell(r, cols[2]);
         if (!t && !c && !n) continue;
-        out.push({ time: t, content: c, note: n });
+        // "출석체크" marker: the sheet flags which rows need the attendance-check
+        // badge with a cell reading exactly "출석" + a number (e.g. "출석1"), placed
+        // in whatever spare column happens to be free on that row — not at a fixed
+        // offset from the day's own time/content/note columns. So scan the WHOLE
+        // row for that pattern rather than reading one hardcoded column.
+        const row = rows[r] || [];
+        const attend = row.some(v => v != null && /^출석\d*$/.test(String(v).trim()));
+        out.push({ time: t, content: c, note: n, attend });
       }
       return out;
     }
@@ -1815,6 +1907,57 @@
           }
           groupsByCat[groupIndex[lastCat]].items.push({ dept, speaker, topic, duration });
         }
+        // If the day-schedule table above has since combined two lecture slots
+        // into one row (both speakers now named together there, e.g. "DA 김진솔.
+        // QRM 서민수"), this separate lineup listing is a different table a person
+        // edits by hand and often doesn't get updated to match. Detect that case —
+        // two still-separate single-speaker cards whose speakers both appear
+        // together in one schedule cell — and merge them into one card titled
+        // from that schedule row, so the lineup doesn't keep showing two stale
+        // slots where the actual timetable now shows a single combined session.
+        for (let i = 0; i < groupsByCat.length; i++) {
+          if (groupsByCat[i].items.length !== 1) continue;
+          const speakerA = groupsByCat[i].items[0].speaker;
+          if (!speakerA) continue;
+          for (let j = i + 1; j < groupsByCat.length; j++) {
+            if (groupsByCat[j].items.length !== 1) continue;
+            const speakerB = groupsByCat[j].items[0].speaker;
+            if (!speakerB) continue;
+            let mergedTitle = null;
+            let aFirst = true;
+            for (let r = 0; r < boundary && !mergedTitle; r++) {
+              const srow = rows[r] || [];
+              for (let c = 0; c < srow.length; c++) {
+                const v = srow[c];
+                if (v == null) continue;
+                const s = String(v);
+                const posA = s.indexOf(speakerA);
+                const posB = s.indexOf(speakerB);
+                if (posA !== -1 && posB !== -1) {
+                  const contentCell = srow[c - 1];
+                  mergedTitle = contentCell != null ? String(contentCell).split('\n')[0].trim() : s.trim();
+                  // Match the order the schedule cell itself names them in (e.g.
+                  // "DA 김진솔. QRM 서민수" lists 김진솔 first), rather than the
+                  // lineup table's own row order, which may differ.
+                  aFirst = posA < posB;
+                  break;
+                }
+              }
+            }
+            if (mergedTitle) {
+              const itemA = groupsByCat[i].items[0];
+              const itemB = groupsByCat[j].items[0];
+              // Flag it so the sort below can push it past the lineup table's own
+              // row order — a merged card doesn't have a natural place in that
+              // order (it stands in for two rows that used to be elsewhere), and
+              // display-wise it reads better after the un-merged sessions.
+              groupsByCat[i] = { category: mergedTitle, items: aFirst ? [itemA, itemB] : [itemB, itemA], merged: true };
+              groupsByCat.splice(j, 1);
+              break;
+            }
+          }
+        }
+        groupsByCat.sort((a, b) => (a.merged ? 1 : 0) - (b.merged ? 1 : 0));
         lineup = groupsByCat;
       }
     }
@@ -1957,6 +2100,14 @@
       if (outOfBand > 0) {
         warnings.push(`${outOfBand}개 조가 권장 인원(7~8명) 범위를 벗어났습니다. "4.조배정" 시트를 확인해 주세요.`);
       }
+      // A block header's "(N명)" text is just a label someone typed — flag it
+      // when it no longer matches the row count actually read, since that means
+      // someone added/removed a row by hand without updating the header text.
+      const miscounted = sheetGroups.filter(b => b.knownSize !== null && b.knownSize !== b.members.length);
+      if (miscounted.length) {
+        const names = miscounted.map(b => (b.label || (b.groupNum + '조')) + `(표시 ${b.knownSize}명 → 실제 ${b.members.length}명)`);
+        warnings.push(`"4.조배정" 시트의 인원수 표기가 실제와 달라요: ${names.join(', ')}. 실제 읽은 인원 기준으로 반영했으니, 필요하면 헤더의 "(N명)" 표기도 맞춰 고쳐주세요.`);
+      }
     } else {
       warnings = ['"4.조배정" 시트를 찾지 못해 자동 배정 로직으로 대신 계산했습니다. 시트 이름/형식을 확인해 주세요.'];
       if (forceFresh) {
@@ -1996,9 +2147,40 @@
       buildDate: new Date().toISOString().slice(0, 10),
     };
 
-    // ---- 석식(BBQ) grouping: same attendee population, tier + 가나다 order ----
-    let dinnerResultGroups, dinnerSummary, dinnerWarnings;
-    if (forceFresh) {
+    // ---- 석식(BBQ) grouping ----
+    // Same idea as Grand Hall: if the "4.조배정" sheet has a "석식" seating chart
+    // AND it actually has people seated in it, mirror that chart directly. If the
+    // chart doesn't exist yet, or exists but is still all-blank (nobody has typed
+    // names into it), fall back to the existing auto-calculated assignment so
+    // 석식 search keeps working in the meantime.
+    const sheetDinnerGroupsRaw = parseGroupsFromWorkbook(wb, { dinner: true });
+    const sheetDinnerHasPeople = !!(sheetDinnerGroupsRaw && sheetDinnerGroupsRaw.some(b => b.members.length));
+    let dinnerResultGroups, dinnerSummary, dinnerWarnings, dinnerGroupLabels = null;
+    if (sheetDinnerHasPeople) {
+      dinnerResultGroups = sheetDinnerGroupsRaw.map(b => b.members);
+      dinnerGroupLabels = sheetDinnerGroupsRaw.map(b => b.label);
+      const oldDByName = new Map(DINNER.map(p => [p.name, p]));
+      const newDNames = new Set();
+      dinnerResultGroups.forEach(g => g.forEach(p => newDNames.add(p.name)));
+      const dAdded = [];
+      dinnerResultGroups.forEach(g => g.forEach(p => { if (!oldDByName.has(p.name)) dAdded.push(p.name); }));
+      const dRemoved = DINNER.filter(p => !newDNames.has(p.name)).map(p => p.name);
+      dinnerSummary = {
+        keptCount: newDNames.size - dAdded.length,
+        addedCount: dAdded.length,
+        removedCount: dRemoved.length,
+        removedNames: dRemoved,
+        addedNames: dAdded,
+        oldGroupCount: dinnerGroupNums.length,
+        newGroupCount: dinnerResultGroups.length,
+      };
+      dinnerWarnings = [];
+      const dMiscounted = sheetDinnerGroupsRaw.filter(b => b.knownSize !== null && b.knownSize !== b.members.length);
+      if (dMiscounted.length) {
+        const names = dMiscounted.map(b => (b.label || (b.groupNum + '조')) + `(표시 ${b.knownSize}명 → 실제 ${b.members.length}명)`);
+        dinnerWarnings.push(`"4.조배정" 시트의 석식 표 인원수 표기가 실제와 달라요: ${names.join(', ')}. 실제 읽은 인원 기준으로 반영했습니다.`);
+      }
+    } else if (forceFresh) {
       dinnerResultGroups = freshAssignDinner(attendees);
       dinnerSummary = {
         keptCount: 0,
@@ -2015,12 +2197,16 @@
       dinnerResultGroups = dres.groups;
       dinnerSummary = dres.summary;
       dinnerWarnings = dres.warnings;
+      if (sheetDinnerGroupsRaw) {
+        dinnerWarnings = dinnerWarnings.concat(['"4.조배정" 시트에 석식 좌석표가 있지만 아직 비어 있어서, 기존 자동계산 방식으로 대신 석식 조를 배정했습니다. 시트에 인원을 채워 넣으면 그 표를 그대로 반영하도록 자동 전환됩니다.']);
+      }
     }
     const newDinner = [];
     dinnerResultGroups.forEach((g, gi) => {
+      const label = dinnerGroupLabels ? dinnerGroupLabels[gi] : null;
       g.forEach(p => newDinner.push({
         name: p.name, pos: p.pos, gender: p.gender, hub: p.hub, dept: p.dept || '',
-        ai: !!p.ai, group: gi + 1, groupSize: g.length,
+        ai: !!p.ai, group: gi + 1, groupSize: g.length, groupLabel: label || null,
       }));
     });
 
@@ -2052,9 +2238,10 @@
     pvDinnerSizes.innerHTML = '';
     dinnerResultGroups.forEach((g, gi) => {
       const span = document.createElement('span');
-      const outOfBand = g.length < 7 || g.length > 8;
+      const label = dinnerGroupLabels ? dinnerGroupLabels[gi] : null;
+      const outOfBand = !label && (g.length < 7 || g.length > 8);
       span.className = outOfBand ? 'warn' : '';
-      span.textContent = (gi + 1) + '조:' + g.length;
+      span.textContent = (label || ((gi + 1) + '조')) + ':' + g.length;
       pvDinnerSizes.appendChild(span);
     });
 

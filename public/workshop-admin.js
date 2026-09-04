@@ -75,6 +75,9 @@
     '.g-member { align-items: center; }',
     '.g-member .ed-ctl { margin-left: 6px; }',
     '.g-member-meta { display: inline-flex; align-items: center; gap: 4px; }',
+    '.ed-btn.att { font-size: 13px; }',
+    '.ed-btn.att.on { background: var(--p-red, #ED1A3B); border-color: var(--p-red, #ED1A3B); color: #fff; }',
+    '.program-schedule td.content .attend-badge { margin-right: 5px; }',
 
     /* ── 적용 내역 · 실패 원인 ── */
     '.rbrep { position: fixed; inset: 0; z-index: 4000; background: rgba(18,48,73,.45); display: flex;',
@@ -147,15 +150,19 @@
       var r = await fetch('/api/workshop/versions');
       var d = await r.json();
       if (!d.versions || !d.versions.length) {
-        vers.innerHTML = '<p>아직 올린 버전이 없습니다. 지금은 파일에 들어 있던 원래 명단을 쓰고 있습니다.</p>';
+        vers.innerHTML = '<p>아직 올린 버전이 없습니다. 지금은 앱 파일에 들어 있는 원래 자료를 쓰고 있습니다.</p>';
         return;
       }
+      var onFile = !d.versions.some(function (v) { return v.is_active; });
       vers.innerHTML = '<table>' + d.versions.map(function (v) {
         return '<tr><td>' + (v.is_active ? '● 사용 중' : '') + '</td><td>버전 ' + v.id + '</td>'
           + '<td>' + v.created_at.slice(0, 16).replace('T', ' ') + '</td>'
           + '<td>' + v.people_count + '명 · ' + v.group_count + '조</td><td>'
           + (v.is_active ? '' : '<button type="button" data-id="' + v.id + '">이 버전으로</button>') + '</td></tr>';
-      }).join('') + '</table>';
+      }).join('')
+        + '<tr><td>' + (onFile ? '● 사용 중' : '') + '</td><td colspan="3">앱 파일에 들어 있는 원래 자료'
+        + ' <span style="color:var(--text-muted)">(개발자가 새 파일을 준 직후에 씁니다)</span></td><td>'
+        + (onFile ? '' : '<button type="button" data-id="0">이 자료로</button>') + '</td></tr></table>';
       vers.querySelectorAll('button[data-id]').forEach(function (btn) {
         btn.addEventListener('click', async function () {
           btn.disabled = true;
@@ -165,7 +172,9 @@
           });
           var d2 = await r2.json();
           if (r2.ok) {
-            say('버전 ' + btn.dataset.id + ' 로 되돌렸습니다. 잠시 후 새로고침됩니다.', 'ok');
+            say(btn.dataset.id === '0'
+              ? '앱 파일에 들어 있는 원래 자료를 쓰도록 했습니다. 잠시 후 새로고침됩니다.'
+              : '버전 ' + btn.dataset.id + ' 로 되돌렸습니다. 잠시 후 새로고침됩니다.', 'ok');
             setTimeout(function () { location.reload(); }, 1200);
           } else { say(d2.error || '되돌리지 못했습니다.', 'err'); btn.disabled = false; }
         });
@@ -316,10 +325,20 @@
         var noteOnly = !row.time;
         if (noteOnly) tr.className = 'alert';
         var t1 = el('td', 'time'); t1.appendChild(edit(row, 'time', null, '시간'));
-        var t2 = el('td', 'content'); t2.appendChild(edit(row, 'content', noteOnly ? 'alert-text' : null, '내용'));
+        var t2 = el('td', 'content');
+        // 출석체크 표시는 참석자 화면과 똑같이 보여 주고(켜져 있을 때만), 켜고 끄기는 줄 끝 단추로
+        if (row.attend) {
+          var badge = el('span', 'attend-badge');
+          badge.innerHTML = '출석<br>체크';
+          t2.appendChild(badge);
+        }
+        t2.appendChild(edit(row, 'content', noteOnly ? 'alert-text' : null, '내용'));
         var t3 = el('td', 'note'); t3.appendChild(edit(row, 'note', null, '비고'));
         var t4 = el('td', 'ed-cell');
         var c = ctl();
+        c.appendChild(edBtn('●', '출석체크 표시 켜기 / 끄기', 'att' + (row.attend ? ' on' : ''), function () {
+          row.attend = !row.attend; touch(); redraw(true);
+        }));
         c.appendChild(edBtn('↑', '위로', '', function () { if (move(day.rows, ri, -1)) { touch(); redraw(true); } }));
         c.appendChild(edBtn('↓', '아래로', '', function () { if (move(day.rows, ri, 1)) { touch(); redraw(true); } }));
         c.appendChild(edBtn('✕', '이 줄 지우기', 'del', function () { day.rows.splice(ri, 1); touch(); redraw(true); }));
@@ -330,7 +349,7 @@
       card.appendChild(tb);
       var foot = el('div', 'ed-foot');
       foot.appendChild(addBtn('+ 항목 추가', function () {
-        day.rows.push({ time: '', content: '', note: '' }); touch(); redraw(true);
+        day.rows.push({ time: '', content: '', note: '', attend: false }); touch(); redraw(true);
       }));
       card.appendChild(foot);
       grid.appendChild(card);
@@ -393,7 +412,8 @@
 
     body.appendChild(el('p', 'ed-hint',
       (isDinner ? '석식(BBQ) 조배정입니다. ' : 'Grand Hall 조배정입니다. ')
-      + '이름·직급·본부를 눌러 바로 고치고, 조를 옮길 때는 줄 끝의 숫자를 바꾸세요. ★ 는 AI 활용 유경험자 표시입니다.'));
+      + '이름·직급·본부를 눌러 바로 고치고, 조를 옮길 때는 줄 끝의 숫자를 바꾸세요. '
+      + '★ 는 AI 활용 유경험자 표시로, 조배정 계산에만 쓰이고 참석자 화면에는 나오지 않습니다.'));
 
     var tool = el('div', 'ed-tool');
     var q = el('input');
@@ -463,7 +483,7 @@
         var row = el('div', 'g-member');
         var nameEl = el('span', 'g-member-name');
         nameEl.appendChild(edit(m.p, 'name', null, '이름'));
-        var star = edBtn('★', 'AI 활용 유경험자', m.p.ai ? 'on' : '', function () {
+        var star = edBtn('★', 'AI 활용 유경험자 (조배정 계산용 · 참석자 화면에는 안 보임)', m.p.ai ? 'on' : '', function () {
           m.p.ai = !m.p.ai;
           star.classList.toggle('on', m.p.ai);
           touch();

@@ -1668,5 +1668,35 @@
 "ai": false,
 "group": 21,
 "groupSize": 8
+},
+{
+"name": "신재준",
+"pos": "파트너",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인포렌식",
+"ai": true,
+"group": 22,
+"groupSize": 3
+},
+{
+"name": "이미경",
+"pos": "Manager",
+"gender": "여",
+"hub": "서울본사",
+"dept": "법인포렌식",
+"ai": false,
+"group": 22,
+"groupSize": 3
+},
+{
+"name": "최시환",
+"pos": "Manager",
+"gender": "남",
+"hub": "서울본사",
+"dept": "법인 금융본부2",
+"ai": false,
+"group": 22,
+"groupSize": 3
 }
 ]
