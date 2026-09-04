@@ -126,9 +126,13 @@
   let glowCheckedAt = null; // 지금 네온 글로우 중인 기록 (10초 or 다음 출석까지)
   let glowTimer = null;
 
+  // 스캐너 PC 의 시간대와 상관없이 늘 한국시간(KST)으로 보여 준다.
+  const kstClock = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Seoul', hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+  });
   function fmtClock(iso) {
     const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return Number.isNaN(d.getTime()) ? '' : kstClock.format(d);
   }
 
   // 로그인이 풀리면 로그인 화면으로 (한 번만)

@@ -930,6 +930,20 @@ async function route(request, env, pathname) {
     return json({ ok: true, members: d.members.length, sheets: d.sheets.length, records: d.attendance.length });
   }
 
+  // 내려받는 파일 이름에 붙는 시각도 한국시간(KST) 기준.
+  // (저장된 값은 UTC 라서 여기서 한 번 바꿔 준다: 20260904_1650)
+  const kstStamp = (v) => {
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return 'unknown';
+    const t = {};
+    for (const x of new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Seoul', hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(d)) t[x.type] = x.value;
+    return `${t.year}${t.month}${t.day}_${t.hour}${t.minute}${t.second}`;
+  };
+
   // 지금 상태를 파일로 내려받기 (id 를 주면 그때 떠 둔 스냅샷)
   if (pathname === '/api/backup/download' && request.method === 'GET') {
     const id = Number(new URL(request.url).searchParams.get('id') || 0);
@@ -939,10 +953,10 @@ async function route(request, env, pathname) {
       const row = await db.prepare('SELECT created_at, json FROM backups WHERE id = ?').bind(id).first();
       if (!row) return err('그 백업을 찾을 수 없습니다.', 404);
       text = row.json;
-      stamp = String(row.created_at).slice(0, 19).replace(/[:T]/g, '');
+      stamp = kstStamp(row.created_at);
     } else {
       text = JSON.stringify(await buildBackup(db), null, 2);
-      stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '');
+      stamp = kstStamp(Date.now());
     }
     return new Response(text, {
       headers: {

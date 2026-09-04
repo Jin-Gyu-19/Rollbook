@@ -26,20 +26,38 @@
     return data;
   }
 
-  function fmtTime(iso) {
-    if (!iso) return '';
-    return new Date(iso).toLocaleString('ko-KR', {
+  // 화면에 보이는 시각은 보는 기기의 시간대와 상관없이 늘 한국시간(KST).
+  // 서버에 저장되는 값은 UTC(...Z) 라서, 읽을 때 여기서 한 번만 한국시간으로 바꾼다.
+  const KST = 'Asia/Seoul';
+  function kstParts(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    const out = {};
+    for (const part of new Intl.DateTimeFormat('en-GB', {
+      timeZone: KST, hourCycle: 'h23',
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit',
-    });
+    }).formatToParts(d)) out[part.type] = part.value;
+    return out;
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '';
+    const t = kstParts(iso);
+    return t ? `${t.year}-${t.month}-${t.day} ${t.hour}:${t.minute}` : '';
   }
 
   // 표가 좁을 때 쓰는 짧은 시각 (09-04 07:50)
   function fmtShortTime(iso) {
     if (!iso) return '';
-    const d = new Date(iso);
-    const p2 = (n) => String(n).padStart(2, '0');
-    return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    const t = kstParts(iso);
+    return t ? `${t.month}-${t.day} ${t.hour}:${t.minute}` : '';
+  }
+
+  // 오늘 날짜(한국시간) YYYY-MM-DD
+  function kstToday() {
+    const t = kstParts(Date.now());
+    return `${t.year}-${t.month}-${t.day}`;
   }
 
   // ── 탭 ───────────────────────────────────────────────
@@ -97,7 +115,7 @@
   // ═════════════════════════════════════════════════════
   let sheetsCache = [];
 
-  $('sheetDate').value = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD (로컬)
+  $('sheetDate').value = kstToday(); // YYYY-MM-DD (한국시간 기준 오늘)
 
   $('btnCreateSheet').addEventListener('click', async () => {
     try {

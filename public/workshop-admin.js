@@ -7,6 +7,20 @@
 (function () {
   'use strict';
 
+  // 화면에 보이는 시각은 보는 기기의 시간대와 상관없이 늘 한국시간(KST).
+  // 서버에 쌓이는 값은 UTC(...Z) 라서 읽을 때 여기서 한 번만 바꾼다.
+  var KST_FMT = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Seoul', hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+  function fmtKst(v) {
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return '';
+    var t = {};
+    KST_FMT.formatToParts(d).forEach(function (x) { t[x.type] = x.value; });
+    return t.year + '-' + t.month + '-' + t.day + ' ' + t.hour + ':' + t.minute;
+  }
+
   // 원본 앱의 색·글꼴 변수(--surface, --accent, --radius …)를 그대로 써서 한 앱처럼 보이게 한다.
   // 다크 모드도 원본 변수를 따라 저절로 맞춰진다.
   // 편집 화면은 참석자 화면의 '그 화면' 을 그대로 쓴다 — 원본 앱의 클래스(.g-card,
@@ -156,7 +170,7 @@
       var onFile = !d.versions.some(function (v) { return v.is_active; });
       vers.innerHTML = '<table>' + d.versions.map(function (v) {
         return '<tr><td>' + (v.is_active ? '● 사용 중' : '') + '</td><td>버전 ' + v.id + '</td>'
-          + '<td>' + v.created_at.slice(0, 16).replace('T', ' ') + '</td>'
+          + '<td>' + fmtKst(v.created_at) + '</td>'
           + '<td>' + v.people_count + '명 · ' + v.group_count + '조</td><td>'
           + (v.is_active ? '' : '<button type="button" data-id="' + v.id + '">이 버전으로</button>') + '</td></tr>';
       }).join('')
@@ -613,7 +627,7 @@
         total: people.length,
         groupCount: groupCount,
         aiTotal: people.filter(function (p) { return p.ai; }).length,
-        buildDate: new Date().toISOString().slice(0, 10),
+        buildDate: fmtKst(Date.now()).slice(0, 10), // 한국시간 기준 날짜
       },
       PEOPLE: people,
       PROGRAM: draft.PROGRAM,
@@ -710,7 +724,7 @@
     repCard.appendChild(el('h3', null, '참석자 화면에 반영되었습니다'));
     repCard.appendChild(el('p', 'when',
       '버전 ' + d.id + (d.prevId ? ' (이전 버전 ' + d.prevId + ')' : '') + ' · '
-      + new Date(d.at || Date.now()).toLocaleString('ko-KR')
+      + fmtKst(d.at || Date.now())
       + ' · ' + (d.source === 'editor' ? '직접 편집' : '엑셀 파일')));
 
     var dl = el('dl');
@@ -751,7 +765,7 @@
 
     repCard.innerHTML = '';
     repCard.appendChild(el('h3', null, '반영하지 못했습니다'));
-    repCard.appendChild(el('p', 'when', new Date().toLocaleString('ko-KR')
+    repCard.appendChild(el('p', 'when', fmtKst(Date.now())
       + ' · 참석자 화면은 그대로입니다 (바뀐 것이 없습니다)'));
 
     var why = el('div', 'why');

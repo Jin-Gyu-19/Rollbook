@@ -20,6 +20,14 @@
 - **워크샵 관리 화면은 참석자가 보는 화면을 그대로 쓴다.** `직접 편집` 을 누르면 같은 모양
   (같은 탭·카드·조 목록)의 편집본으로 바뀌고, 글자를 그 자리에서 고친다. 별도 표·양식을 만들지 않는다.
 
+## 이름·시각 규칙
+- **출석부 쪽 이름은 `Rollbook` 으로 남겨 둔다** — 출석 관리(`/admin`)·스캔 화면·로그인 화면의 제목과 상단 이름.
+  `Workshop` 으로 바꾼 곳은 메뉴 화면(`/start`) 하나뿐이다.
+- **화면에 보이는 시각은 전부 한국시간(KST) 고정.** 저장은 UTC(`...Z`)로 하고, 보여 줄 때만
+  `Asia/Seoul` 로 바꾼다 (`admin.js` 의 `kstParts`/`fmtTime`/`fmtShortTime`/`kstToday`,
+  `scanner.js` 의 `fmtClock`, `workshop-admin.js` 의 `fmtKst`, `src/index.js` 의 `kstStamp`).
+  보는 PC 의 시간대 설정을 따라가게 두지 않는다.
+
 ## 워크샵 앱
 - `public/workshop/index.html` 은 다른 사람이 만든 단일 파일 앱. **절대 고치지 않는다.** 서버가 내보낼 때만
   HTMLRewriter 로 가공한다 (참석자용은 관리 UI 제거, 관리자용은 참석자 UI 숨기고 관리 패널·편집기를 얹음).
