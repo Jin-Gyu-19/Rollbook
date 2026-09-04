@@ -161,6 +161,26 @@
     renderSheets();
   }
 
+  // 무거운 라이브러리는 쓸 때 불러온다.
+  // 예전에는 관리 화면을 열 때마다 엑셀·PDF 도구까지 1.6MB 를 먼저 받느라 화면이 늦게 떴다.
+  const libs = new Map();
+  function loadLib(src) {
+    if (!libs.has(src)) {
+      libs.set(src, new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = src;
+        el.onload = () => resolve();
+        el.onerror = () => { libs.delete(src); reject(new Error(`${src} 를 불러오지 못했습니다`)); };
+        document.head.appendChild(el);
+      }));
+    }
+    return libs.get(src);
+  }
+  const needXlsx = () => loadLib('/vendor/xlsx.min.js');
+  const needZip = () => loadLib('/vendor/jszip.min.js');
+  const needPdf = () => loadLib('/vendor/jspdf.min.js');
+  const needJsqr = () => loadLib('/vendor/jsqr.js');
+
   // 끌어서 옮기는 손잡이 (점 여섯 개)
   const GRIP_SVG = '<svg viewBox="0 0 10 16" width="10" height="16" fill="currentColor" aria-hidden="true">'
     + '<circle cx="3" cy="4" r="1.25"/><circle cx="7" cy="4" r="1.25"/><circle cx="3" cy="8" r="1.25"/>'
@@ -631,6 +651,7 @@
       '</cellXfs></styleSheet>';
 
     const name = sheetNameSafe(`출석집계표_${meta.code}_${meta.subject}`);
+    await needZip();
     const zip = new JSZip();
     zip.file('[Content_Types].xml',
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -831,7 +852,9 @@
         if (text.includes('�')) text = new TextDecoder('euc-kr').decode(buf);
         rows = text.split(/\r?\n/).map((l) => l.split(',').map((s) => s.trim()));
       } else {
-        await upTo(35, '엑셀 표를 여는 중… (파일이 크면 몇 초 걸립니다)');
+        await upTo(25, '엑셀 도구 준비 중…');
+        await needXlsx();
+        await upTo(40, '엑셀 표를 여는 중… (파일이 크면 몇 초 걸립니다)');
         const wb = XLSX.read(buf);
         const ws = wb.Sheets[wb.SheetNames[0]];
         await upTo(55, `‘${wb.SheetNames[0]}’ 시트를 읽는 중…`);
@@ -998,7 +1021,8 @@
     return members;
   }
 
-  $('btnTemplate').addEventListener('click', () => {
+  $('btnTemplate').addEventListener('click', async () => {
+    await needXlsx();
     const ws = XLSX.utils.aoa_to_sheet([
       ['이름', '직함', '부서'],
       ['홍길동', '과장', '감사1본부'],
@@ -1657,6 +1681,7 @@
 
   // 한 파일: 한 페이지에 10명
   async function buildOnePdf(list, btn) {
+    await needPdf();
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const pageW = 210;
@@ -1682,6 +1707,8 @@
 
   // 사람별 파일: 각자 한 장짜리 PDF 를 만들어 ZIP 으로
   async function buildEachPdfZip(list, btn) {
+    await needPdf();
+    await needZip();
     const { jsPDF } = window.jspdf;
     const zip = new JSZip();
     for (let i = 0; i < list.length; i++) {
@@ -1774,6 +1801,7 @@
         '<xdr:clientData/></xdr:oneCellAnchor>';
     }).join('');
 
+    await needZip();
     const zip = new JSZip();
     zip.file('[Content_Types].xml',
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -1987,6 +2015,7 @@
   async function downloadLoginQrPdf(payload, who, filename) {
     const canvas = await renderLoginQrCanvas(payload, 900);
     const dataUrl = canvas.toDataURL('image/png');
+    await needPdf();
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
@@ -2273,6 +2302,9 @@
             const codes = await detector.detect(canvas);
             if (codes.length) value = codes[0].rawValue;
           } catch { /* jsQR 로 폴백 */ }
+        }
+        if (!value) {
+          await needJsqr().catch(() => {});
         }
         if (!value && window.jsQR) {
           const img = ctx.getImageData(0, 0, w, h);

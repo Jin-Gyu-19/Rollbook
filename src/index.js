@@ -11,9 +11,23 @@ const json = (data, status = 200) =>
 const err = (message, status = 400) => json({ error: message }, status);
 
 // 테이블이 없으면 만들어 둔다 (마이그레이션을 깜빡해도 동작하도록)
+// 표·열을 바꿀 때마다 이 값을 올린다. 올리지 않으면 예전 DB 가 고쳐지지 않는다.
+const SCHEMA_VERSION = '2026-09-04-1';
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
+  // 이미 최신이면 여기서 끝낸다.
+  // 예전에는 워커가 새로 뜰 때마다 CREATE·ALTER·SELECT 를 열세 번쯤 차례로 던졌고,
+  // D1 은 한 번 물어볼 때마다 왕복이 생겨 '첫 클릭이 유난히 느린' 원인이 됐다.
+  try {
+    const row = await db.prepare("SELECT value FROM settings WHERE key = 'schema_version'").first();
+    if (row?.value === SCHEMA_VERSION) {
+      schemaReady = true;
+      return;
+    }
+  } catch {
+    /* settings 표조차 없는 새 DB — 아래에서 처음부터 만든다 */
+  }
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,6 +157,11 @@ async function ensureSchema(db) {
   // 예전 DB 에는 없던 열 — 있으면 조용히 지나간다
   try { await db.prepare("ALTER TABLE members ADD COLUMN cpa_no TEXT NOT NULL DEFAULT ''").run(); } catch { /* 이미 있음 */ }
   try { await db.prepare('ALTER TABLE sheets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0').run(); } catch { /* 이미 있음 */ }
+
+  // 여기까지 왔으면 최신 — 다음부터는 위에서 한 번만 물어보고 지나간다
+  await db.prepare(
+    "INSERT INTO settings (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).bind(SCHEMA_VERSION).run();
   schemaReady = true;
 }
 
@@ -348,7 +367,16 @@ export default {
       if (wsView) return serveWorkshop(request, env, wsView);
 
       if (!pathname.startsWith('/api/')) {
-        return env.ASSETS.fetch(request);
+        const asset = await env.ASSETS.fetch(request);
+        // 바뀌지 않는 파일은 브라우저가 갖고 있게 둔다 — 화면을 열 때마다 다시 받지 않도록.
+        // (앱 파일 admin.js·app.css 는 배포하면 바로 바뀌어야 하므로 손대지 않는다)
+        if (asset.ok && (pathname.startsWith('/vendor/') || /\.(woff2?|ttf|otf)$/i.test(pathname))) {
+          const out = new Response(asset.body, asset);
+          const day = 86400;
+          out.headers.set('cache-control', `public, max-age=${/\/vendor\//.test(pathname) ? day : day * 30}`);
+          return out;
+        }
+        return asset;
       }
 
       const res = await route(request, env, pathname);
@@ -526,7 +554,19 @@ async function restoreBackup(db, data) {
 // 파일 자체는 손대지 않으므로 앱을 새로 받아도 그대로 갈아 끼우면 된다.
 const WS_KEYS = ['META', 'PEOPLE', 'PROGRAM', 'DINNER'];
 let wsSchemaReady = false;
-let wsCache = { id: null, html: null };
+let wsCache = { id: null, html: null, font: null };
+
+// 워크샵 앱은 <style> 맨 위에서 구글 글꼴을 @import 로 부른다.
+// @import 는 그 파일을 다 받을 때까지 화면을 그리지 않아서, 회선이 느리거나
+// 사내망이 구글을 막으면 흰 화면이 몇 초씩 이어진다.
+// 파일은 손대지 않고(그건 개발자 것), 내보낼 때만 이 줄을 빼서
+// <head> 에서 화면을 막지 않는 방식으로 받게 한다.
+// 두 번째 @import 는 앱이 '게시하기' 로 내보내는 본문 안에 있으므로 그대로 둔다.
+function wsDeferFont(html) {
+  const m = html.match(/@import url\(['"]?(https:\/\/fonts\.googleapis\.com\/[^'")]+)['"]?\);?/);
+  if (!m) return { html, font: null };
+  return { html: html.replace(m[0], ''), font: m[1] };
+}
 
 async function ensureWsSchema(env) {
   if (wsSchemaReady || !env.WSDB) return;
@@ -819,7 +859,7 @@ async function wsSaveDataset(env, data) {
   } catch (e) {
     return { error: '데이터베이스에 저장하지 못했습니다.', detail: e.message, status: 500 };
   }
-  wsCache = { id: null, html: null };
+  wsCache = { id: null, html: null, font: null };
   return {
     id,
     prevId: prev?.id ?? null,
@@ -843,11 +883,14 @@ async function serveWorkshop(request, env, view) {
   const data = await wsActiveData(env);
   const cacheKey = data ? data.id : 0;
   let html = wsCache.id === cacheKey ? wsCache.html : null;
+  let font = wsCache.id === cacheKey ? wsCache.font : null;
   let raw = null;
   if (!html) {
     raw = await asset.text();
-    html = data ? wsReplace(raw, data) : raw;
-    wsCache = { id: cacheKey, html };
+    const built = wsDeferFont(data ? wsReplace(raw, data) : raw);
+    html = built.html;
+    font = built.font;
+    wsCache = { id: cacheKey, html, font };
   }
 
   // 관리 화면에서만: 앱 파일 안의 자료와 지금 쓰는 자료가 다르면 알려 준다.
@@ -868,6 +911,15 @@ async function serveWorkshop(request, env, view) {
   const page = new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 
   const rw = new HTMLRewriter();
+  // 위에서 빼낸 글꼴은 여기서 다시 달아 준다 — 화면을 다 그린 뒤에 적용되도록.
+  // 글꼴을 못 받아도(사내망 차단 등) 화면은 시스템 글꼴로 멀쩡히 뜬다.
+  if (font) {
+    const link = `<link rel="preconnect" href="https://fonts.googleapis.com">`
+      + `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`
+      + `<link rel="stylesheet" href="${font.replace(/"/g, '&quot;')}" media="print" onload="this.media='all'">`
+      + `<noscript><link rel="stylesheet" href="${font.replace(/"/g, '&quot;')}"></noscript>`;
+    rw.on('head', { element(el) { el.append(link, { html: true }); } });
+  }
   if (view === 'public') {
     rw.on('head', { element(el) { el.append('<style>#adminLinkBtn,#adminPanel{display:none!important}</style>', { html: true }); } })
       .on('#adminLinkBtn', { element(el) { el.setAttribute('hidden', ''); el.setAttribute('aria-hidden', 'true'); } })
@@ -918,6 +970,28 @@ async function route(request, env, pathname) {
   const db = env.DB;
 
   // ── 백업 (관리자 전용) ──────────────────────────────
+  // 느릴 때 어디가 느린지 보는 곳 — 관리자만 열린다.
+  // db_ping_ms 가 크면 데이터베이스가 멀리 있다는 뜻이고(=요청마다 왕복 비용),
+  // colo 는 접속한 클라우드플레어 지점이다 (서울이면 ICN).
+  if (pathname === '/api/health' && request.method === 'GET') {
+    const ping = [];
+    for (let i = 0; i < 3; i++) {
+      const t0 = Date.now();
+      await db.prepare('SELECT 1 AS ok').first();
+      ping.push(Date.now() - t0);
+    }
+    const t1 = Date.now();
+    const row = await db.prepare('SELECT COUNT(*) AS n FROM members').first();
+    return json({
+      db_ping_ms: ping,
+      members_count_ms: Date.now() - t1,
+      members: row?.n ?? 0,
+      colo: request.cf?.colo ?? null,
+      country: request.cf?.country ?? null,
+      schema: SCHEMA_VERSION,
+    });
+  }
+
   if (pathname === '/api/backup/list' && request.method === 'GET') {
     const r = await db.prepare(
       'SELECT id, created_at, kind, members, sheets, records, bytes, fingerprint FROM backups ORDER BY created_at DESC, id DESC LIMIT 60',
@@ -1019,7 +1093,7 @@ async function route(request, env, pathname) {
     // id 0 = 올린 버전을 모두 쉬게 하고 앱 파일에 들어 있는 원래 자료를 쓴다
     if (Number(id) === 0) {
       await env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0').run();
-      wsCache = { id: null, html: null };
+      wsCache = { id: null, html: null, font: null };
       return json({ ok: true, id: 0, file: true });
     }
     const hit = await env.WSDB.prepare('SELECT id FROM ws_dataset WHERE id = ?').bind(id).first();
@@ -1028,7 +1102,7 @@ async function route(request, env, pathname) {
       env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0'),
       env.WSDB.prepare('UPDATE ws_dataset SET is_active = 1 WHERE id = ?').bind(id),
     ]);
-    wsCache = { id: null, html: null };
+    wsCache = { id: null, html: null, font: null };
     return json({ ok: true, id });
   }
 

@@ -5,6 +5,9 @@
    서체: PretendardVariable.woff2 를 같은 경로에 두거나 경로를 수정할 것
    ═══════════════════════════════════════════════════════════════════ */
 
+/* 글꼴 파일(PretendardVariable.woff2)을 넣지 않아서, 이 규칙이 살아 있으면
+   화면을 열 때마다 없는 파일을 찾느라 요청이 한 번씩 헛돈다.
+   글꼴 파일을 public/ 에 넣게 되면 아래 주석을 풀면 된다.
 @font-face {
   font-family: 'Pretendard';
   src: url('/PretendardVariable.woff2') format('woff2-variations');
@@ -12,6 +15,7 @@
   font-style: normal;
   font-display: swap;
 }
+*/
 
 :root {
   /* ── 브랜드 ── */

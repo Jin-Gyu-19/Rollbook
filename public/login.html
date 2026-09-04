@@ -135,7 +135,6 @@
 
 <script src="/vendor/jsqr.js"></script>
 <script src="/vendor/qr-code-styling.js"></script>
-<script src="/vendor/jspdf.min.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -358,8 +357,24 @@
   let qrCanvas = null;
   let qrOwner = '';
 
+  // PDF 도구는 인쇄를 누를 때만 받는다 (400KB — 로그인 화면을 늦추지 않도록)
+  let pdfLib = null;
+  function needPdf() {
+    if (!pdfLib) {
+      pdfLib = new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = '/vendor/jspdf.min.js';
+        el.onload = () => resolve();
+        el.onerror = () => { pdfLib = null; reject(new Error('PDF 도구를 불러오지 못했습니다')); };
+        document.head.appendChild(el);
+      });
+    }
+    return pdfLib;
+  }
+
   // 인쇄용 PDF — 같은 QR 을 30·40·50mm 세 크기로
-  function savePdf(canvas, who, filename) {
+  async function savePdf(canvas, who, filename) {
+    await needPdf();
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const dataUrl = canvas.toDataURL('image/png');

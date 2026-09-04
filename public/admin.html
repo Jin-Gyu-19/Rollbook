@@ -346,11 +346,10 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/vendor/jsqr.js"></script>
+<!-- QR 그리기는 화면에서 바로 쓰므로 미리 받고,
+     엑셀(xlsx)·PDF(jspdf)·압축(jszip)·QR 읽기(jsqr)는 admin.js 가 쓸 때 받는다.
+     다 미리 받으면 관리 화면 열 때마다 1.6MB 를 먼저 기다려야 한다. -->
 <script src="/vendor/qr-code-styling.js"></script>
-<script src="/vendor/jspdf.min.js"></script>
-<script src="/vendor/xlsx.min.js"></script>
-<script src="/vendor/jszip.min.js"></script>
 <script src="/admin.js"></script>
 </body>
 </html>
