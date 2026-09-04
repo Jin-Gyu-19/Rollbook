@@ -922,7 +922,13 @@ async function route(request, env, pathname) {
     const r = await db.prepare(
       'SELECT id, created_at, kind, members, sheets, records, bytes, fingerprint FROM backups ORDER BY created_at DESC, id DESC LIMIT 60',
     ).all();
-    return json({ backups: r.results ?? [], days: BACKUP_KEEP_DAYS });
+    // 지금 자료의 크기도 함께 — 미리보기에서 '지금과 무엇이 다른지' 견주는 데 쓴다
+    const now = await db.prepare(
+      'SELECT (SELECT COUNT(*) FROM members) AS members,'
+      + ' (SELECT COUNT(*) FROM sheets) AS sheets,'
+      + ' (SELECT COUNT(*) FROM attendance) AS records',
+    ).first();
+    return json({ backups: r.results ?? [], days: BACKUP_KEEP_DAYS, now });
   }
 
   if (pathname === '/api/backup/snapshot' && request.method === 'POST') {

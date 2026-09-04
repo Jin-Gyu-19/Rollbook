@@ -92,9 +92,24 @@
     $('editModalTitle').textContent = title;
     $('editModalFields').innerHTML = fieldsHtml;
     editSaveHandler = onSave;
+    $('btnEditSave').hidden = false;
+    $('btnEditCancel').textContent = '취소';
+    editModal.classList.remove('hidden');
+  }
+  // 저장이 필요 없는 '보기' 모달 — 같은 창을 쓰되 저장 단추를 감춘다
+  function openView(title, html, wide) {
+    $('editModalTitle').textContent = title;
+    $('editModalFields').innerHTML = html;
+    editSaveHandler = null;
+    $('btnEditSave').hidden = true;
+    $('btnEditCancel').textContent = '닫기';
+    editModal.querySelector('.modal-body').style.maxWidth = wide ? '620px' : '420px';
     editModal.classList.remove('hidden');
   }
   function closeEdit() {
+    $('btnEditSave').hidden = false;
+    $('btnEditCancel').textContent = '취소';
+    editModal.querySelector('.modal-body').style.maxWidth = '420px';
     editModal.classList.add('hidden');
     editSaveHandler = null;
   }
@@ -184,12 +199,12 @@
               <td>${s.is_active ? '<span class="stag ok">기록 중</span>' : '<span class="stag">보관</span>'}</td>
               <td style="font-variant-numeric:tabular-nums;" class="nowrap">${s.attended} / ${memberCountText()}</td>
               <td class="right"><span class="row-actions" style="justify-content:flex-end; flex-wrap:nowrap;">
-                <button class="small${s.is_active ? ' ghost' : ''}" data-act="scan" data-id="${s.id}">${s.is_active ? '📷 출석 체크' : '출석 시작'}</button>
+                <button class="small primary" data-act="scan" data-id="${s.id}">${s.is_active ? '📷 출석 체크' : '출석 시작'}</button>
+                ${s.is_active ? `<button class="small" data-act="deactivate" data-id="${s.id}">출석 중단</button>` : ''}
                 <span class="row-menu">
                   <button class="icon-btn" data-act="menu" data-id="${s.id}" title="더보기">⋯</button>
                   <span class="menu" data-menu="${s.id}" hidden>
                     <button data-act="view" data-id="${s.id}">출석 현황 보기</button>
-                    ${s.is_active ? `<button data-act="deactivate" data-id="${s.id}">기록 중지</button>` : ''}
                     <button data-act="edit" data-id="${s.id}">이름·날짜 수정</button>
                   </span>
                 </span>
@@ -356,7 +371,7 @@
         await loadStatusTab(id);
       } else if (b.dataset.act === 'deactivate') {
         await api(`/api/sheets/${id}/deactivate`, { method: 'POST' });
-        toast('기록을 중지했습니다');
+        toast('출석 체크를 중단했습니다');
         loadSheets();
       } else if (b.dataset.act === 'edit') {
         openEdit('출석부 수정', `
@@ -778,35 +793,65 @@
   $('memberSearch').addEventListener('input', renderMembers);
 
   // ── 엑셀 일괄 등록 ───────────────────────────────────
+  // 표를 읽는 동안 화면이 멈춘 것처럼 보여서, 어디까지 왔는지 단계로 보여 준다.
+  // 무거운 작업 앞에서 한 번 쉬어 줘야(paint) 글자가 실제로 바뀐다.
+  const upBox = $('excelProgress');
+  const upBar = $('excelBar');
+  const upStep = $('excelStep');
+  const paint = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  async function upTo(pct, text) {
+    if (!upBox) return;
+    upBox.hidden = false;
+    upBox.classList.remove('err');
+    upBar.style.width = `${pct}%`;
+    upStep.textContent = text;
+    await paint();
+  }
+  function upDone(text, bad) {
+    if (!upBox) return;
+    upBar.style.width = '100%';
+    upBox.classList.toggle('err', !!bad);
+    upStep.textContent = text;
+    setTimeout(() => { if (upStep.textContent === text) upBox.hidden = true; }, bad ? 8000 : 4000);
+  }
+
   $('excelFile').addEventListener('change', async () => {
     const file = $('excelFile').files[0];
     if (!file) return;
     let rows = [];
     try {
+      await upTo(10, `‘${file.name}’ 여는 중…`);
       const buf = await file.arrayBuffer();
       if (/\.csv$/i.test(file.name)) {
+        await upTo(40, 'CSV 읽는 중…');
         // 한글 CSV: UTF-8 로 읽고 깨지면 EUC-KR 재시도
         let text = new TextDecoder('utf-8').decode(buf);
         if (text.includes('�')) text = new TextDecoder('euc-kr').decode(buf);
         rows = text.split(/\r?\n/).map((l) => l.split(',').map((s) => s.trim()));
       } else {
+        await upTo(35, '엑셀 표를 여는 중… (파일이 크면 몇 초 걸립니다)');
         const wb = XLSX.read(buf);
         const ws = wb.Sheets[wb.SheetNames[0]];
+        await upTo(55, `‘${wb.SheetNames[0]}’ 시트를 읽는 중…`);
         rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
       }
     } catch (e) {
+      upDone(`파일을 읽지 못했습니다 — ${e.message}`, true);
       toast(`파일을 읽지 못했습니다: ${e.message}`, true);
       $('excelFile').value = '';
       return;
     }
 
+    await upTo(70, `${rows.length}줄에서 이름·부서·회계사 번호를 찾는 중…`);
     const members = extractMembers(rows);
     $('excelFile').value = '';
     if (!members.length) {
+      upDone('파일에서 등록할 인원을 찾지 못했습니다 — 이름(성명) 열이 있는지 확인해 주세요', true);
       toast('파일에서 등록할 인원을 찾지 못했습니다', true);
       return;
     }
     try {
+      await upTo(85, `${members.length}명을 서버에 올리는 중…`);
       const r = await api('/api/members/bulk', { method: 'POST', body: JSON.stringify({ members }) });
       const parts = [];
       if (r.added) parts.push(`${r.added}명 새로 등록`);
@@ -817,6 +862,7 @@
       const withCpa = members.filter((m) => String(m.cpa_no ?? '').trim()).length;
       if (withCpa) parts.push(`회계사 번호 ${withCpa}명`);
       toast(parts.length ? parts.join(' · ') : '변경된 내용이 없습니다');
+      upDone(parts.length ? `끝났습니다 — ${parts.join(' · ')}` : '끝났습니다 — 변경된 내용이 없습니다');
       if (!withCpa) {
         // 집계표의 등록번호가 비게 되므로 미리 알려 준다
         setTimeout(() => toast(
@@ -830,6 +876,7 @@
       }
       loadMembers();
     } catch (e) {
+      upDone(`올리지 못했습니다 — ${e.message}`, true);
       toast(e.message, true);
     }
   });
@@ -2258,17 +2305,20 @@
   // ── 백업 탭 ──────────────────────────────────────────
   const kb = (n) => (n < 1024 ? `${n}B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)}KB` : `${(n / 1024 / 1024).toFixed(1)}MB`);
 
+  let backupsNow = null; // 지금 자료의 크기 (미리보기 비교용)
   async function loadBackupTab() {
     const box = $('backupList');
     box.innerHTML = '<p class="muted">불러오는 중…</p>';
+    // (지금 자료의 크기는 아래에서 받아 backupsNow 에 담는다)
     try {
-      const { backups, days } = await api('/api/backup/list');
+      const { backups, days, now } = await api('/api/backup/list');
+      backupsNow = now || null;
       if (!backups.length) {
         box.innerHTML = '<div class="empty"><span class="icon">🗄️</span>아직 백업이 없습니다<br>‘지금 백업 만들기’ 를 눌러 보세요</div>';
         return;
       }
       box.innerHTML = `
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr><th>만든 때</th><th>방식</th><th>내용</th><th class="right">명단</th><th class="right">출석부</th><th class="right">출석기록</th><th class="right">크기</th><th></th></tr></thead>
           <tbody>${backups.map((b) => `
             <tr>
@@ -2279,14 +2329,84 @@
               <td class="right">${b.sheets}</td>
               <td class="right">${b.records}</td>
               <td class="right">${kb(b.bytes)}</td>
-              <td class="right"><a class="mini-btn" href="/api/backup/download?id=${b.id}">내려받기</a></td>
+              <td class="right" style="white-space:nowrap;">
+                <button class="mini-btn soft" data-peek="${b.id}">미리보기</button>
+                <a class="mini-btn" href="/api/backup/download?id=${b.id}">내려받기</a>
+              </td>
             </tr>`).join('')}</tbody>
-        </table>
+        </table></div>
         <p class="hint">보관 기간 ${days}일 — 새 백업이 생길 때 지난 것을 함께 정리합니다. 변동이 없으면 정리도 하지 않으므로 마지막 백업이 사라질 일은 없습니다.</p>`;
     } catch (e) {
       box.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
     }
   }
+
+  // 백업 한 벌의 내용을 되돌리기 전에 살펴본다 (지금 자료와 무엇이 다른지까지)
+  function backupPreviewHtml(d, now) {
+    const members = d.members || [];
+    const sheets = d.sheets || [];
+    const att = d.attendance || [];
+    const cnt = (n) => `<b>${n}</b>`;
+    const delta = (a, b) => {
+      if (b == null) return '';
+      const n = a - b;
+      if (!n) return ' <span class="muted">(지금과 같음)</span>';
+      return ` <span class="${n > 0 ? 'up' : 'down'}">(지금보다 ${n > 0 ? `${n} 많음` : `${-n} 적음`})</span>`;
+    };
+    const byId = new Map(members.map((m) => [m.id, m]));
+    const perSheet = new Map();
+    for (const a of att) perSheet.set(a.sheet_id, (perSheet.get(a.sheet_id) || 0) + 1);
+    const withCpa = members.filter((m) => String(m.cpa_no ?? '').trim()).length;
+
+    let html = `<p class="muted" style="margin-top:0;">${fmtTime(d.created_at)} 시점의 자료입니다.</p>`;
+    html += '<dl class="peek">'
+      + `<dt>명단</dt><dd>${cnt(members.length)}명${delta(members.length, now?.members)}`
+      + ` · 회계사 번호 ${withCpa}명</dd>`
+      + `<dt>출석부</dt><dd>${cnt(sheets.length)}개${delta(sheets.length, now?.sheets)}</dd>`
+      + `<dt>출석기록</dt><dd>${cnt(att.length)}건${delta(att.length, now?.records)}</dd>`
+      + '</dl>';
+
+    if (sheets.length) {
+      const rows = sheets.slice(0, 12).map((sh) => `
+        <tr><td class="nowrap">${esc(sh.sheet_date ?? '')}</td><td>${esc(sh.title ?? '')}</td>
+        <td class="right">${perSheet.get(sh.id) || 0}명</td></tr>`).join('');
+      html += '<h3 class="peek-h">출석부</h3><div class="table-scroll"><table><thead><tr>'
+        + '<th>날짜</th><th>이름</th><th class="right">출석</th></tr></thead><tbody>'
+        + rows + '</tbody></table></div>'
+        + (sheets.length > 12 ? `<p class="hint">외 ${sheets.length - 12}개</p>` : '');
+    }
+    if (att.length) {
+      const last = att.slice(-5).reverse().map((a) => `
+        <li>${esc(byId.get(a.member_id)?.name ?? '(지워진 사람)')} · ${fmtTime(a.checked_at)}</li>`).join('');
+      html += `<h3 class="peek-h">마지막 출석 ${Math.min(5, att.length)}건</h3><ul class="peek-list">${last}</ul>`;
+    }
+    if (members.length) {
+      const some = members.slice(0, 5).map((m) => `${m.name}${m.dept ? ` (${m.dept})` : ''}`).join(', ');
+      html += `<p class="hint">명단 예: ${esc(some)}${members.length > 5 ? ` 외 ${members.length - 5}명` : ''}</p>`;
+    }
+    html += '<p class="hint">되돌리려면 이 백업을 <b>내려받은 뒤</b> 아래 ‘백업으로 되돌리기’ 에 올려 주세요.</p>';
+    return html;
+  }
+
+  $('backupList').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-peek]');
+    if (!btn) return;
+    const id = btn.dataset.peek;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '여는 중…';
+    try {
+      const r = await fetch(`/api/backup/download?id=${id}`);
+      if (!r.ok) throw new Error(`백업을 읽지 못했습니다 (${r.status})`);
+      const d = await r.json();
+      const now = backupsNow;
+      openView('백업 미리보기', backupPreviewHtml(d, now), true);
+    } catch (err) {
+      toast(err.message, true);
+    }
+    btn.disabled = false;
+    btn.textContent = label;
+  });
 
   $('btnBackupNow').addEventListener('click', async () => {
     const b = $('btnBackupNow');
@@ -2315,6 +2435,18 @@
       info.innerHTML = `이 파일: <b>${fmtTime(d.created_at)}</b> 시점 · 명단 ${d.members.length}명 · 출석부 ${(d.sheets || []).length}개 · 출석기록 ${(d.attendance || []).length}건`;
     } catch (e) {
       info.textContent = `읽을 수 없습니다 — ${e.message}`;
+    }
+  });
+
+  $('btnRestorePreview').addEventListener('click', async () => {
+    const f = $('restoreFile').files[0];
+    if (!f) return toast('먼저 백업 파일을 골라 주세요', true);
+    try {
+      const d = JSON.parse(await f.text());
+      if (d.format !== 'rollbook-backup') throw new Error('Rollbook 백업 파일이 아닙니다.');
+      openView('백업 파일 미리보기', backupPreviewHtml(d, backupsNow), true);
+    } catch (e) {
+      toast(`읽을 수 없습니다 — ${e.message}`, true);
     }
   });
 

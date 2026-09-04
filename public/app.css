@@ -356,6 +356,8 @@
 .status-main { min-width: 0; }
 .table-scroll { overflow-x: auto; }
 #sheetList table { min-width: 560px; }
+#backupList table { min-width: 720px; }
+#backupList td, #backupList th { white-space: nowrap; }
 #sheetList td, #sheetList th { white-space: nowrap; }
 .status-main .table-scroll { overflow-x: auto; }
 .status-main table { min-width: 620px; }
@@ -416,6 +418,32 @@ button.icon-btn.danger:hover { background: #FEF2F2; border-color: var(--danger);
 #sheetList tr.rb-shift, #sheetList tr.rb-settle { transition: transform 180ms cubic-bezier(.2,.7,.3,1); }
 #sheetList tr.rb-moved td { animation: rbMoved 900ms ease-out; }
 @keyframes rbMoved { from { background: var(--primary-soft); } to { background: transparent; } }
+
+/* ── 엑셀 올릴 때 진행 상황 ──────────────────────────── */
+.up-prog { margin-top: 12px; }
+.up-prog[hidden] { display: none; }
+.up-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.up-bar span { display: block; height: 100%; width: 0; border-radius: 999px;
+  background: var(--primary); transition: width .25s ease; }
+.up-step { margin: 7px 0 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.up-prog.err .up-bar span { background: var(--danger); }
+.up-prog.err .up-step { color: var(--danger); }
+
+/* ── 백업 미리보기 ───────────────────────────────────── */
+dl.peek { display: grid; grid-template-columns: 84px 1fr; gap: 6px 12px; margin: 12px 0 4px; }
+dl.peek dt { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+dl.peek dd { margin: 0; font-size: 13.5px; }
+dl.peek .up { color: var(--primary); font-weight: 600; }
+dl.peek .down { color: var(--danger); font-weight: 600; }
+.peek-h { margin: 18px 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.peek-list { margin: 0; padding-left: 18px; font-size: 13px; }
+.peek-list li { margin-bottom: 3px; }
+#editModalFields .table-scroll { max-height: 260px; overflow-y: auto; }
+button.mini-btn { border: 0; cursor: pointer; font-family: inherit; }
+button.mini-btn:disabled { opacity: .6; cursor: default; }
+/* 내려받기 옆에 나란히 놓이므로 미리보기는 한 톤 낮춰 둔다 */
+.mini-btn.soft { background: var(--primary-soft); color: var(--primary); margin-right: 5px; }
+.mini-btn.soft:hover { background: #E0E7FF; }
 
 .nowrap { white-space: nowrap; }
 .rowno { color: var(--muted); font-variant-numeric: tabular-nums; }
