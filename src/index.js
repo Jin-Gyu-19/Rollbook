@@ -640,8 +640,10 @@ function workshopView(pathname) {
 }
 
 const WS_ADMIN_BAR_CSS = `
-  /* 관리 화면에서는 참석자 UI(제목·탭·조 찾기)를 감춘다 — 참석자 화면은 '참석자 화면 보기' 단추로만 연다 */
-  .wrap > .eyebrow, .wrap > #mainTitle, .wrap > #mainSub, .wrap > .tabs, .wrap > .panel, .wrap > .admin-toggle-row { display: none !important; }
+  /* 관리 화면은 참석자가 보는 그 화면을 그대로 쓴다. '직접 편집' 을 누르면 같은 모양의
+     편집본으로 바뀌고(workshop-admin.js 가 .rb-editing 으로 갈아 끼운다), 참석자용 주소는
+     '참석자 화면 보기' 단추로만 연다. */
+  .wrap > .admin-toggle-row { display: none !important; }   /* 관리 패널은 이미 열어 두므로 '관리자' 글자는 감춘다 */
   .wrap > .admin-panel { margin-top: 18px; }
   /* 관리자 줄 — 원본 앱의 색·글꼴 변수를 그대로 써서 한 앱처럼 보이게 한다 */
   .rb-adminbar { position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
