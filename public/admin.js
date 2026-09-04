@@ -577,7 +577,7 @@
       if (r.updated) parts.push(`${r.updated}명 정보 갱신`);
       if (r.unchanged) parts.push(`${r.unchanged}명 변경 없음`);
       if (r.skipped) parts.push(`${r.skipped}줄 건너뜀(빈 줄)`);
-      if (members.excluded) parts.push(`${members.excluded}명 불참으로 제외`);
+      if (members.notAttending) parts.push(`파일에 불참으로 적힌 ${members.notAttending}명도 함께 등록`);
       toast(parts.length ? parts.join(' · ') : '변경된 내용이 없습니다');
       if (r.ambiguous?.length) {
         setTimeout(() => toast(
@@ -663,14 +663,6 @@
       }
     }
 
-    // 참석여부 칸에 'Y(참석)' 같은 값이 하나라도 있으면 그 칸을 믿고 Y 인 줄만 올린다
-    let attendStrict = false;
-    if (attendCol >= 0) {
-      for (let i = startRow; i < grid.length; i++) {
-        if (/^y/i.test((grid[i][attendCol] || '').trim())) { attendStrict = true; break; }
-      }
-    }
-
     const members = [];
     let lastDept = '';
     let notAttending = 0;
@@ -680,11 +672,10 @@
       const title = titleCol >= 0 ? (r[titleCol] || '').trim() : '';
       let dept = deptCol >= 0 ? (r[deptCol] || '').trim() : '';
       const cpa = cpaCol >= 0 ? (r[cpaCol] || '').trim().replace(/\.0+$/, '') : '';
-      // 참석여부 칸이 있으면 참석(Y) 인 사람만 올린다
-      if (attendStrict) {
-        const a = (r[attendCol] || '').trim();
-        if (!/^y/i.test(a)) { if (name && /^[nN]/.test(a)) notAttending++; continue; }
-      }
+      // 불참으로 적혀 있어도 당일 올 수 있으니 명단에는 모두 넣는다 (몇 명인지만 알려 준다)
+      if (attendCol >= 0 && name && /^[nN]/.test((r[attendCol] || '').trim())) notAttending++;
+      // 표 아래 합계·구분 줄 거르기 — 소속과 직위가 둘 다 비어 있으면 사람 줄이 아니다
+      if (titleCol >= 0 && deptCol >= 0 && !(r[titleCol] || '').trim() && !(r[deptCol] || '').trim()) continue;
       if (!name) continue;
       if (/^\d+$/.test(name)) continue;              // 숫자만 = 연번
       if (isNameHeader(name)) continue;              // 반복된 헤더 줄
@@ -693,7 +684,7 @@
       if (dept) lastDept = dept;
       members.push({ name, title, dept, cpa_no: cpa });
     }
-    members.excluded = notAttending; // 참석여부가 N 이라 뺀 사람 수
+    members.notAttending = notAttending; // 파일에 '불참' 으로 적힌 사람 수 (명단에는 넣는다)
     return members;
   }
 
