@@ -840,14 +840,25 @@
   function extractMembers(rows) {
     const grid = rows.map((r) => (Array.isArray(r) ? r : []).map((c) => String(c ?? '').trim()));
     const isNameHeader = (v) => ['이름', '성명', '성함', 'name'].includes(v.replace(/\s/g, '').toLowerCase());
-    const isDeptHeader = (v) => {
+    // 부서 열이 여럿일 때(예: '소속' · '부서' · '부서(구분용)') 어느 것을 쓸지 정한다.
+    // 화면에 보여 온 값이 '부서' 쪽이라 그 열을 먼저 쓰고, 없으면 '소속' 을 쓴다.
+    // '(구분용)' 처럼 계산용으로 붙은 보조 열은 쓰지 않는다.
+    const deptScore = (v) => {
       const w = v.replace(/\s/g, '');
-      return ['부서', '소속', '팀', '본부', '부서명', '소속부서', 'department', 'dept', 'team']
-        .some((h) => w.toLowerCase() === h) || w.includes('부서') || w.includes('소속');
+      const lo = w.toLowerCase();
+      if (w.includes('구분')) return 0;
+      if (w === '부서' || w === '부서명') return 4;
+      if (w.includes('부서')) return 3;
+      if (w === '소속' || w === '소속부서' || w.includes('소속')) return 2;
+      if (['팀', '본부', 'department', 'dept', 'team'].includes(lo)) return 1;
+      return 0;
     };
-    const isTitleHeader = (v) => {
-      const w = v.replace(/\s/g, '').toLowerCase();
-      return ['직함', '직급', '직위', '직책', '호칭', 'title', 'position', 'rank', 'grade'].includes(w);
+    const titleScore = (v) => {
+      const w = v.replace(/\s/g, '');
+      const lo = w.toLowerCase();
+      if (w.includes('구분')) return 0;
+      if (['직함', '직급', '직위', '직책', '호칭', 'title', 'position', 'rank', 'grade'].includes(lo)) return 2;
+      return 0;
     };
     // 회계사 등록번호 — 'KICPA 등록번호', '공인회계사 등록번호', '회계사번호', 'CPA No' 등
     const isCpaHeader = (v) => {
@@ -874,10 +885,14 @@
       for (let j = 0; j < grid[i].length; j++) {
         if (isNameHeader(grid[i][j])) {
           nameCol = j;
+          let deptBest = 0;
+          let titleBest = 0;
           for (let k = 0; k < grid[i].length; k++) {
             if (k === j) continue;
-            if (deptCol < 0 && isDeptHeader(grid[i][k])) deptCol = k;
-            if (titleCol < 0 && isTitleHeader(grid[i][k])) titleCol = k;
+            const ds = deptScore(grid[i][k]);
+            if (ds > deptBest) { deptBest = ds; deptCol = k; }
+            const ts = titleScore(grid[i][k]);
+            if (ts > titleBest) { titleBest = ts; titleCol = k; }
             if (cpaCol < 0 && isCpaHeader(grid[i][k])) cpaCol = k;
             if (attendCol < 0 && isAttendHeader(grid[i][k])) attendCol = k;
           }
