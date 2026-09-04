@@ -1,5 +1,15 @@
 # Rollbook — 이 저장소에서 지켜야 할 것
 
+## 절대 바꾸면 안 되는 것 — 참석자 QR 주소
+- 참석자에게 나가는 안내물·명찰 QR 에 **`https://rollbook.bdokorea.workers.dev/workshop/`** 가 인쇄되어 배포된다.
+  **이 주소와 이 주소가 담긴 QR 은 무슨 일이 있어도 바꾸지 않는다.**
+- 따라서 다음을 건드리지 않는다:
+  - `/workshop/` 경로와 그 공개 설정(`requiredRole` 의 공개 목록, `workshopView`)
+  - `/workshop`·`/workshop/index.html` → `/workshop/` 301 넘김
+  - Workers 배포 이름 `rollbook`(= `rollbook.bdokorea.workers.dev`), `wrangler.jsonc` 의 `name`
+- 화면 안의 내용(명단·일정)은 얼마든지 바꿔도 되지만, **주소는 고정**이다.
+  새 기능 때문에 경로를 옮겨야 하면 옛 주소를 그대로 살려 두고 새 주소를 덧붙인다.
+
 ## 화면 구조 (사용자가 정한 것)
 - **메인 화면은 메뉴 선택 화면 `/start`** 다. 로그인하면 여기로 오고, 관리자가 주소만 쳐도 여기로 온다.
   여기서 `출석 체크 관리(/admin)` 와 `워크샵 관리(/workshop/admin)` 로 갈라진다.

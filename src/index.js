@@ -304,6 +304,8 @@ function requiredRole(pathname, method) {
   if (pathname.startsWith('/api/auth/')) return null;
   // 워크샵 참석자 화면 — 명찰 QR 로 로그인 없이 여는 것이 목적이라 이 세 주소만 공개.
   // 관리 화면(/workshop/admin)은 아래 기본값대로 관리자만 연다.
+  // ★ 이 경로는 안내물·명찰 QR 에 인쇄되어 배포됐다. 절대 바꾸지 않는다
+  //   (https://rollbook.bdokorea.workers.dev/workshop/).
   if (pathname === '/workshop' || pathname === '/workshop/' || pathname === '/workshop/index.html') return null;
   if (pathname === '/' || pathname === '/index.html' || pathname === '/scan' || pathname === '/scanner.js') return 'scanner';
   if (pathname === '/api/status' || pathname === '/api/recent' || pathname === '/api/checkin') return 'scanner';
@@ -827,7 +829,8 @@ async function wsSaveDataset(env, data) {
 }
 
 async function serveWorkshop(request, env, view) {
-  // 주소를 한 가지로 맞춘다 (참석자 QR 에는 /workshop/ 만 쓴다)
+  // 주소를 한 가지로 맞춘다 (참석자 QR 에는 /workshop/ 만 쓴다).
+  // ★ 인쇄된 QR 이 도는 주소이므로 이 넘김도 없애지 않는다.
   if (view === 'public' && new URL(request.url).pathname !== '/workshop/') {
     return Response.redirect(new URL('/workshop/', request.url).toString(), 301);
   }
