@@ -142,6 +142,7 @@ async function ensureSchema(db) {
   }
   // 예전 DB 에는 없던 열 — 있으면 조용히 지나간다
   try { await db.prepare("ALTER TABLE members ADD COLUMN cpa_no TEXT NOT NULL DEFAULT ''").run(); } catch { /* 이미 있음 */ }
+  try { await db.prepare('ALTER TABLE sheets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0').run(); } catch { /* 이미 있음 */ }
   schemaReady = true;
 }
 
@@ -399,7 +400,7 @@ async function backupFingerprint(text) {
 async function buildBackup(db) {
   const [members, sheets, attendance, logo] = await Promise.all([
     db.prepare('SELECT id, name, title, dept, code, cpa_no, is_admin, created_at FROM members ORDER BY id').all(),
-    db.prepare('SELECT id, title, sheet_date, is_active, created_at FROM sheets ORDER BY id').all(),
+    db.prepare('SELECT id, title, sheet_date, is_active, sort_order, created_at FROM sheets ORDER BY id').all(),
     db.prepare('SELECT id, sheet_id, member_id, checked_at FROM attendance ORDER BY id').all(),
     db.prepare("SELECT value FROM settings WHERE key = 'brand_logo'").first(),
   ]);
@@ -499,8 +500,9 @@ async function restoreBackup(db, data) {
   }
   for (const sh of data.sheets ?? []) {
     stmts.push(db.prepare(
-      'INSERT INTO sheets (id, title, sheet_date, is_active, created_at) VALUES (?, ?, ?, ?, ?)',
-    ).bind(sh.id, sh.title ?? '', sh.sheet_date ?? '', sh.is_active ?? 0, sh.created_at ?? new Date().toISOString()));
+      'INSERT INTO sheets (id, title, sheet_date, is_active, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    ).bind(sh.id, sh.title ?? '', sh.sheet_date ?? '', sh.is_active ?? 0, sh.sort_order ?? 0,
+      sh.created_at ?? new Date().toISOString()));
   }
   for (const a of data.attendance ?? []) {
     stmts.push(db.prepare(
@@ -1607,10 +1609,10 @@ async function route(request, env, pathname) {
   if (pathname === '/api/sheets' && method === 'GET') {
     const { results } = await db
       .prepare(`
-        SELECT s.id, s.title, s.sheet_date, s.is_active, s.created_at,
+        SELECT s.id, s.title, s.sheet_date, s.is_active, s.created_at, s.sort_order,
                (SELECT COUNT(*) FROM attendance a WHERE a.sheet_id = s.id) AS attended
         FROM sheets s
-        ORDER BY s.sheet_date DESC, s.id DESC
+        ORDER BY s.sort_order ASC, s.sheet_date DESC, s.id DESC
       `)
       .all();
     const total = await db.prepare('SELECT COUNT(*) AS n FROM members').first();
@@ -1625,9 +1627,11 @@ async function route(request, env, pathname) {
     if (!title) return err('출석부 이름을 입력해 주세요.');
     if (!sheetDate) return err('날짜를 선택해 주세요.');
 
+    const top = await db.prepare('SELECT MIN(sort_order) AS n FROM sheets').first();
+    const order = Number.isFinite(top?.n) ? Number(top.n) - 1 : 0;
     const r = await db
-      .prepare('INSERT INTO sheets (title, sheet_date, is_active) VALUES (?, ?, 0)')
-      .bind(title, sheetDate)
+      .prepare('INSERT INTO sheets (title, sheet_date, is_active, sort_order) VALUES (?, ?, 0, ?)')
+      .bind(title, sheetDate, order)
       .run();
     const id = r.meta.last_row_id;
     if (activate) {
@@ -1638,6 +1642,15 @@ async function route(request, env, pathname) {
     }
     const sheet = await db.prepare('SELECT * FROM sheets WHERE id = ?').bind(id).first();
     return json({ sheet }, 201);
+  }
+
+  // 출석부 목록 순서 바꾸기 — 화면이 보낸 차례대로 다시 번호를 매긴다
+  if (pathname === '/api/sheets/reorder' && method === 'POST') {
+    const body = await readBody(request);
+    const ids = Array.isArray(body?.ids) ? body.ids.map(Number).filter(Number.isInteger) : [];
+    if (!ids.length) return err('순서를 보내 주세요.');
+    await db.batch(ids.map((id, i) => db.prepare('UPDATE sheets SET sort_order = ? WHERE id = ?').bind(i, id)));
+    return json({ ok: true, count: ids.length });
   }
 
   if (seg[1] === 'sheets' && seg.length >= 3) {

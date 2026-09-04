@@ -34,6 +34,14 @@
     });
   }
 
+  // 표가 좁을 때 쓰는 짧은 시각 (09-04 07:50)
+  function fmtShortTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const p2 = (n) => String(n).padStart(2, '0');
+    return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  }
+
   // ── 탭 ───────────────────────────────────────────────
   const tabs = $('tabs');
   function switchTab(name) {
@@ -98,7 +106,6 @@
         body: JSON.stringify({
           title: $('sheetTitle').value,
           sheet_date: $('sheetDate').value,
-          activate: $('sheetActivate').checked,
         }),
       });
       $('sheetTitle').value = '';
@@ -109,34 +116,94 @@
     }
   });
 
+  const TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/></svg>';
+
+  let sheetMemberCount = 0;
+
   async function loadSheets() {
     const { sheets, memberCount } = await api('/api/sheets').catch((e) => (toast(e.message, true), { sheets: [], memberCount: 0 }));
     sheetsCache = sheets;
+    sheetMemberCount = memberCount;
+    renderSheets();
+  }
+
+  function filteredSheets() {
+    const q = ($('sheetSearch')?.value ?? '').trim().toLowerCase();
+    if (!q) return sheetsCache;
+    return sheetsCache.filter((s) => [s.title, s.sheet_date].some((v) => String(v ?? '').toLowerCase().includes(q)));
+  }
+
+  function renderSheets() {
     const holder = $('sheetList');
-    if (!sheets.length) {
+    if (!sheetsCache.length) {
       holder.innerHTML = `<div class="empty"><span class="icon">🗂️</span>아직 출석부가 없습니다.<br>위에서 첫 출석부를 만들어 보세요.</div>`;
       return;
     }
+    const list = filteredSheets();
+    const q = ($('sheetSearch')?.value ?? '').trim();
+    if (!list.length) {
+      holder.innerHTML = `<div class="empty"><span class="icon">🔍</span>"${esc(q)}" 와 맞는 출석부가 없습니다.</div>`;
+      return;
+    }
+    const sortable = !q; // 검색 중에는 순서를 바꾸지 않는다 (보이는 것과 실제 순서가 달라지므로)
     holder.innerHTML = `
-      <table>
-        <thead><tr><th>날짜</th><th>이름</th><th>상태</th><th>출석</th><th class="right">관리</th></tr></thead>
+      <div class="table-scroll"><table>
+        <thead><tr><th style="width:38px;">#</th><th>날짜</th><th>이름</th><th>상태</th><th>출석</th><th class="right">관리</th></tr></thead>
         <tbody>
-          ${sheets.map((s) => `
+          ${list.map((s, i) => `
             <tr>
-              <td>${esc(s.sheet_date)}</td>
+              <td class="rowno">${sheetsCache.indexOf(s) + 1}</td>
+              <td class="nowrap">${esc(s.sheet_date)}</td>
               <td><b>${esc(s.title)}</b></td>
               <td>${s.is_active ? '<span class="stag ok">기록 중</span>' : '<span class="stag">보관</span>'}</td>
-              <td style="font-variant-numeric:tabular-nums;">${s.attended} / ${memberCount}명</td>
-              <td class="right"><span class="row-actions" style="justify-content:flex-end;">
-                <button class="small primary" data-act="scan" data-id="${s.id}">📷 출석 체크</button>
-                <button class="small" data-act="view" data-id="${s.id}">현황</button>
-                ${s.is_active ? `<button class="small ghost" data-act="deactivate" data-id="${s.id}">기록 중지</button>` : ''}
-                <button class="small ghost" data-act="edit" data-id="${s.id}">수정</button>
-                <button class="small danger" data-act="del" data-id="${s.id}">삭제</button>
+              <td style="font-variant-numeric:tabular-nums;" class="nowrap">${s.attended} / ${memberCountText()}</td>
+              <td class="right"><span class="row-actions" style="justify-content:flex-end; flex-wrap:nowrap;">
+                ${sortable ? `
+                <button class="icon-btn" data-act="up" data-id="${s.id}" title="위로" ${i === 0 ? 'disabled' : ''}>↑</button>
+                <button class="icon-btn" data-act="down" data-id="${s.id}" title="아래로" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>` : ''}
+                <span class="row-menu">
+                  <button class="icon-btn" data-act="menu" data-id="${s.id}" title="더보기">⋯</button>
+                  <span class="menu" data-menu="${s.id}" hidden>
+                    <button data-act="scan" data-id="${s.id}">📷 출석 체크 시작</button>
+                    <button data-act="view" data-id="${s.id}">출석 현황 보기</button>
+                    ${s.is_active ? `<button data-act="deactivate" data-id="${s.id}">기록 중지</button>` : ''}
+                    <button data-act="edit" data-id="${s.id}">이름·날짜 수정</button>
+                  </span>
+                </span>
+                <button class="icon-btn danger" data-act="del" data-id="${s.id}" title="삭제">${TRASH_SVG}</button>
               </span></td>
             </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table></div>`;
+  }
+  const memberCountText = () => `${sheetMemberCount}명`;
+
+  $('sheetSearch')?.addEventListener('input', renderSheets);
+
+  // 바깥을 누르거나 Esc 를 누르면 열려 있던 '…' 메뉴를 닫는다
+  const closeRowMenus = () => document.querySelectorAll('.row-menu .menu:not([hidden])').forEach((m) => { m.hidden = true; });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="menu"]')) return;
+    closeRowMenus();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRowMenus(); });
+
+  // 순서 바꾸기 — 화면에서 자리를 바꾸고 그대로 서버에 저장한다
+  async function moveSheet(id, dir) {
+    const i = sheetsCache.findIndex((s) => s.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= sheetsCache.length) return;
+    const next = sheetsCache.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    sheetsCache = next;
+    renderSheets();
+    try {
+      await api('/api/sheets/reorder', { method: 'POST', body: JSON.stringify({ ids: next.map((s) => s.id) }) });
+    } catch (e) {
+      toast(e.message, true);
+      loadSheets();
+    }
   }
 
   $('sheetList').addEventListener('click', async (e) => {
@@ -144,7 +211,20 @@
     if (!b) return;
     const id = Number(b.dataset.id);
     const sheet = sheetsCache.find((s) => s.id === id);
+    const act = b.dataset.act;
     try {
+      if (act === 'menu') {
+        const box = b.parentElement.querySelector('.menu');
+        const open = box.hidden;
+        document.querySelectorAll('.row-menu .menu').forEach((m) => { m.hidden = true; });
+        box.hidden = !open;
+        return;
+      }
+      document.querySelectorAll('.row-menu .menu').forEach((m) => { m.hidden = true; });
+      if (act === 'up' || act === 'down') {
+        await moveSheet(id, act === 'up' ? -1 : 1);
+        return;
+      }
       if (b.dataset.act === 'scan') {
         // 이 출석부로 기록 시작 + 촬영 화면 열기
         await api(`/api/sheets/${id}/activate`, { method: 'POST' });
@@ -209,9 +289,15 @@
     if (document.hidden) return;
     if ($('tab-status').classList.contains('hidden')) return;
     if (!$('editModal').classList.contains('hidden')) return;
+    // 집계표 칸이나 검색칸을 채우는 중이면 건드리지 않는다
+    const inSide = document.activeElement?.closest?.('.status-side, #statusSearch');
+    if (inSide) return;
     const id = Number($('statusSheetSel').value);
     if (id) renderStatus(id);
   }, 5000);
+
+  let statusRows = [];
+  let statusSheetId = null;
 
   async function renderStatus(sheetId) {
     const body = $('statusBody');
@@ -222,7 +308,17 @@
       toast(e.message, true);
       return;
     }
-    const { rows } = data;
+    statusRows = data.rows;
+    statusSheetId = sheetId;
+    drawStatus();
+  }
+
+  $('statusSearch')?.addEventListener('input', () => { if (statusRows.length) drawStatus(); });
+
+  function drawStatus() {
+    const body = $('statusBody');
+    const sheetId = statusSheetId;
+    const rows = statusRows;
     const total = rows.length;
     const attended = rows.filter((r) => r.checked_at).length;
     const pct = total ? Math.round((attended / total) * 100) : 0;
@@ -231,6 +327,12 @@
       body.innerHTML = `<div class="empty"><span class="icon">👥</span>등록된 인원이 없습니다.<br>명단 탭에서 인원을 먼저 추가해 주세요.</div>`;
       return;
     }
+
+    const q = ($('statusSearch')?.value ?? '').trim();
+    const needle = q.toLowerCase();
+    const shown = needle
+      ? rows.filter((r) => [r.name, r.title, r.dept, r.cpa_no].some((v) => String(v ?? '').toLowerCase().includes(needle)))
+      : rows;
 
     body.innerHTML = `
       <div class="stat-row">
@@ -242,17 +344,18 @@
         <span>출석 진행</span><span>${attended} / ${total}</span>
       </div>
       <div class="step-track" style="margin-bottom:18px;"><div class="step-fill" style="width:${pct}%"></div></div>
-      <table>
+      ${shown.length === rows.length ? '' : `<p class="hint" style="margin:0 0 8px;">"${esc(q)}" 검색 결과 ${shown.length}명</p>`}
+      <div class="table-scroll"><table>
         <thead><tr><th>이름</th><th>직함</th><th>부서</th><th>회계사 번호</th><th>상태</th><th>출석 시각</th><th class="right">편집</th></tr></thead>
         <tbody>
-          ${rows.map((r) => `
+          ${shown.map((r) => `
             <tr>
               <td><b>${esc(r.name)}</b></td>
               <td>${esc(r.title)}</td>
               <td>${esc(r.dept)}</td>
               <td style="font-variant-numeric:tabular-nums;">${esc(r.cpa_no ?? '')}</td>
               <td>${r.checked_at ? '<span class="stag ok">출석</span>' : '<span class="stag err">미출석</span>'}</td>
-              <td class="muted" style="font-variant-numeric:tabular-nums;">${fmtTime(r.checked_at)}</td>
+              <td class="muted" style="font-variant-numeric:tabular-nums;">${fmtShortTime(r.checked_at)}</td>
               <td class="right" style="white-space:nowrap;">
                 ${r.checked_at
                   ? `<button class="small ghost" data-mark="0" data-id="${r.member_id}">출석 취소</button>`
@@ -260,7 +363,7 @@
               </td>
             </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table></div>`;
 
     body.onclick = async (e) => {
       const b = e.target.closest('button[data-mark]');
