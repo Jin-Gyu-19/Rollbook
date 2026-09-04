@@ -199,11 +199,13 @@
               <td>${s.is_active ? '<span class="stag ok">기록 중</span>' : '<span class="stag">보관</span>'}</td>
               <td style="font-variant-numeric:tabular-nums;" class="nowrap">${s.attended} / ${memberCountText()}</td>
               <td class="right"><span class="row-actions" style="justify-content:flex-end; flex-wrap:nowrap;">
-                <button class="small primary" data-act="scan" data-id="${s.id}">${s.is_active ? '📷 출석 체크' : '출석 시작'}</button>
-                ${s.is_active ? `<button class="small" data-act="deactivate" data-id="${s.id}">출석 중단</button>` : ''}
+                ${s.is_active
+                  ? `<button class="small" data-act="deactivate" data-id="${s.id}">출석 중단</button>`
+                  : `<button class="small primary" data-act="scan" data-id="${s.id}">출석 시작</button>`}
                 <span class="row-menu">
                   <button class="icon-btn" data-act="menu" data-id="${s.id}" title="더보기">⋯</button>
                   <span class="menu" data-menu="${s.id}" hidden>
+                    ${s.is_active ? `<button data-act="scan" data-id="${s.id}">📷 스캔 화면 열기</button>` : ''}
                     <button data-act="view" data-id="${s.id}">출석 현황 보기</button>
                     <button data-act="edit" data-id="${s.id}">이름·날짜 수정</button>
                   </span>
