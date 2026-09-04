@@ -654,6 +654,12 @@ const WS_ADMIN_BAR_CSS = `
   .rb-adminbar a.view:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
   .rb-adminbar .t { flex: 1; font-weight: 800; font-size: 15px; letter-spacing: -.01em; }
   .rb-adminbar .s { display: inline-block; font-weight: 500; font-size: 12.5px; color: var(--text-muted); margin-left: 8px; }
+  @media (max-width: 560px) {
+    .rb-adminbar { gap: 6px; padding: 8px 12px; }
+    .rb-adminbar .t { flex: 1 0 100%; order: -1; margin-bottom: 2px; }
+    .rb-adminbar .s { display: none; }
+    .rb-adminbar a, .rb-adminbar button { flex: 1 1 auto; justify-content: center; padding: 8px 8px; font-size: 12px; white-space: nowrap; }
+  }
   .rb-pub { margin: 0; padding: 14px 16px; background: var(--surface-alt); border-bottom: 1px solid var(--border);
     font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif; font-size: 13px; line-height: 1.5; color: var(--text); }
   .rb-pub button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 9px;
