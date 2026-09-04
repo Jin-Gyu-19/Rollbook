@@ -146,6 +146,11 @@
     renderSheets();
   }
 
+  // 끌어서 옮기는 손잡이 (점 여섯 개)
+  const GRIP_SVG = '<svg viewBox="0 0 10 16" width="10" height="16" fill="currentColor" aria-hidden="true">'
+    + '<circle cx="3" cy="4" r="1.25"/><circle cx="7" cy="4" r="1.25"/><circle cx="3" cy="8" r="1.25"/>'
+    + '<circle cx="7" cy="8" r="1.25"/><circle cx="3" cy="12" r="1.25"/><circle cx="7" cy="12" r="1.25"/></svg>';
+
   function filteredSheets() {
     const q = ($('sheetSearch')?.value ?? '').trim().toLowerCase();
     if (!q) return sheetsCache;
@@ -167,23 +172,22 @@
     const sortable = !q; // 검색 중에는 순서를 바꾸지 않는다 (보이는 것과 실제 순서가 달라지므로)
     holder.innerHTML = `
       <div class="table-scroll"><table>
-        <thead><tr><th style="width:38px;">#</th><th>날짜</th><th>이름</th><th>상태</th><th>출석</th><th class="right">관리</th></tr></thead>
+        <thead><tr><th style="width:48px;">#</th><th>날짜</th><th>이름</th><th>상태</th><th>출석</th><th class="right">관리</th></tr></thead>
         <tbody>
           ${list.map((s, i) => `
-            <tr>
-              <td class="rowno">${sheetsCache.indexOf(s) + 1}</td>
+            <tr data-id="${s.id}"${sortable ? ' class="rb-sortable"' : ''}>
+              <td class="rowno"${sortable ? ' title="끌어서 순서를 바꿀 수 있습니다"' : ''}>
+                ${sortable ? `<span class="grip">${GRIP_SVG}</span>` : ''}<span class="num">${sheetsCache.indexOf(s) + 1}</span>
+              </td>
               <td class="nowrap">${esc(s.sheet_date)}</td>
               <td><b>${esc(s.title)}</b></td>
               <td>${s.is_active ? '<span class="stag ok">기록 중</span>' : '<span class="stag">보관</span>'}</td>
               <td style="font-variant-numeric:tabular-nums;" class="nowrap">${s.attended} / ${memberCountText()}</td>
               <td class="right"><span class="row-actions" style="justify-content:flex-end; flex-wrap:nowrap;">
-                ${sortable ? `
-                <button class="icon-btn" data-act="up" data-id="${s.id}" title="위로" ${i === 0 ? 'disabled' : ''}>↑</button>
-                <button class="icon-btn" data-act="down" data-id="${s.id}" title="아래로" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>` : ''}
+                <button class="small${s.is_active ? ' ghost' : ''}" data-act="scan" data-id="${s.id}">${s.is_active ? '📷 출석 체크' : '출석 시작'}</button>
                 <span class="row-menu">
                   <button class="icon-btn" data-act="menu" data-id="${s.id}" title="더보기">⋯</button>
                   <span class="menu" data-menu="${s.id}" hidden>
-                    <button data-act="scan" data-id="${s.id}">📷 출석 체크 시작</button>
                     <button data-act="view" data-id="${s.id}">출석 현황 보기</button>
                     ${s.is_active ? `<button data-act="deactivate" data-id="${s.id}">기록 중지</button>` : ''}
                     <button data-act="edit" data-id="${s.id}">이름·날짜 수정</button>
@@ -194,6 +198,7 @@
             </tr>`).join('')}
         </tbody>
       </table></div>`;
+    if (sortable) bindSheetDrag(holder.querySelector('tbody'));
   }
   const memberCountText = () => `${sheetMemberCount}명`;
 
@@ -207,21 +212,124 @@
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRowMenus(); });
 
-  // 순서 바꾸기 — 화면에서 자리를 바꾸고 그대로 서버에 저장한다
-  async function moveSheet(id, dir) {
-    const i = sheetsCache.findIndex((s) => s.id === id);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= sheetsCache.length) return;
-    const next = sheetsCache.slice();
-    [next[i], next[j]] = [next[j], next[i]];
-    sheetsCache = next;
-    renderSheets();
+  // 순서 바꾸기 — 줄을 끌어서 놓으면 그 자리에 꽂히고 그대로 서버에 저장된다.
+  // 마우스는 줄 아무 데나 잡아도 되고, 손가락은 왼쪽 손잡이(⠿)를 잡는다
+  // (줄 전체를 잡게 하면 손가락으로 화면을 못 넘기기 때문).
+  async function saveSheetOrder(tbody) {
+    const ids = Array.from(tbody.rows).map((tr) => Number(tr.dataset.id));
+    const byId = new Map(sheetsCache.map((s) => [s.id, s]));
+    sheetsCache = ids.map((id) => byId.get(id)).filter(Boolean);
     try {
-      await api('/api/sheets/reorder', { method: 'POST', body: JSON.stringify({ ids: next.map((s) => s.id) }) });
+      await api('/api/sheets/reorder', { method: 'POST', body: JSON.stringify({ ids }) });
     } catch (e) {
       toast(e.message, true);
       loadSheets();
     }
+  }
+
+  function renumberRows(tbody) {
+    Array.from(tbody.rows).forEach((tr, i) => {
+      const n = tr.querySelector('.num');
+      if (n) n.textContent = String(i + 1);
+    });
+  }
+
+  function bindSheetDrag(tbody) {
+    if (!tbody) return;
+    let drag = null;
+
+    // 줄들이 '변형 없이' 있어야 할 자리를 그때그때 계산한다.
+    // 화면에서 미끄러지는 중인 줄의 실제 위치(transform)를 재면, 방금 지나온 줄과
+    // 자리를 무한히 맞바꾸게 되므로 위치는 늘 이 계산값으로만 견준다.
+    const layout = () => {
+      const tops = new Map();
+      let y = tbody.getBoundingClientRect().top;
+      for (const tr of tbody.rows) { tops.set(tr, y); y += drag.h.get(tr); }
+      return tops;
+    };
+
+    // 자리를 옮긴 줄은 옛 자리에서 새 자리로 스르륵 미끄러지게 (FLIP)
+    const slide = (tr, fromTop, toTop) => {
+      const dy = fromTop - toTop;
+      if (!dy) return;
+      tr.classList.remove('rb-shift');
+      tr.style.transform = `translateY(${dy}px)`;
+      requestAnimationFrame(() => {
+        tr.classList.add('rb-shift');
+        tr.style.transform = '';
+      });
+    };
+
+    function onMove(e) {
+      if (!drag) return;
+      if (!drag.on) {
+        if (Math.abs(e.clientY - drag.startY) < 5) return;
+        drag.on = true;
+        drag.h = new Map(Array.from(tbody.rows).map((tr) => [tr, tr.getBoundingClientRect().height]));
+        drag.baseTop = layout().get(drag.row); // 잡았을 때의 자리
+        drag.row.classList.add('rb-drag');
+        tbody.classList.add('rb-dragging');
+      }
+      e.preventDefault();
+      const row = drag.row;
+      const height = drag.h.get(row);
+      // 잡은 줄은 손끝을 그대로 따라간다
+      const top = drag.baseTop + (e.clientY - drag.startY);
+      let tops = layout();
+      row.style.transform = `translateY(${top - tops.get(row)}px)`;
+
+      // 한 번 움직일 때 여러 칸을 지나갈 수도 있어, 조건이 맞는 동안 계속 자리를 바꾼다
+      for (let guard = 0; guard < 60; guard++) {
+        const prev = row.previousElementSibling;
+        const next = row.nextElementSibling;
+        let other = null;
+        if (prev && top < tops.get(prev) + drag.h.get(prev) / 2) other = prev;
+        else if (next && top + height > tops.get(next) + drag.h.get(next) / 2) other = next;
+        if (!other) break;
+
+        const wasOther = tops.get(other);
+        if (other === prev) tbody.insertBefore(row, prev);
+        else tbody.insertBefore(next, row);
+        tops = layout();
+        row.style.transform = `translateY(${top - tops.get(row)}px)`;
+        slide(other, wasOther, tops.get(other));
+        drag.changed = true;
+        renumberRows(tbody);
+      }
+    }
+
+    function onUp() {
+      if (!drag) return;
+      const { row, changed, on } = drag;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      drag = null;
+      tbody.classList.remove('rb-dragging');
+      if (!on) return;
+      row.classList.add('rb-settle');       // 제자리로 사뿐히 내려놓기
+      row.style.transform = '';
+      setTimeout(() => row.classList.remove('rb-settle', 'rb-drag'), 190);
+      if (changed) {
+        row.classList.add('rb-moved');
+        setTimeout(() => row.classList.remove('rb-moved'), 900);
+        saveSheetOrder(tbody);
+      }
+    }
+
+    tbody.addEventListener('pointerdown', (e) => {
+      if (e.button != null && e.button !== 0) return;
+      const row = e.target.closest('tr');
+      if (!row || drag) return;
+      if (e.target.closest('button, input, a, .row-menu')) return;
+      // 손가락·펜은 손잡이에서만 (줄 전체를 잡게 하면 목록을 위아래로 넘겨 볼 수 없다)
+      if (e.pointerType !== 'mouse' && !e.target.closest('.grip')) return;
+      closeRowMenus();
+      drag = { row, startY: e.clientY, on: false, changed: false, h: null, baseTop: 0 };
+      document.addEventListener('pointermove', onMove, { passive: false });
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+    });
   }
 
   $('sheetList').addEventListener('click', async (e) => {
@@ -239,10 +347,6 @@
         return;
       }
       document.querySelectorAll('.row-menu .menu').forEach((m) => { m.hidden = true; });
-      if (act === 'up' || act === 'down') {
-        await moveSheet(id, act === 'up' ? -1 : 1);
-        return;
-      }
       if (b.dataset.act === 'scan') {
         // 이 출석부로 기록 시작 + 촬영 화면 열기
         await api(`/api/sheets/${id}/activate`, { method: 'POST' });

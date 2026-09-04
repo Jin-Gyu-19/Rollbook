@@ -386,5 +386,36 @@ button.icon-btn.danger:hover { background: #FEF2F2; border-color: var(--danger);
   background: none; color: var(--text); font: 600 13px inherit; cursor: pointer; white-space: nowrap; }
 .row-menu .menu button:hover { background: #F1F5F9; }
 .row-menu .menu button.warn { color: var(--danger); }
+/* ── 출석부 목록: 끌어서 순서 바꾸기 ─────────────────── */
+.rowno { position: relative; }
+.rowno .num, .rowno .grip { transition: opacity .15s ease; }
+.rowno .grip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  opacity: 0; color: var(--primary); cursor: grab; }
+/* 손잡이 위에서는 화면이 밀리지 않아야 끌어 옮길 수 있다.
+   touch-action 은 물려받지 않으므로 안의 아이콘까지 같이 지정한다 */
+.rowno .grip, .rowno .grip * { touch-action: none; }
+.rowno .grip svg { pointer-events: none; }
+#sheetList tr.rb-sortable:hover .grip { opacity: 1; }
+#sheetList tr.rb-sortable:hover .num { opacity: 0; }
+/* 손가락으로 쓰는 화면에는 hover 가 없으니 손잡이를 번호 옆에 늘 보이게 둔다 */
+@media (hover: none) {
+  .rowno { padding-left: 2px; }
+  .rowno .grip { position: static; opacity: .45; display: inline-flex; padding: 6px 4px; margin: -6px 0 -6px -2px; }
+  .rowno .num { opacity: 1; }
+}
+/* 끄는 동안 글자가 선택되면 지저분해진다 */
+#sheetList tbody { user-select: none; -webkit-user-select: none; }
+#sheetList tbody.rb-dragging { cursor: grabbing; }
+/* 끄는 동안에는 번호를 그대로 보여 준다 — 몇 번째로 가는지 바로 보이게 */
+#sheetList tbody.rb-dragging tr.rb-sortable .grip { opacity: 0; }
+#sheetList tbody.rb-dragging tr.rb-sortable .num { opacity: 1; }
+#sheetList tr.rb-drag { position: relative; z-index: 3; }
+#sheetList tr.rb-drag td { background: var(--primary-soft); border-top-color: transparent;
+  box-shadow: 0 10px 22px -14px rgba(15, 23, 42, .55); }
+#sheetList tr.rb-drag td:first-child { box-shadow: inset 3px 0 0 var(--primary), 0 10px 22px -14px rgba(15, 23, 42, .55); }
+#sheetList tr.rb-shift, #sheetList tr.rb-settle { transition: transform 180ms cubic-bezier(.2,.7,.3,1); }
+#sheetList tr.rb-moved td { animation: rbMoved 900ms ease-out; }
+@keyframes rbMoved { from { background: var(--primary-soft); } to { background: transparent; } }
+
 .nowrap { white-space: nowrap; }
 .rowno { color: var(--muted); font-variant-numeric: tabular-nums; }
