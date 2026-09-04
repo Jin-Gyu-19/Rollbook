@@ -182,6 +182,28 @@
     } catch (e) { say(e.message, 'err'); }
   });
 
+  // 앱 파일에 다른 자료가 들어 있을 때 뜨는 알림 — 한 번 눌러 파일 자료로 바꾼다
+  var useFile = $('rbUseFile');
+  if (useFile) {
+    useFile.addEventListener('click', async function () {
+      useFile.disabled = true;
+      useFile.textContent = '바꾸는 중…';
+      try {
+        var r = await fetch('/api/workshop/activate', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 0 }),
+        });
+        var d = await r.json().catch(function () { return {}; });
+        if (!r.ok) throw new Error(d.error || '바꾸지 못했습니다.');
+        useFile.textContent = '바뀌었습니다 — 새로고침 중';
+        setTimeout(function () { location.reload(); }, 800);
+      } catch (e) {
+        useFile.disabled = false;
+        useFile.textContent = '앱 파일의 자료로 바꾸기';
+        say(e.message, 'err');
+      }
+    });
+  }
+
   // ── 직접 편집 ────────────────────────────────────────
   var draft = null;      // { PROGRAM, PEOPLE, DINNER }
   var labels = { PEOPLE: {}, DINNER: {} }; // 조 번호 → 조 이름

@@ -662,6 +662,14 @@ const WS_ADMIN_BAR_CSS = `
     .rb-adminbar .s { display: none; }
     .rb-adminbar a, .rb-adminbar button { flex: 1 1 auto; justify-content: center; padding: 8px 8px; font-size: 12px; white-space: nowrap; }
   }
+  .rb-note { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px;
+    background: var(--highlight-bg); border-bottom: 1px solid var(--highlight-border); color: var(--highlight-text);
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif; font-size: 12.5px; line-height: 1.5; }
+  .rb-note b { font-size: 13px; }
+  .rb-note span { flex: 1; min-width: 200px; }
+  .rb-note button { padding: 8px 14px; border: 1px solid var(--highlight-border); border-radius: 9px;
+    background: var(--surface); color: var(--text); font: 700 12.5px inherit; cursor: pointer; }
+  .rb-note button:hover { background: var(--accent-soft); border-color: var(--accent-soft-border); color: var(--accent-strong); }
   .rb-pub { margin: 0; padding: 14px 16px; background: var(--surface-alt); border-bottom: 1px solid var(--border);
     font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif; font-size: 13px; line-height: 1.5; color: var(--text); }
   .rb-pub button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 9px;
@@ -706,6 +714,11 @@ const WS_PUBLISH_SHIM = `(function(){
   } };
 })();`;
 
+
+// 앱 파일 안의 자료와 지금 쓰는 자료가 같은 내용인지 (알림용이라 대충 견주지 않고 통째로 견준다)
+function wsSameData(a, b) {
+  return WS_KEYS.every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]));
+}
 
 // 워크샵 반영 실패 — 어느 단계에서 왜 막혔는지 화면에 그대로 띄울 수 있게 내려보낸다
 function wsFail(info, step) {
@@ -822,10 +835,27 @@ async function serveWorkshop(request, env, view) {
   const data = await wsActiveData(env);
   const cacheKey = data ? data.id : 0;
   let html = wsCache.id === cacheKey ? wsCache.html : null;
+  let raw = null;
   if (!html) {
-    html = await asset.text();
-    if (data) html = wsReplace(html, data);
+    raw = await asset.text();
+    html = data ? wsReplace(raw, data) : raw;
     wsCache = { id: cacheKey, html };
+  }
+
+  // 관리 화면에서만: 앱 파일 안의 자료와 지금 쓰는 자료가 다르면 알려 준다.
+  // (개발자가 새 index.html 을 줬는데 DB 버전이 사용 중이면 화면이 안 바뀌기 때문)
+  let fileDiff = null;
+  if (view === 'admin' && data) {
+    try {
+      if (raw === null) {
+        const again = await env.ASSETS.fetch(new Request(new URL('/workshop/', request.url), { headers: request.headers }));
+        raw = again.ok ? await again.text() : null;
+      }
+      const fileData = raw ? wsExtract(raw) : null;
+      if (fileData && wsSameData(fileData, data) === false) {
+        fileDiff = { people: fileData.PEOPLE.length, build: fileData.META?.buildDate ?? '' };
+      }
+    } catch { /* 알림은 곁다리니 실패해도 화면은 그대로 낸다 */ }
   }
   const page = new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 
@@ -853,7 +883,14 @@ async function serveWorkshop(request, env, view) {
             '<button type="button" id="rbPubList">지난 버전</button>' +
             '<a class="view" href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>' +
             '<div class="rb-pub" id="rbPubBox" hidden><span class="msg" id="rbPubMsg"></span>' +
-            '<div id="rbPubVers"></div></div>',
+            '<div id="rbPubVers"></div></div>' +
+            (fileDiff
+              ? '<div class="rb-note"><b>앱 파일에 다른 자료가 들어 있습니다</b>'
+                + '<span>지금 화면은 올려 둔 버전을 쓰고 있습니다. 개발자가 준 새 파일의 자료'
+                + ' (' + fileDiff.people + '명' + (fileDiff.build ? ' · ' + fileDiff.build : '') + ')'
+                + ' 를 쓰려면 아래를 누르세요. 올려 둔 버전은 지난 버전 목록에 그대로 남습니다.</span>'
+                + '<button type="button" id="rbUseFile">앱 파일의 자료로 바꾸기</button></div>'
+              : ''),
             { html: true },
           );
           // 관리자용 스크립트(관리 패널 펼치기·지난 버전·직접 편집)는 파일로 둔다.
