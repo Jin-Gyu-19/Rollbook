@@ -664,10 +664,21 @@
     btn.textContent = '만드는 중…';
     try {
       const { rows } = await api(`/api/sheets/${sheetId}`);
-      let list = rows.filter((r) => r.checked_at);
-      const noCpa = list.filter((r) => !String(r.cpa_no ?? '').trim());
-      if ($('rpOnlyCpa').checked) list = list.filter((r) => String(r.cpa_no ?? '').trim());
-      if (!list.length) { toast('내보낼 출석 기록이 없습니다', true); return; }
+      const attended = rows.filter((r) => r.checked_at);
+      const noCpa = attended.filter((r) => !String(r.cpa_no ?? '').trim());
+      const onlyCpa = $('rpOnlyCpa').checked;
+      let list = onlyCpa ? attended.filter((r) => String(r.cpa_no ?? '').trim()) : attended;
+      if (!list.length) {
+        // 왜 비었는지까지 알려 준다 — 대개 '회계사 번호가 있는 사람만' 때문이다
+        const why = !attended.length
+          ? '이 출석부에는 아직 출석 기록이 없습니다. 위에서 출석부를 맞게 골랐는지 확인해 주세요.'
+          : `출석한 ${attended.length}명 모두 회계사 번호가 비어 있습니다. `
+            + `‘회계사 번호가 있는 사람만’ 을 끄면 ${attended.length}명 전원으로 만들 수 있고, `
+            + '번호는 명단 탭에서 채우거나 명단 파일을 다시 올리면 됩니다.';
+        $('rpHint').textContent = why;
+        toast(attended.length ? '회계사 번호가 있는 사람이 없습니다' : '내보낼 출석 기록이 없습니다', true);
+        return;
+      }
       list.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
       const { blob, name } = await buildReportXlsx(list, meta);
       const a = document.createElement('a');
@@ -803,7 +814,15 @@
       if (r.unchanged) parts.push(`${r.unchanged}명 변경 없음`);
       if (r.skipped) parts.push(`${r.skipped}줄 건너뜀(빈 줄)`);
       if (members.notAttending) parts.push(`파일에 불참으로 적힌 ${members.notAttending}명도 함께 등록`);
+      const withCpa = members.filter((m) => String(m.cpa_no ?? '').trim()).length;
+      if (withCpa) parts.push(`회계사 번호 ${withCpa}명`);
       toast(parts.length ? parts.join(' · ') : '변경된 내용이 없습니다');
+      if (!withCpa) {
+        // 집계표의 등록번호가 비게 되므로 미리 알려 준다
+        setTimeout(() => toast(
+          '파일에서 회계사 등록번호 칸을 찾지 못했습니다 — 열 제목을 ‘KICPA 등록번호’ 나 ‘회계사번호’ 로 두고 다시 올려 주세요',
+          true), 3600);
+      }
       if (r.ambiguous?.length) {
         setTimeout(() => toast(
           `동명이인이라 자동으로 판단할 수 없어 그대로 두었습니다: ${r.ambiguous.join(', ')} — 명단에서 직접 수정해 주세요`,
@@ -830,10 +849,12 @@
       const w = v.replace(/\s/g, '').toLowerCase();
       return ['직함', '직급', '직위', '직책', '호칭', 'title', 'position', 'rank', 'grade'].includes(w);
     };
-    // 회계사 등록번호 — 'KICPA 등록번호', '등록번호', '회계사번호' 등
+    // 회계사 등록번호 — 'KICPA 등록번호', '공인회계사 등록번호', '회계사번호', 'CPA No' 등
     const isCpaHeader = (v) => {
       const w = v.replace(/\s/g, '').toLowerCase();
-      return w.includes('kicpa') || w === '등록번호' || w === '회계사번호' || w === '회계사등록번호' || w === '회원등록번호';
+      if (w.includes('사업자')) return false;              // 사업자등록번호는 아니다
+      return w.includes('kicpa') || w.includes('cpa번호') || w === 'cpano'
+        || w.includes('등록번호') || (w.includes('회계사') && w.includes('번호'));
     };
     // 참석여부 — 'Y(참석)' 인 사람만 명단에 올린다
     const isAttendHeader = (v) => {
