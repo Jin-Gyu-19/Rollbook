@@ -11,6 +11,9 @@ const json = (data, status = 200) =>
 const err = (message, status = 400) => json({ error: message }, status);
 
 // 테이블이 없으면 만들어 둔다 (마이그레이션을 깜빡해도 동작하도록)
+// 한 번에 받아 주는 본문 크기 — 백업 복원·워크샵 자료도 넉넉히 들어간다.
+const MAX_BODY_BYTES = 12 * 1024 * 1024;
+
 // 표·열을 바꿀 때마다 이 값을 올린다. 올리지 않으면 예전 DB 가 고쳐지지 않는다.
 const SCHEMA_VERSION = '2026-09-04-1';
 let schemaReady = false;
@@ -338,6 +341,14 @@ export default {
     const { pathname } = url;
 
     try {
+      // 너무 큰 본문은 읽기 전에 돌려보낸다 (로그인 창구는 로그인 없이도 열려 있다)
+      if (pathname.startsWith('/api/') && request.method !== 'GET' && request.method !== 'HEAD') {
+        const size = Number(request.headers.get('content-length') || 0);
+        if (size > MAX_BODY_BYTES) {
+          return err(`보낸 자료가 너무 큽니다 (최대 ${Math.round(MAX_BODY_BYTES / 1024 / 1024)}MB).`, 413);
+        }
+      }
+
       await ensureSchema(env.DB);
 
       // 접속 권한 검사 — 페이지는 로그인 화면으로, API 는 401 로
@@ -642,6 +653,16 @@ function wsRead(html) {
   return { data: out };
 }
 
+// 자료는 <script> 안의 상수로 들어간다. 이름에 '</script' 같은 글자가 섞이면
+// 스크립트가 그 자리에서 끊겨 화면이 깨지거나 엉뚱한 코드가 될 수 있으므로
+// '<' 를 \u003c 로 적어 둔다 (자바스크립트가 읽을 때는 똑같은 '<' 다).
+function jsonInScript(v) {
+  return JSON.stringify(v)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 function wsReplace(html, data) {
   const spans = wsFindSpans(html);
   if (!spans) return html;
@@ -650,7 +671,7 @@ function wsReplace(html, data) {
   let out = html;
   for (const k of order) {
     const [vs, ve] = spans[k];
-    out = out.slice(0, vs) + JSON.stringify(data[k]) + out.slice(ve);
+    out = out.slice(0, vs) + jsonInScript(data[k]) + out.slice(ve);
   }
   return out;
 }
