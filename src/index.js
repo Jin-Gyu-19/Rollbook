@@ -21,6 +21,7 @@ async function ensureSchema(db) {
       title TEXT NOT NULL DEFAULT '',
       dept TEXT NOT NULL DEFAULT '',
       code TEXT NOT NULL UNIQUE,
+      cpa_no TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS sheets (
@@ -139,6 +140,8 @@ async function ensureSchema(db) {
       db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('auth_qr_only_purged', '1')"),
     ]);
   }
+  // 예전 DB 에는 없던 열 — 있으면 조용히 지나간다
+  try { await db.prepare("ALTER TABLE members ADD COLUMN cpa_no TEXT NOT NULL DEFAULT ''").run(); } catch { /* 이미 있음 */ }
   schemaReady = true;
 }
 
@@ -393,7 +396,7 @@ async function backupFingerprint(text) {
 
 async function buildBackup(db) {
   const [members, sheets, attendance, logo] = await Promise.all([
-    db.prepare('SELECT id, name, title, dept, code, is_admin, created_at FROM members ORDER BY id').all(),
+    db.prepare('SELECT id, name, title, dept, code, cpa_no, is_admin, created_at FROM members ORDER BY id').all(),
     db.prepare('SELECT id, title, sheet_date, is_active, created_at FROM sheets ORDER BY id').all(),
     db.prepare('SELECT id, sheet_id, member_id, checked_at FROM attendance ORDER BY id').all(),
     db.prepare("SELECT value FROM settings WHERE key = 'brand_logo'").first(),
@@ -484,9 +487,9 @@ async function restoreBackup(db, data) {
   for (const m of data.members) {
     const had = keep.get(m.code);
     stmts.push(db.prepare(
-      'INSERT INTO members (id, name, title, dept, code, is_admin, login_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO members (id, name, title, dept, code, cpa_no, is_admin, login_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).bind(
-      m.id, m.name ?? '', m.title ?? '', m.dept ?? '', m.code,
+      m.id, m.name ?? '', m.title ?? '', m.dept ?? '', m.code, m.cpa_no ?? '',
       had ? had.is_admin : (m.is_admin ?? 0),
       had ? had.login_token : null,
       m.created_at ?? new Date().toISOString(),
@@ -1455,7 +1458,7 @@ async function route(request, env, pathname) {
   // ── 명단 (members) ────────────────────────────────────
   if (pathname === '/api/members' && method === 'GET') {
     const { results } = await db
-      .prepare('SELECT id, name, title, dept, code, created_at FROM members ORDER BY name, id')
+      .prepare('SELECT id, name, title, dept, code, cpa_no, created_at FROM members ORDER BY name, id')
       .all();
     return json({ members: results });
   }
@@ -1465,6 +1468,7 @@ async function route(request, env, pathname) {
     const name = (body?.name ?? '').trim();
     const title = (body?.title ?? '').trim();
     const dept = (body?.dept ?? '').trim();
+    const cpaNo = String(body?.cpa_no ?? '').trim();
     if (!name) return err('이름을 입력해 주세요.');
 
     // 코드 충돌 시 몇 번 재시도
@@ -1472,11 +1476,11 @@ async function route(request, env, pathname) {
       try {
         const code = newMemberCode();
         const r = await db
-          .prepare('INSERT INTO members (name, title, dept, code) VALUES (?, ?, ?, ?)')
-          .bind(name, title, dept, code)
+          .prepare('INSERT INTO members (name, title, dept, code, cpa_no) VALUES (?, ?, ?, ?, ?)')
+          .bind(name, title, dept, code, cpaNo)
           .run();
         const member = await db
-          .prepare('SELECT id, name, title, dept, code, created_at FROM members WHERE id = ?')
+          .prepare('SELECT id, name, title, dept, code, cpa_no, created_at FROM members WHERE id = ?')
           .bind(r.meta.last_row_id)
           .first();
         return json({ member }, 201);
@@ -1496,7 +1500,7 @@ async function route(request, env, pathname) {
     if (!list.length) return err('등록할 인원이 없습니다.');
     if (list.length > 1000) return err('한 번에 1,000명까지 등록할 수 있습니다.');
 
-    const { results: existing } = await db.prepare('SELECT id, name, title, dept FROM members').all();
+    const { results: existing } = await db.prepare('SELECT id, name, title, dept, cpa_no FROM members').all();
     // 이름별로 묶어 둔다 — 띄어쓰기를 뺀 이름을 기준으로 (동명이인 판단에 쓴다)
     const byName = new Map();
     for (const m of existing) {
@@ -1516,6 +1520,7 @@ async function route(request, env, pathname) {
       const name = String(m?.name ?? '').trim();
       const title = String(m?.title ?? '').trim();
       const dept = String(m?.dept ?? '').trim();
+      const cpaNo = String(m?.cpa_no ?? '').trim();
       if (!name) { skipped++; continue; }
 
       const key = nameKey(name);
@@ -1538,22 +1543,27 @@ async function route(request, env, pathname) {
       }
 
       if (!target) {
-        sameName.push({ id: null, name, title, dept, used: true });
+        sameName.push({ id: null, name, title, dept, cpa_no: cpaNo, used: true });
         byName.set(key, sameName);
-        stmts.push(db.prepare('INSERT INTO members (name, title, dept, code) VALUES (?, ?, ?, ?)').bind(name, title, dept, newMemberCode()));
+        stmts.push(db.prepare('INSERT INTO members (name, title, dept, code, cpa_no) VALUES (?, ?, ?, ?, ?)')
+          .bind(name, title, dept, newMemberCode(), cpaNo));
         added++;
         continue;
       }
 
       target.used = true;
-      if (target.name === name && target.title === title && target.dept === dept) { unchanged++; continue; }
+      // 회계사 번호는 파일에 있을 때만 덮어쓴다 (빈 칸이 기존 번호를 지우지 않도록)
+      const nextCpa = cpaNo || target.cpa_no || '';
+      if (target.name === name && target.title === title && target.dept === dept && (target.cpa_no ?? '') === nextCpa) { unchanged++; continue; }
       // 최신 자료로 갱신 — 이름 표기(띄어쓰기 등)도 새 파일 기준으로 (QR 코드 값은 유지)
       if (target.id != null) {
-        stmts.push(db.prepare('UPDATE members SET name = ?, title = ?, dept = ? WHERE id = ?').bind(name, title, dept, target.id));
+        stmts.push(db.prepare('UPDATE members SET name = ?, title = ?, dept = ?, cpa_no = ? WHERE id = ?')
+          .bind(name, title, dept, nextCpa, target.id));
       }
       target.name = name;
       target.title = title;
       target.dept = dept;
+      target.cpa_no = nextCpa;
       updated++;
     }
 
@@ -1570,10 +1580,12 @@ async function route(request, env, pathname) {
       const name = (body?.name ?? '').trim();
       const title = (body?.title ?? '').trim();
       const dept = (body?.dept ?? '').trim();
+      const cpaNo = String(body?.cpa_no ?? '').trim();
       if (!name) return err('이름을 입력해 주세요.');
-      await db.prepare('UPDATE members SET name = ?, title = ?, dept = ? WHERE id = ?').bind(name, title, dept, id).run();
+      await db.prepare('UPDATE members SET name = ?, title = ?, dept = ?, cpa_no = ? WHERE id = ?')
+        .bind(name, title, dept, cpaNo, id).run();
       const member = await db
-        .prepare('SELECT id, name, title, dept, code, created_at FROM members WHERE id = ?')
+        .prepare('SELECT id, name, title, dept, code, cpa_no, created_at FROM members WHERE id = ?')
         .bind(id)
         .first();
       return member ? json({ member }) : err('회원을 찾을 수 없습니다.', 404);
@@ -1635,7 +1647,7 @@ async function route(request, env, pathname) {
       if (!sheet) return err('출석부를 찾을 수 없습니다.', 404);
       const { results } = await db
         .prepare(`
-          SELECT m.id AS member_id, m.name, m.title, m.dept, a.checked_at
+          SELECT m.id AS member_id, m.name, m.title, m.dept, m.cpa_no, a.checked_at
           FROM members m
           LEFT JOIN attendance a ON a.member_id = m.id AND a.sheet_id = ?
           ORDER BY m.name, m.id

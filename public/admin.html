@@ -63,6 +63,27 @@
       </div>
       <div id="statusBody" style="margin-top:16px;"></div>
     </div>
+
+    <div class="card">
+      <h2>출석집계표 내려받기</h2>
+      <p class="hint">출석한 사람만 한국공인회계사회 출석집계표 양식(등록번호 · 성명 · 연수시간 · 회원등록분류)으로 만들어 줍니다.
+        아래 내용은 다음에 열 때도 그대로 남습니다.</p>
+      <div class="form-row">
+        <label>과목명 <input id="rpSubject" placeholder="클로드 코드 활용법"></label>
+        <label>코드번호 <input id="rpCode" placeholder="5030500"></label>
+        <label>강사명 <input id="rpTeacher" placeholder="김효건"></label>
+      </div>
+      <div class="form-row">
+        <label>일시 <input id="rpDate" type="date"></label>
+        <label>장소 <input id="rpPlace" placeholder="제천 포레스트 리솜"></label>
+        <label>연수시간 <input id="rpHours" type="number" min="0" step="1" placeholder="2"></label>
+        <span class="actions"><button class="primary" id="btnReport">출석집계표 내려받기</button></span>
+      </div>
+      <label class="check-inline" style="margin-top:2px;">
+        <input type="checkbox" id="rpOnlyCpa" checked> 회계사 번호가 있는 사람만 넣기
+      </label>
+      <p class="hint" id="rpHint"></p>
+    </div>
   </section>
 
   <!-- ── 명단 ───────────────────────────────────────── -->
@@ -78,6 +99,9 @@
         </label>
         <label>부서
           <input id="memberDept" placeholder="감사1본부">
+        </label>
+        <label>회계사 번호
+          <input id="memberCpa" placeholder="16897">
         </label>
         <span class="actions"><button class="primary" id="btnCreateMember">추가</button></span>
       </div>

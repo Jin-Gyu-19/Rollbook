@@ -195,6 +195,11 @@
     sel.innerHTML = sheets
       .map((s) => `<option value="${s.id}" ${s.id === chosen ? 'selected' : ''}>${esc(s.sheet_date)} · ${esc(s.title)}${s.is_active ? ' (기록 중)' : ''}</option>`)
       .join('');
+    const sheet = sheets.find((x) => x.id === chosen);
+    if (sheet) {
+      if ($('rpSubject') && !$('rpSubject').value) $('rpSubject').value = sheet.title;
+      if ($('rpDate')) $('rpDate').value = sheet.sheet_date || $('rpDate').value;
+    }
     await renderStatus(chosen);
   }
   $('statusSheetSel').addEventListener('change', () => renderStatus(Number($('statusSheetSel').value)));
@@ -238,16 +243,17 @@
       </div>
       <div class="step-track" style="margin-bottom:18px;"><div class="step-fill" style="width:${pct}%"></div></div>
       <table>
-        <thead><tr><th>이름</th><th>직함</th><th>부서</th><th>상태</th><th>출석 시각</th><th class="right">편집</th></tr></thead>
+        <thead><tr><th>이름</th><th>직함</th><th>부서</th><th>회계사 번호</th><th>상태</th><th>출석 시각</th><th class="right">편집</th></tr></thead>
         <tbody>
           ${rows.map((r) => `
             <tr>
               <td><b>${esc(r.name)}</b></td>
               <td>${esc(r.title)}</td>
               <td>${esc(r.dept)}</td>
+              <td style="font-variant-numeric:tabular-nums;">${esc(r.cpa_no ?? '')}</td>
               <td>${r.checked_at ? '<span class="stag ok">출석</span>' : '<span class="stag err">미출석</span>'}</td>
               <td class="muted" style="font-variant-numeric:tabular-nums;">${fmtTime(r.checked_at)}</td>
-              <td class="right">
+              <td class="right" style="white-space:nowrap;">
                 ${r.checked_at
                   ? `<button class="small ghost" data-mark="0" data-id="${r.member_id}">출석 취소</button>`
                   : `<button class="small" data-mark="1" data-id="${r.member_id}">출석 처리</button>`}
@@ -272,6 +278,191 @@
     };
   }
 
+  // ── 출석집계표 내려받기 ──────────────────────────────
+  // 한국공인회계사회 양식 그대로: 머리말 6줄 + [등록번호 · 성명 · 연수시간 · 회원등록분류]
+  // SheetJS 무료판은 서식을 못 넣어서 xlsx(=zip) 구조를 직접 만든다.
+  const RP_KEYS = ['rpSubject', 'rpCode', 'rpTeacher', 'rpPlace', 'rpHours'];
+  RP_KEYS.forEach((k) => {
+    const el = $(k);
+    if (!el) return;
+    const saved = localStorage.getItem('rollbook.' + k);
+    if (saved != null && !el.value) el.value = saved;
+    el.addEventListener('change', () => localStorage.setItem('rollbook.' + k, el.value));
+  });
+  if ($('rpCode') && !$('rpCode').value) $('rpCode').value = '5030500';
+  if ($('rpHours') && !$('rpHours').value) $('rpHours').value = '2';
+
+  // 엑셀 날짜(1900 기준 일련번호)
+  const excelSerial = (iso) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    return Math.round((d.getTime() - Date.UTC(1899, 11, 30)) / 86400000);
+  };
+  const sheetNameSafe = (v) => String(v).replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 31);
+
+  async function buildReportXlsx(rows, meta) {
+    const esc2 = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const txt = (ref, val, st) => `<c r="${ref}" t="inlineStr"${st ? ` s="${st}"` : ''}><is><t xml:space="preserve">${esc2(val)}</t></is></c>`;
+    const num = (ref, val, st) => `<c r="${ref}"${st ? ` s="${st}"` : ''}><v>${val}</v></c>`;
+
+    // 머리말
+    let body = '';
+    body += `<row r="1"><c r="A1" t="inlineStr" s="1"><is><t>출석집계표 </t></is></c></row>`;
+    const head = [
+      ['과목명 :', meta.subject],
+      ['코드번호 :', meta.code],
+      ['강사명 :', meta.teacher],
+      ['일   시 : ', null],
+      ['장   소 : ', meta.place],
+    ];
+    head.forEach(([label, value], i) => {
+      const r = i + 2;
+      let cell;
+      if (value === null) {
+        const serial = excelSerial(meta.date);
+        cell = serial ? num(`B${r}`, serial, 4) : txt(`B${r}`, meta.date, 3);
+      } else if (/^\d+$/.test(String(value))) {
+        cell = num(`B${r}`, String(value), 3);   // 코드번호는 양식처럼 숫자로
+      } else {
+        cell = txt(`B${r}`, value, 3);
+      }
+      body += `<row r="${r}">${txt(`A${r}`, label, 2)}${cell}</row>`;
+    });
+    // 표 머리
+    body += '<row r="7">'
+      + txt('A7', '등록번호', 5) + txt('B7', '성명', 5) + txt('C7', '연수시간', 5)
+      + txt('D7', '회원등록분류(1:국내, 9 ,F : 외국)', 5) + '</row>';
+    // 본문
+    rows.forEach((m, i) => {
+      const r = i + 8;
+      const reg = String(m.cpa_no ?? '').trim();
+      body += `<row r="${r}">`
+        + (reg ? (/^\d+$/.test(reg) ? num(`A${r}`, reg, 6) : txt(`A${r}`, reg, 6)) : `<c r="A${r}" s="6"/>`)
+        + txt(`B${r}`, m.name, 6)
+        + num(`C${r}`, meta.hours, 6)
+        + num(`D${r}`, 1, 6)
+        + '</row>';
+    });
+
+    const lastRow = rows.length + 7;
+    const sheet =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      `<dimension ref="A1:D${lastRow}"/>` +
+      '<sheetViews><sheetView tabSelected="1" workbookViewId="0"/></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="16.5"/>' +
+      '<cols>' +
+      '<col min="1" max="1" width="14.4" customWidth="1"/>' +
+      '<col min="2" max="2" width="17.9" customWidth="1"/>' +
+      '<col min="3" max="3" width="10" customWidth="1"/>' +
+      '<col min="4" max="4" width="24.9" customWidth="1"/>' +
+      '</cols>' +
+      `<sheetData>${body}</sheetData>` +
+      '<mergeCells count="1"><mergeCell ref="A1:D1"/></mergeCells>' +
+      '</worksheet>';
+
+    const styles =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<numFmts count="1"><numFmt numFmtId="176" formatCode="yyyy&quot;-&quot;mm&quot;-&quot;dd"/></numFmts>' +
+      '<fonts count="2">' +
+      '<font><sz val="10"/><name val="맑은 고딕"/></font>' +
+      '<font><b/><sz val="10"/><name val="맑은 고딕"/></font>' +
+      '</fonts>' +
+      '<fills count="3">' +
+      '<fill><patternFill patternType="none"/></fill>' +
+      '<fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFEEEEEE"/><bgColor indexed="64"/></patternFill></fill>' +
+      '</fills>' +
+      '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
+      '<border><left style="thin"><color rgb="FFBFBFBF"/></left><right style="thin"><color rgb="FFBFBFBF"/></right>' +
+      '<top style="thin"><color rgb="FFBFBFBF"/></top><bottom style="thin"><color rgb="FFBFBFBF"/></bottom><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="7">' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +                                                        /* 0 기본 */
+      '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center"/></xf>' + /* 1 제목 */
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center"/></xf>' + /* 2 머리말 라벨 */
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left"/></xf>' +   /* 3 머리말 값 */
+      '<xf numFmtId="176" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="left"/></xf>' + /* 4 날짜 */
+      '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' + /* 5 표 머리 */
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>' + /* 6 본문 */
+      '</cellXfs></styleSheet>';
+
+    const name = sheetNameSafe(`출석집계표_${meta.code}_${meta.subject}`);
+    const zip = new JSZip();
+    zip.file('[Content_Types].xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      '</Types>');
+    zip.file('_rels/.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>');
+    zip.file('xl/workbook.xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      `<sheets><sheet name="${esc2(name)}" sheetId="1" state="visible" r:id="rId1"/></sheets></workbook>`);
+    zip.file('xl/_rels/workbook.xml.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '</Relationships>');
+    zip.file('xl/styles.xml', styles);
+    zip.file('xl/worksheets/sheet1.xml', sheet);
+    return { blob: await zip.generateAsync({ type: 'blob' }), name };
+  }
+
+  $('btnReport')?.addEventListener('click', async () => {
+    const btn = $('btnReport');
+    const sheetId = Number($('statusSheetSel').value);
+    if (!sheetId) { toast('출석부를 먼저 고르세요', true); return; }
+    const subject = $('rpSubject').value.trim();
+    if (!subject) { toast('과목명을 입력해 주세요', true); $('rpSubject').focus(); return; }
+    const meta = {
+      subject,
+      code: $('rpCode').value.trim(),
+      teacher: $('rpTeacher').value.trim(),
+      place: $('rpPlace').value.trim(),
+      hours: Number($('rpHours').value) || 0,
+      date: $('rpDate').value,
+    };
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = '만드는 중…';
+    try {
+      const { rows } = await api(`/api/sheets/${sheetId}`);
+      let list = rows.filter((r) => r.checked_at);
+      const noCpa = list.filter((r) => !String(r.cpa_no ?? '').trim());
+      if ($('rpOnlyCpa').checked) list = list.filter((r) => String(r.cpa_no ?? '').trim());
+      if (!list.length) { toast('내보낼 출석 기록이 없습니다', true); return; }
+      list.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+      const { blob, name } = await buildReportXlsx(list, meta);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${name}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      $('rpHint').textContent = `${list.length}명으로 만들었습니다.`
+        + (noCpa.length ? ` 회계사 번호가 없는 ${noCpa.length}명(${noCpa.slice(0, 5).map((x) => x.name).join(', ')}${noCpa.length > 5 ? ' 외' : ''})은 ${$('rpOnlyCpa').checked ? '빠졌습니다' : '등록번호 칸이 비어 있습니다'} — 명단 탭에서 번호를 채울 수 있습니다.` : '');
+      toast(`출석집계표 ${list.length}명을 내려받았습니다`);
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  });
+
   // ═════════════════════════════════════════════════════
   // 명단 탭
   // ═════════════════════════════════════════════════════
@@ -285,10 +476,12 @@
           name: $('memberName').value,
           title: $('memberTitle').value,
           dept: $('memberDept').value,
+          cpa_no: $('memberCpa').value,
         }),
       });
       $('memberName').value = '';
       $('memberTitle').value = '';
+      $('memberCpa').value = '';
       toast('추가되었습니다 — QR 코드가 발급되었습니다');
       loadMembers();
     } catch (e) {
@@ -307,7 +500,7 @@
     const q = ($('memberSearch')?.value ?? '').trim().toLowerCase();
     if (!q) return membersCache;
     return membersCache.filter((m) =>
-      [m.name, m.title, m.dept, m.code].some((v) => String(v ?? '').toLowerCase().includes(q)));
+      [m.name, m.title, m.dept, m.code, m.cpa_no].some((v) => String(v ?? '').toLowerCase().includes(q)));
   }
 
   function renderMembers() {
@@ -327,13 +520,14 @@
     }
     holder.innerHTML = `
       <table>
-        <thead><tr><th>이름</th><th>직함</th><th>부서</th><th>QR 코드 값</th><th class="right">관리</th></tr></thead>
+        <thead><tr><th>이름</th><th>직함</th><th>부서</th><th>회계사 번호</th><th>QR 코드 값</th><th class="right">관리</th></tr></thead>
         <tbody>
           ${members.map((m) => `
             <tr>
               <td><b>${esc(m.name)}</b></td>
               <td>${esc(m.title)}</td>
               <td>${esc(m.dept)}</td>
+              <td style="font-variant-numeric:tabular-nums;">${esc(m.cpa_no ?? '')}</td>
               <td><span class="member-code">${esc(m.code)}</span></td>
               <td class="right"><span class="row-actions" style="justify-content:flex-end;">
                 <button class="small" data-act="qr" data-id="${m.id}">QR 보기</button>
@@ -383,6 +577,7 @@
       if (r.updated) parts.push(`${r.updated}명 정보 갱신`);
       if (r.unchanged) parts.push(`${r.unchanged}명 변경 없음`);
       if (r.skipped) parts.push(`${r.skipped}줄 건너뜀(빈 줄)`);
+      if (members.excluded) parts.push(`${members.excluded}명 불참으로 제외`);
       toast(parts.length ? parts.join(' · ') : '변경된 내용이 없습니다');
       if (r.ambiguous?.length) {
         setTimeout(() => toast(
@@ -410,11 +605,23 @@
       const w = v.replace(/\s/g, '').toLowerCase();
       return ['직함', '직급', '직위', '직책', '호칭', 'title', 'position', 'rank', 'grade'].includes(w);
     };
+    // 회계사 등록번호 — 'KICPA 등록번호', '등록번호', '회계사번호' 등
+    const isCpaHeader = (v) => {
+      const w = v.replace(/\s/g, '').toLowerCase();
+      return w.includes('kicpa') || w === '등록번호' || w === '회계사번호' || w === '회계사등록번호' || w === '회원등록번호';
+    };
+    // 참석여부 — 'Y(참석)' 인 사람만 명단에 올린다
+    const isAttendHeader = (v) => {
+      const w = v.replace(/\s/g, '');
+      return w === '참석여부' || w === '참석' || w === '참석유무';
+    };
 
     // 1) 앞 20행에서 헤더 행 탐색
     let nameCol = -1;
     let titleCol = -1;
     let deptCol = -1;
+    let cpaCol = -1;
+    let attendCol = -1;
     let startRow = 0;
     let headerFound = false;
     for (let i = 0; i < Math.min(grid.length, 20) && !headerFound; i++) {
@@ -425,6 +632,8 @@
             if (k === j) continue;
             if (deptCol < 0 && isDeptHeader(grid[i][k])) deptCol = k;
             if (titleCol < 0 && isTitleHeader(grid[i][k])) titleCol = k;
+            if (cpaCol < 0 && isCpaHeader(grid[i][k])) cpaCol = k;
+            if (attendCol < 0 && isAttendHeader(grid[i][k])) attendCol = k;
           }
           startRow = i + 1;
           headerFound = true;
@@ -454,21 +663,37 @@
       }
     }
 
+    // 참석여부 칸에 'Y(참석)' 같은 값이 하나라도 있으면 그 칸을 믿고 Y 인 줄만 올린다
+    let attendStrict = false;
+    if (attendCol >= 0) {
+      for (let i = startRow; i < grid.length; i++) {
+        if (/^y/i.test((grid[i][attendCol] || '').trim())) { attendStrict = true; break; }
+      }
+    }
+
     const members = [];
     let lastDept = '';
+    let notAttending = 0;
     for (let i = startRow; i < grid.length; i++) {
       const r = grid[i];
       const name = (r[nameCol] || '').trim();
       const title = titleCol >= 0 ? (r[titleCol] || '').trim() : '';
       let dept = deptCol >= 0 ? (r[deptCol] || '').trim() : '';
+      const cpa = cpaCol >= 0 ? (r[cpaCol] || '').trim().replace(/\.0+$/, '') : '';
+      // 참석여부 칸이 있으면 참석(Y) 인 사람만 올린다
+      if (attendStrict) {
+        const a = (r[attendCol] || '').trim();
+        if (!/^y/i.test(a)) { if (name && /^[nN]/.test(a)) notAttending++; continue; }
+      }
       if (!name) continue;
       if (/^\d+$/.test(name)) continue;              // 숫자만 = 연번
       if (isNameHeader(name)) continue;              // 반복된 헤더 줄
       if (name.length > 20) continue;                // 제목·문장 줄
       if (headerFound && !dept && lastDept) dept = lastDept; // 병합 셀: 위 값 이어받기
       if (dept) lastDept = dept;
-      members.push({ name, title, dept });
+      members.push({ name, title, dept, cpa_no: cpa });
     }
+    members.excluded = notAttending; // 참석여부가 N 이라 뺀 사람 수
     return members;
   }
 
@@ -496,11 +721,12 @@
         openEdit('인원 수정', `
           <label>이름 <input id="efName" value="${esc(m.name)}"></label>
           <label>직함 <input id="efTitle" value="${esc(m.title)}"></label>
-          <label>부서 <input id="efDept" value="${esc(m.dept)}"></label>`,
+          <label>부서 <input id="efDept" value="${esc(m.dept)}"></label>
+          <label>회계사 번호(KICPA) <input id="efCpa" value="${esc(m.cpa_no ?? '')}" placeholder="예: 16897"></label>`,
           async () => {
             await api(`/api/members/${id}`, {
               method: 'PUT',
-              body: JSON.stringify({ name: $('efName').value, title: $('efTitle').value, dept: $('efDept').value }),
+              body: JSON.stringify({ name: $('efName').value, title: $('efTitle').value, dept: $('efDept').value, cpa_no: $('efCpa').value }),
             });
             toast('저장되었습니다');
             loadMembers();
