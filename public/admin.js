@@ -2080,10 +2080,8 @@
       const [{ admins }, { members }] = await Promise.all([api('/api/auth/admins'), api('/api/members')]);
       membersCache = members;
       const adminIds = new Set(admins.map((a) => a.id));
-      const candidates = members.filter((m) => !adminIds.has(m.id));
-      $('adminMemberSel').innerHTML = candidates.length
-        ? candidates.map((m) => `<option value="${m.id}">${esc(m.name)}${m.title ? ` ${esc(m.title)}` : ''}${m.dept ? ` (${esc(m.dept)})` : ''}</option>`).join('')
-        : '<option value="">지정할 수 있는 인원이 없습니다</option>';
+      adminCandidates = members.filter((m) => !adminIds.has(m.id));
+      renderAdminPick();
       $('adminList').innerHTML = admins.length
         ? `<table><thead><tr><th>이름</th><th>직함</th><th>부서</th><th style="width:230px;"></th></tr></thead><tbody>${admins
             .map((a) => `
@@ -2106,15 +2104,36 @@
     }
   }
 
-  $('btnAddAdmin').addEventListener('click', async () => {
-    const id = Number($('adminMemberSel').value);
-    if (!id) return toast('명단에서 지정할 사람을 선택해 주세요.', true);
+  // 지정할 사람은 드롭다운이 아니라 검색으로 고른다 (명단이 수백 명이라 고르기 어렵다)
+  let adminCandidates = [];
+  function renderAdminPick() {
+    const box = $('adminPick');
+    if (!box) return;
+    const q = ($('adminSearch')?.value ?? '').trim().toLowerCase();
+    if (!q) { box.innerHTML = '<p class="empty-hint">이름을 입력하면 명단에서 찾아 줍니다.</p>'; return; }
+    const hits = adminCandidates.filter((m) =>
+      [m.name, m.dept, m.title, m.code].some((v) => String(v ?? '').toLowerCase().includes(q)));
+    if (!hits.length) { box.innerHTML = `<p class="empty-hint">"${esc(q)}" 와 맞는 사람이 없습니다. (이미 관리자인 사람은 나오지 않습니다)</p>`; return; }
+    box.innerHTML = hits.slice(0, 8).map((m) => `
+      <div class="row">
+        <span class="who"><b>${esc(m.name)}</b><small>${esc([m.title, m.dept].filter(Boolean).join(' · '))}</small></span>
+        <button class="small primary" data-make-admin="${m.id}">관리자로 지정</button>
+      </div>`).join('') + (hits.length > 8 ? `<p class="empty-hint">외 ${hits.length - 8}명 — 더 자세히 입력해 주세요</p>` : '');
+  }
+  $('adminSearch')?.addEventListener('input', renderAdminPick);
+  $('adminPick')?.addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-make-admin]');
+    if (!b) return;
+    const id = Number(b.dataset.makeAdmin);
+    b.disabled = true;
     try {
       const { admin } = await api('/api/auth/admins', { method: 'POST', body: JSON.stringify({ member_id: id }) });
       toast(`${admin.name}님을 관리자로 지정했습니다`);
+      $('adminSearch').value = '';
       loadAdmins();
-    } catch (e) {
-      toast(e.message, true);
+    } catch (err) {
+      toast(err.message, true);
+      b.disabled = false;
     }
   });
 
@@ -2339,44 +2358,120 @@
   // ── 백업 탭 ──────────────────────────────────────────
   const kb = (n) => (n < 1024 ? `${n}B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)}KB` : `${(n / 1024 / 1024).toFixed(1)}MB`);
 
-  let backupsNow = null; // 지금 자료의 크기 (미리보기 비교용)
+  let backupsNow = null;   // 지금 자료의 크기 (미리보기 비교용)
+  let backupsCache = [];   // 서버에서 받은 목록 (최신이 앞)
+  let backupDays = 7;
+  let backupPage = 1;
+  const BACKUP_PAGE = 10;  // 한 쪽에 10줄
+
   async function loadBackupTab() {
     const box = $('backupList');
     box.innerHTML = '<p class="muted">불러오는 중…</p>';
-    // (지금 자료의 크기는 아래에서 받아 backupsNow 에 담는다)
     try {
       const { backups, days, now } = await api('/api/backup/list');
       backupsNow = now || null;
-      if (!backups.length) {
-        box.innerHTML = '<div class="empty"><span class="icon">🗄️</span>아직 백업이 없습니다<br>‘지금 백업 만들기’ 를 눌러 보세요</div>';
-        return;
-      }
-      box.innerHTML = `
-        <div class="table-scroll"><table>
-          <thead><tr><th>만든 때</th><th>방식</th><th>내용</th><th class="right">명단</th><th class="right">출석부</th><th class="right">출석기록</th><th class="right">크기</th><th></th></tr></thead>
-          <tbody>${backups.map((b) => `
-            <tr>
-              <td>${fmtTime(b.created_at)}</td>
-              <td>${b.kind === 'auto' ? '자동' : '직접'}</td>
-              <td class="member-code">${(b.fingerprint || '').slice(0, 8)}</td>
-              <td class="right">${b.members}</td>
-              <td class="right">${b.sheets}</td>
-              <td class="right">${b.records}</td>
-              <td class="right">${kb(b.bytes)}</td>
-              <td class="right" style="white-space:nowrap;">
-                <button class="mini-btn soft" data-peek="${b.id}">미리보기</button>
-                <a class="mini-btn" href="/api/backup/download?id=${b.id}">내려받기</a>
-              </td>
-            </tr>`).join('')}</tbody>
-        </table></div>
-        <p class="hint">보관 기간 ${days}일 — 새 백업이 생길 때 지난 것을 함께 정리합니다. 변동이 없으면 정리도 하지 않으므로 마지막 백업이 사라질 일은 없습니다.</p>`;
+      backupsCache = backups;
+      backupDays = days;
+      backupPage = 1;
+      renderBackups();
     } catch (e) {
       box.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
     }
   }
 
+  // 변경 내용 한 줄 — 검색은 이 글자에 대고 한다
+  const changeText = (b) => (b.changes?.text || '');
+
+  function filteredBackups() {
+    const q = ($('backupSearch')?.value ?? '').trim().toLowerCase();
+    if (!q) return backupsCache;
+    return backupsCache.filter((b) =>
+      [changeText(b), fmtTime(b.created_at), b.kind === 'auto' ? '자동' : '직접']
+        .some((v) => String(v).toLowerCase().includes(q)));
+  }
+
+  function renderBackups() {
+    const box = $('backupList');
+    if (!backupsCache.length) {
+      box.innerHTML = '<div class="empty"><span class="icon">🗄️</span>아직 백업이 없습니다<br>‘지금 백업 만들기’ 를 눌러 보세요</div>';
+      return;
+    }
+    const list = filteredBackups();
+    const q = ($('backupSearch')?.value ?? '').trim();
+    if (!list.length) {
+      box.innerHTML = `<div class="empty"><span class="icon">🔍</span>"${esc(q)}" 와 맞는 변경 내역이 없습니다.</div>`;
+      return;
+    }
+    const pages = Math.max(1, Math.ceil(list.length / BACKUP_PAGE));
+    if (backupPage > pages) backupPage = pages;
+    const from = (backupPage - 1) * BACKUP_PAGE;
+    const page = list.slice(from, from + BACKUP_PAGE);
+
+    // 변경 내용을 표에 넣을 때 — 종류(출석·명단 갱신…)는 진하게, 이름은 보통으로
+    const chgHtml = (b) => {
+      const t = changeText(b);
+      if (!t) return '<span class="muted">—</span>';
+      return esc(t).replace(/(^|·\s)([^:·]+?)(\s\d+):/g, (m, pre, label, n) => `${pre}<b>${label}${n}</b>:`);
+    };
+
+    box.innerHTML = `
+      <div class="table-scroll"><table>
+        <thead><tr><th style="width:38px;">#</th><th>만든 때</th><th>방식</th><th>변경 내용</th>
+          <th class="right">명단</th><th class="right">출석부</th><th class="right">출석기록</th><th></th></tr></thead>
+        <tbody>${page.map((b, i) => `
+          <tr>
+            <td class="rowno">${from + i + 1}</td>
+            <td class="nowrap">${fmtTime(b.created_at)}</td>
+            <td>${b.kind === 'auto' ? '자동' : '직접'}</td>
+            <td class="chg">${chgHtml(b)}</td>
+            <td class="right">${b.members}</td>
+            <td class="right">${b.sheets}</td>
+            <td class="right">${b.records}</td>
+            <td class="right" style="white-space:nowrap;">
+              <button class="mini-btn soft" data-peek="${b.id}">상세</button>
+              <a class="mini-btn" href="/api/backup/download?id=${b.id}">내려받기</a>
+            </td>
+          </tr>`).join('')}</tbody>
+      </table></div>
+      ${pages > 1 ? `<div class="pager" id="backupPager">
+        <button type="button" data-page="${backupPage - 1}" ${backupPage === 1 ? 'disabled' : ''}>‹</button>
+        ${Array.from({ length: pages }, (_, k) => k + 1).map((n) =>
+          `<button type="button" data-page="${n}" class="${n === backupPage ? 'on' : ''}">${n}</button>`).join('')}
+        <button type="button" data-page="${backupPage + 1}" ${backupPage === pages ? 'disabled' : ''}>›</button>
+        <span class="info">${list.length}건 중 ${from + 1}–${from + page.length}</span>
+      </div>` : `<p class="hint" style="text-align:right;">${list.length}건</p>`}
+      <p class="hint">보관 기간 ${backupDays}일 — 새 백업이 생길 때 지난 것을 함께 정리합니다. 변동이 없으면 정리도 하지 않으므로 마지막 백업이 사라질 일은 없습니다.</p>`;
+  }
+
+  $('backupSearch')?.addEventListener('input', () => { backupPage = 1; renderBackups(); });
+  $('backupList').addEventListener('click', (e) => {
+    const b = e.target.closest('#backupPager button[data-page]');
+    if (!b || b.disabled) return;
+    backupPage = Number(b.dataset.page);
+    renderBackups();
+  });
+
   // 백업 한 벌의 내용을 되돌리기 전에 살펴본다 (지금 자료와 무엇이 다른지까지)
-  function backupPreviewHtml(d, now) {
+  // 변경 내역(서버가 백업 뜰 때 직전 백업과 견줘 둔 것)을 목록으로
+  function changesHtml(c) {
+    if (!c) return '';
+    const sec = (title, group, cls) => {
+      if (!group || !group.list?.length) return '';
+      return `<div class="chg-h">${title} ${group.list.length + (group.more || 0)}</div><ul class="chg-list">`
+        + group.list.map((x) => `<li class="${cls}">${esc(x)}</li>`).join('')
+        + (group.more ? `<li class="muted">외 ${group.more}건</li>` : '') + '</ul>';
+    };
+    let html = '<h3 class="peek-h">이 백업에서 바뀐 것 (직전 백업과 비교)</h3>';
+    const body = sec('출석', c.attendance?.added, 'add') + sec('출석 취소', c.attendance?.removed, 'del')
+      + sec('명단 추가', c.members?.added, 'add') + sec('명단 삭제', c.members?.removed, 'del')
+      + sec('명단 갱신', c.members?.changed, '') + sec('출석부 추가', c.sheets?.added, 'add')
+      + sec('출석부 삭제', c.sheets?.removed, 'del') + sec('출석부 변경', c.sheets?.changed, '')
+      + (c.logo ? '<div class="chg-h">로고 변경</div>' : '');
+    html += body || `<p class="muted" style="margin:4px 0 0;">${esc(c.text || '내용 같음')}</p>`;
+    return html;
+  }
+
+  function backupPreviewHtml(d, now, changes) {
     const members = d.members || [];
     const sheets = d.sheets || [];
     const att = d.attendance || [];
@@ -2393,6 +2488,7 @@
     const withCpa = members.filter((m) => String(m.cpa_no ?? '').trim()).length;
 
     let html = `<p class="muted" style="margin-top:0;">${fmtTime(d.created_at)} 시점의 자료입니다.</p>`;
+    html += changesHtml(changes);
     html += '<dl class="peek">'
       + `<dt>명단</dt><dd>${cnt(members.length)}명${delta(members.length, now?.members)}`
       + ` · 회계사 번호 ${withCpa}명</dd>`
@@ -2433,8 +2529,14 @@
       const r = await fetch(`/api/backup/download?id=${id}`);
       if (!r.ok) throw new Error(`백업을 읽지 못했습니다 (${r.status})`);
       const d = await r.json();
-      const now = backupsNow;
-      openView('백업 미리보기', backupPreviewHtml(d, now), true);
+      const row = backupsCache.find((b) => String(b.id) === String(id));
+      let changes = row?.changes ?? null;
+      if (!changes) {
+        // 이 기능이 생기기 전에 뜬 백업 — 그때 계산해서 채운다
+        changes = (await api(`/api/backup/changes?id=${id}`).catch(() => ({}))).changes ?? null;
+        if (row && changes) row.changes = changes;
+      }
+      openView('백업 상세', backupPreviewHtml(d, backupsNow, changes), true);
     } catch (err) {
       toast(err.message, true);
     }
@@ -2478,7 +2580,7 @@
     try {
       const d = JSON.parse(await f.text());
       if (d.format !== 'rollbook-backup') throw new Error('Rollbook 백업 파일이 아닙니다.');
-      openView('백업 파일 미리보기', backupPreviewHtml(d, backupsNow), true);
+      openView('백업 파일 미리보기', backupPreviewHtml(d, backupsNow, null), true);
     } catch (e) {
       toast(`읽을 수 없습니다 — ${e.message}`, true);
     }

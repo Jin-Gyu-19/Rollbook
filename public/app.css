@@ -351,11 +351,22 @@
 
 /* ── 출석 현황: 표 왼쪽 · 집계표는 오른쪽에 붙어 따라다닌다 ── */
 /* 이 탭만 좌우로 넓게 쓴다 (표가 눌리지 않도록) */
-#tab-status { width: min(1240px, calc(100vw - 36px)); margin-left: calc((100% - min(1240px, 100vw - 36px)) / 2); }
-.status-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+/* 출석 현황은 다른 탭과 같은 자리·폭에 두고, 집계표는 그 오른쪽 바깥에 띄운다.
+   오른쪽에 자리가 모자라는 화면(약 1320px 미만)에서는 아래로 내려온다. */
+.status-layout { position: relative; }
 .status-main { min-width: 0; }
+.status-side-wrap { position: absolute; top: 0; bottom: 0; left: calc(100% + 16px);
+  width: min(300px, calc((100vw - 860px) / 2 - 20px)); }
+.status-side { position: sticky; top: 76px;                     /* 상단바(60px) 아래 */
+  max-height: calc(100vh - 92px); overflow-y: auto; }            /* 길면 안에서 스크롤 — 잘리지 않게 */
+@media (max-width: 1320px) {
+  .status-side-wrap { position: static; width: auto; margin-top: 16px; }
+  .status-side { position: static; max-height: none; overflow: visible; }
+}
 .table-scroll { overflow-x: auto; }
 #sheetList table { min-width: 560px; }
+#backupList td.chg { white-space: normal; min-width: 260px; max-width: 420px; font-size: 12.5px; color: var(--muted); }
+#backupList td.chg b { color: var(--text); font-weight: 600; }
 #backupList table { min-width: 720px; }
 #backupList td, #backupList th { white-space: nowrap; }
 #sheetList td, #sheetList th { white-space: nowrap; }
@@ -363,14 +374,33 @@
 .status-main table { min-width: 620px; }
 .status-main td, .status-main th { white-space: nowrap; }
 .status-main td:nth-child(3) { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
-.status-side { position: sticky; top: 16px; }
 .status-side label { display: block; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
 .status-side label input[type="text"], .status-side label input[type="date"],
 .status-side label input[type="number"], .status-side label input:not([type]) { margin-top: 4px; }
-@media (max-width: 900px) {
-  .status-layout { grid-template-columns: 1fr; }
-  .status-side { position: static; }
-}
+
+/* ── 쪽 나누기 (백업 목록) ── */
+.pager { display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.pager button { min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 9px;
+  background: #fff; color: var(--muted); font: 600 13px inherit; cursor: pointer; }
+.pager button:hover { background: #F8FAFC; color: var(--text); }
+.pager button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pager button:disabled { opacity: .4; cursor: default; }
+.pager .info { font-size: 12.5px; color: var(--muted); margin: 0 6px; }
+
+/* ── 관리자 지정: 검색 결과 ── */
+.pick-list { margin-top: 8px; }
+.pick-list .row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 10px; margin-bottom: 6px; background: #fff; }
+.pick-list .row .who { flex: 1; min-width: 0; font-size: 13.5px; }
+.pick-list .row .who small { color: var(--muted); margin-left: 6px; }
+.pick-list .empty-hint { font-size: 12.5px; color: var(--muted); padding: 6px 2px; }
+
+/* ── 백업 미리보기: 변경 내역 ── */
+.chg-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.chg-list li { margin-bottom: 3px; }
+.chg-list .add { color: var(--ok-fg); }
+.chg-list .del { color: var(--danger); }
+.chg-h { margin: 14px 0 4px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
 
 /* ── 줄 끝의 '…' 더보기 메뉴 ── */
 .row-menu { position: relative; display: inline-block; }

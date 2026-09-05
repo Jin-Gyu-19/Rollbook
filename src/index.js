@@ -15,7 +15,7 @@ const err = (message, status = 400) => json({ error: message }, status);
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 
 // 표·열을 바꿀 때마다 이 값을 올린다. 올리지 않으면 예전 DB 가 고쳐지지 않는다.
-const SCHEMA_VERSION = '2026-09-04-1';
+const SCHEMA_VERSION = '2026-09-05-1';
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
@@ -79,6 +79,7 @@ async function ensureSchema(db) {
       records INTEGER NOT NULL DEFAULT 0,
       bytes INTEGER NOT NULL DEFAULT 0,
       fingerprint TEXT,
+      changes TEXT,
       json TEXT NOT NULL
     )`),
   ]);
@@ -160,6 +161,7 @@ async function ensureSchema(db) {
   // 예전 DB 에는 없던 열 — 있으면 조용히 지나간다
   try { await db.prepare("ALTER TABLE members ADD COLUMN cpa_no TEXT NOT NULL DEFAULT ''").run(); } catch { /* 이미 있음 */ }
   try { await db.prepare('ALTER TABLE sheets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0').run(); } catch { /* 이미 있음 */ }
+  try { await db.prepare('ALTER TABLE backups ADD COLUMN changes TEXT').run(); } catch { /* 이미 있음 */ }
 
   // 여기까지 왔으면 최신 — 다음부터는 위에서 한 번만 물어보고 지나간다
   await db.prepare(
@@ -463,6 +465,90 @@ async function pruneBackups(db) {
   await db.prepare('DELETE FROM backups WHERE created_at < ?').bind(cutoff).run();
 }
 
+// 두 백업 사이에 무엇이 달라졌는지 — 목록에 한 줄로 보이고, 검색에도 쓴다.
+// 이름은 CHANGE_CAP 개까지만 적고 나머지는 개수로 남긴다 (한 줄이 너무 길어지지 않게).
+const CHANGE_CAP = 60;
+function backupDiff(prev, next) {
+  const cap = (arr) => (arr.length > CHANGE_CAP ? { list: arr.slice(0, CHANGE_CAP), more: arr.length - CHANGE_CAP } : { list: arr, more: 0 });
+  const pm = new Map((prev?.members ?? []).map((m) => [m.id, m]));
+  const nm = new Map((next.members ?? []).map((m) => [m.id, m]));
+  const ps = new Map((prev?.sheets ?? []).map((x) => [x.id, x]));
+  const ns = new Map((next.sheets ?? []).map((x) => [x.id, x]));
+  const who = (id) => nm.get(id)?.name ?? pm.get(id)?.name ?? `#${id}`;
+  const sheetName = (id) => ns.get(id)?.title ?? ps.get(id)?.title ?? `출석부 #${id}`;
+
+  const members = { added: [], removed: [], changed: [] };
+  for (const [id, m] of nm) {
+    const o = pm.get(id);
+    if (!o) { members.added.push(m.name); continue; }
+    const diffs = [];
+    if (o.name !== m.name) diffs.push(`이름 ${o.name}→${m.name}`);
+    if ((o.dept ?? '') !== (m.dept ?? '')) diffs.push(`부서 ${o.dept || '(없음)'}→${m.dept || '(없음)'}`);
+    if ((o.title ?? '') !== (m.title ?? '')) diffs.push(`직함 ${o.title || '(없음)'}→${m.title || '(없음)'}`);
+    if ((o.cpa_no ?? '') !== (m.cpa_no ?? '')) diffs.push(`회계사 번호 ${o.cpa_no || '(없음)'}→${m.cpa_no || '(없음)'}`);
+    if (!!o.is_admin !== !!m.is_admin) diffs.push(m.is_admin ? '관리자 지정' : '관리자 해제');
+    if (diffs.length) members.changed.push(`${m.name}: ${diffs.join(', ')}`);
+  }
+  for (const [id, m] of pm) if (!nm.has(id)) members.removed.push(m.name);
+
+  const sheets = { added: [], removed: [], changed: [] };
+  for (const [id, x] of ns) {
+    const o = ps.get(id);
+    if (!o) { sheets.added.push(x.title); continue; }
+    const diffs = [];
+    if (o.title !== x.title) diffs.push(`이름 ${o.title}→${x.title}`);
+    if (o.sheet_date !== x.sheet_date) diffs.push(`날짜 ${o.sheet_date}→${x.sheet_date}`);
+    if (!!o.is_active !== !!x.is_active) diffs.push(x.is_active ? '출석 시작' : '출석 중단');
+    if (diffs.length) sheets.changed.push(`${x.title}: ${diffs.join(', ')}`);
+  }
+  for (const [id, x] of ps) if (!ns.has(id)) sheets.removed.push(x.title);
+
+  const key = (a) => `${a.sheet_id}:${a.member_id}`;
+  const pa = new Map((prev?.attendance ?? []).map((a) => [key(a), a]));
+  const na = new Map((next.attendance ?? []).map((a) => [key(a), a]));
+  const attendance = { added: [], removed: [] };
+  for (const [k, a] of na) if (!pa.has(k)) attendance.added.push(`${who(a.member_id)} (${sheetName(a.sheet_id)})`);
+  for (const [k, a] of pa) if (!na.has(k)) attendance.removed.push(`${who(a.member_id)} (${sheetName(a.sheet_id)})`);
+
+  const logoChanged = (prev?.brand_logo ?? null) !== (next.brand_logo ?? null);
+
+  // 한 줄 요약 — 목록·검색용
+  const bits = [];
+  const put = (label, arr) => { if (arr.length) bits.push(`${label} ${arr.length}: ${arr.slice(0, 5).join(', ')}${arr.length > 5 ? ` 외 ${arr.length - 5}` : ''}`); };
+  put('출석', attendance.added);
+  put('출석 취소', attendance.removed);
+  put('명단 추가', members.added);
+  put('명단 삭제', members.removed);
+  put('명단 갱신', members.changed);
+  put('출석부 추가', sheets.added);
+  put('출석부 삭제', sheets.removed);
+  put('출석부 변경', sheets.changed);
+  if (logoChanged) bits.push('로고 변경');
+  if (!prev) bits.unshift('첫 백업');
+
+  return {
+    members: { added: cap(members.added), removed: cap(members.removed), changed: cap(members.changed) },
+    sheets: { added: cap(sheets.added), removed: cap(sheets.removed), changed: cap(sheets.changed) },
+    attendance: { added: cap(attendance.added), removed: cap(attendance.removed) },
+    logo: logoChanged,
+    text: bits.join(' · ') || '내용 같음',
+  };
+}
+
+// 예전에 뜬 백업은 변경 내역이 비어 있다 — 직전 백업과 견줘 채워 넣는다 (한 번만)
+async function fillBackupChanges(db, id) {
+  const row = await db.prepare('SELECT id, created_at, changes, json FROM backups WHERE id = ?').bind(id).first();
+  if (!row) return null;
+  if (row.changes) { try { return JSON.parse(row.changes); } catch { /* 다시 계산 */ } }
+  const before = await db.prepare(
+    'SELECT json FROM backups WHERE (created_at < ?) OR (created_at = ? AND id < ?) ORDER BY created_at DESC, id DESC LIMIT 1',
+  ).bind(row.created_at, row.created_at, row.id).first();
+  const parse = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const changes = backupDiff(parse(before?.json), parse(row.json) ?? { members: [], sheets: [], attendance: [] });
+  await db.prepare('UPDATE backups SET changes = ? WHERE id = ?').bind(JSON.stringify(changes), id).run();
+  return changes;
+}
+
 // 백업 한 벌 저장.
 //  - onlyIfChanged : 내용이 직전 백업과 같으면 아무 것도 하지 않는다
 //  - 1분 안에 또 바뀌면 새 줄을 만들지 않고 마지막 자동 백업을 최신 내용으로 갱신한다
@@ -477,24 +563,31 @@ async function saveSnapshot(db, kind = 'auto', { onlyIfChanged = false } = {}) {
 
   // '마지막 백업' 도 시각 기준으로 본다 (목록·정리와 같은 기준)
   const last = await db.prepare(
-    'SELECT id, kind, created_at, fingerprint FROM backups ORDER BY created_at DESC, id DESC LIMIT 1',
+    'SELECT id, kind, created_at, fingerprint, json FROM backups ORDER BY created_at DESC, id DESC LIMIT 1',
   ).first();
 
   if (onlyIfChanged && last && last.fingerprint === fp) return null; // 바뀐 게 없다
 
+  const parse = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
   const fresh = last && Date.now() - Date.parse(last.created_at) < BACKUP_COALESCE_MS;
   if (kind === 'auto' && last && last.kind === 'auto' && fresh) {
+    // 1분 안에 또 바뀐 것 — 마지막 줄을 갱신하므로, 변경 내역은 그 줄 '이전' 백업과 견준다
+    const before = await db.prepare(
+      'SELECT json FROM backups WHERE id <> ? ORDER BY created_at DESC, id DESC LIMIT 1',
+    ).bind(last.id).first();
+    const changes = JSON.stringify(backupDiff(parse(before?.json), data));
     await db.prepare(
-      `UPDATE backups SET created_at = ?, members = ?, sheets = ?, records = ?, bytes = ?, fingerprint = ?, json = ?
+      `UPDATE backups SET created_at = ?, members = ?, sheets = ?, records = ?, bytes = ?, fingerprint = ?, changes = ?, json = ?
         WHERE id = ?`,
     ).bind(
       new Date().toISOString(), data.members.length, data.sheets.length, data.attendance.length,
-      text.length, fp, text, last.id,
+      text.length, fp, changes, text, last.id,
     ).run();
   } else {
+    const changes = JSON.stringify(backupDiff(parse(last?.json), data));
     await db.prepare(
-      'INSERT INTO backups (kind, members, sheets, records, bytes, fingerprint, json) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).bind(kind, data.members.length, data.sheets.length, data.attendance.length, text.length, fp, text).run();
+      'INSERT INTO backups (kind, members, sheets, records, bytes, fingerprint, changes, json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(kind, data.members.length, data.sheets.length, data.attendance.length, text.length, fp, changes, text).run();
   }
   await pruneBackups(db);
   return data;
@@ -1015,8 +1108,18 @@ async function route(request, env, pathname) {
 
   if (pathname === '/api/backup/list' && request.method === 'GET') {
     const r = await db.prepare(
-      'SELECT id, created_at, kind, members, sheets, records, bytes, fingerprint FROM backups ORDER BY created_at DESC, id DESC LIMIT 60',
+      'SELECT id, created_at, kind, members, sheets, records, bytes, fingerprint, changes FROM backups ORDER BY created_at DESC, id DESC LIMIT 60',
     ).all();
+    // changes 는 JSON 문자열로 저장돼 있다 — 화면에서 바로 쓰게 풀어서 보낸다.
+    // 이 기능이 생기기 전에 뜬 백업은 비어 있으므로 한 번에 몇 개씩 채워 둔다.
+    let fill = 8;
+    for (const b of r.results ?? []) {
+      try { b.changes = b.changes ? JSON.parse(b.changes) : null; } catch { b.changes = null; }
+      if (!b.changes && fill > 0) {
+        fill--;
+        b.changes = await fillBackupChanges(db, b.id).catch(() => null);
+      }
+    }
     // 지금 자료의 크기도 함께 — 미리보기에서 '지금과 무엇이 다른지' 견주는 데 쓴다
     const now = await db.prepare(
       'SELECT (SELECT COUNT(*) FROM members) AS members,'
@@ -1024,6 +1127,14 @@ async function route(request, env, pathname) {
       + ' (SELECT COUNT(*) FROM attendance) AS records',
     ).first();
     return json({ backups: r.results ?? [], days: BACKUP_KEEP_DAYS, now });
+  }
+
+  if (pathname === '/api/backup/changes' && request.method === 'GET') {
+    const id = Number(new URL(request.url).searchParams.get('id') || 0);
+    if (!id) return err('어느 백업인지 알려 주세요.');
+    const changes = await fillBackupChanges(db, id);
+    if (!changes) return err('그 백업을 찾을 수 없습니다.', 404);
+    return json({ changes });
   }
 
   if (pathname === '/api/backup/snapshot' && request.method === 'POST') {
