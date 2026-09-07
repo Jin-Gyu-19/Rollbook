@@ -395,8 +395,7 @@ export default {
       const res = await route(request, env, pathname);
       // 자료가 바뀌었으면 응답을 보낸 뒤 백업을 한 벌 떠 둔다 (내용이 같으면 건너뜀)
       if (res && res.ok && changesData(pathname, request.method)) {
-        const after = saveSnapshot(env.DB, 'auto', { onlyIfChanged: true }).catch(() => {});
-        if (ctx?.waitUntil) ctx.waitUntil(after);
+        if (ctx?.waitUntil) ctx.waitUntil(scheduleSnapshot(env.DB));
       }
       return res ?? err('찾을 수 없는 API 경로입니다.', 404);
     } catch (e) {
@@ -555,6 +554,23 @@ async function fillBackupChanges(db, id) {
   const changes = backupDiff(parse(before?.json), parse(row.json) ?? { members: [], sheets: [], attendance: [] });
   await db.prepare('UPDATE backups SET changes = ? WHERE id = ?').bind(JSON.stringify(changes), id).run();
   return changes;
+}
+
+// 응답을 보낸 뒤 잠깐 있다가 백업을 뜬다.
+// 노트북 여러 대에서 같은 순간 스캔이 들어오면 각각 백업을 뜨려 드는데, 먼저 읽은 쪽이
+// 나중 스캔을 못 본 채 저장할 수 있다. 조금 기다렸다 한 번만 뜨면 그사이 들어온 기록이
+// 모두 담기고, 같은 워커 안에서는 여러 요청이 한 번의 백업을 나눠 쓴다.
+const SNAPSHOT_DELAY_MS = 1500;
+let snapshotPending = null;
+function scheduleSnapshot(db) {
+  if (snapshotPending) return snapshotPending;
+  snapshotPending = new Promise((r) => setTimeout(r, SNAPSHOT_DELAY_MS))
+    .then(() => {
+      snapshotPending = null; // 이 뒤에 들어온 변화는 다음 백업이 맡는다
+      return saveSnapshot(db, 'auto', { onlyIfChanged: true });
+    })
+    .catch(() => {});
+  return snapshotPending;
 }
 
 // 백업 한 벌 저장.
@@ -1678,24 +1694,25 @@ async function route(request, env, pathname) {
       .first();
     if (!sheet) return json({ status: 'no_sheet' }, 409);
 
-    const existing = await db
-      .prepare('SELECT checked_at FROM attendance WHERE sheet_id = ? AND member_id = ?')
-      .bind(sheet.id, member.id)
-      .first();
-    if (existing) {
+    // 두 스캐너에 같은 순간 찍혀도 한 번만 기록되게 — '있나 보고 넣기' 가 아니라
+    // 넣어 보고(UNIQUE) 안 들어갔으면 이미 있는 것으로 본다. 그래야 두 번째가 오류로 안 떨어진다.
+    const checkedAt = new Date().toISOString();
+    const ins = await db
+      .prepare('INSERT OR IGNORE INTO attendance (sheet_id, member_id, checked_at) VALUES (?, ?, ?)')
+      .bind(sheet.id, member.id, checkedAt)
+      .run();
+    if (!ins.meta?.changes) {
+      const existing = await db
+        .prepare('SELECT checked_at FROM attendance WHERE sheet_id = ? AND member_id = ?')
+        .bind(sheet.id, member.id)
+        .first();
       return json({
         status: 'already',
         member: { name: member.name, title: member.title, dept: member.dept },
         sheet: { title: sheet.title },
-        checked_at: existing.checked_at,
+        checked_at: existing?.checked_at ?? checkedAt,
       });
     }
-
-    const checkedAt = new Date().toISOString();
-    await db
-      .prepare('INSERT INTO attendance (sheet_id, member_id, checked_at) VALUES (?, ?, ?)')
-      .bind(sheet.id, member.id, checkedAt)
-      .run();
     return json({
       status: 'ok',
       member: { name: member.name, title: member.title, dept: member.dept },
