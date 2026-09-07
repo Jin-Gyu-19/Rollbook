@@ -2423,7 +2423,7 @@
             <td class="rowno">${from + i + 1}</td>
             <td class="nowrap">${fmtTime(b.created_at)}</td>
             <td>${b.kind === 'auto' ? '자동' : '직접'}</td>
-            <td class="chg">${chgHtml(b)}</td>
+            <td class="chg"><div class="chg-body">${chgHtml(b)}</div><button type="button" class="chg-more" hidden>더 보기 ▾</button></td>
             <td class="right">${b.members}</td>
             <td class="right">${b.sheets}</td>
             <td class="right">${b.records}</td>
@@ -2441,10 +2441,23 @@
         <span class="info">${list.length}건 중 ${from + 1}–${from + page.length}</span>
       </div>` : `<p class="hint" style="text-align:right;">${list.length}건</p>`}
       <p class="hint">보관 기간 ${backupDays}일 — 새 백업이 생길 때 지난 것을 함께 정리합니다. 변동이 없으면 정리도 하지 않으므로 마지막 백업이 사라질 일은 없습니다.</p>`;
+    // 이름을 다 적다 보니 긴 줄이 생긴다 — 넘치는 칸만 접어 두고 '더 보기' 로 편다
+    box.querySelectorAll('.chg').forEach((td) => {
+      const body = td.querySelector('.chg-body');
+      const more = td.querySelector('.chg-more');
+      if (body && more && body.scrollHeight > body.clientHeight + 2) more.hidden = false;
+    });
   }
 
   $('backupSearch')?.addEventListener('input', () => { backupPage = 1; renderBackups(); });
   $('backupList').addEventListener('click', (e) => {
+    const more = e.target.closest('.chg-more');
+    if (more) {
+      const td = more.closest('.chg');
+      const open = td.classList.toggle('open');
+      more.textContent = open ? '접기 ▴' : '더 보기 ▾';
+      return;
+    }
     const b = e.target.closest('#backupPager button[data-page]');
     if (!b || b.disabled) return;
     backupPage = Number(b.dataset.page);

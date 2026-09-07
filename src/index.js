@@ -466,8 +466,10 @@ async function pruneBackups(db) {
 }
 
 // 두 백업 사이에 무엇이 달라졌는지 — 목록에 한 줄로 보이고, 검색에도 쓴다.
-// 이름은 CHANGE_CAP 개까지만 적고 나머지는 개수로 남긴다 (한 줄이 너무 길어지지 않게).
-const CHANGE_CAP = 60;
+// 이름은 전부 적는다 — 몇 명만 보이고 '외 N' 으로 접히면 무엇이 바뀌었는지 확인할 수 없다.
+// (상한은 폭주 방지용으로만 아주 크게 둔다. 명단 수백 명이면 한 줄이 몇 KB 정도다.)
+const CHANGE_CAP = 5000;
+const CHANGES_VERSION = 2; // 적는 방식이 바뀌면 올린다 — 예전 방식으로 적힌 줄은 다시 계산한다
 function backupDiff(prev, next) {
   const cap = (arr) => (arr.length > CHANGE_CAP ? { list: arr.slice(0, CHANGE_CAP), more: arr.length - CHANGE_CAP } : { list: arr, more: 0 });
   const pm = new Map((prev?.members ?? []).map((m) => [m.id, m]));
@@ -514,7 +516,7 @@ function backupDiff(prev, next) {
 
   // 한 줄 요약 — 목록·검색용
   const bits = [];
-  const put = (label, arr) => { if (arr.length) bits.push(`${label} ${arr.length}: ${arr.slice(0, 5).join(', ')}${arr.length > 5 ? ` 외 ${arr.length - 5}` : ''}`); };
+  const put = (label, arr) => { if (arr.length) bits.push(`${label} ${arr.length}: ${arr.join(', ')}`); };
   put('출석', attendance.added);
   put('출석 취소', attendance.removed);
   put('명단 추가', members.added);
@@ -532,6 +534,7 @@ function backupDiff(prev, next) {
     attendance: { added: cap(attendance.added), removed: cap(attendance.removed) },
     logo: logoChanged,
     text: bits.join(' · ') || '내용 같음',
+    v: CHANGES_VERSION,
   };
 }
 
@@ -539,7 +542,12 @@ function backupDiff(prev, next) {
 async function fillBackupChanges(db, id) {
   const row = await db.prepare('SELECT id, created_at, changes, json FROM backups WHERE id = ?').bind(id).first();
   if (!row) return null;
-  if (row.changes) { try { return JSON.parse(row.changes); } catch { /* 다시 계산 */ } }
+  if (row.changes) {
+    try {
+      const c = JSON.parse(row.changes);
+      if (c?.v === CHANGES_VERSION) return c;
+    } catch { /* 다시 계산 */ }
+  }
   const before = await db.prepare(
     'SELECT json FROM backups WHERE (created_at < ?) OR (created_at = ? AND id < ?) ORDER BY created_at DESC, id DESC LIMIT 1',
   ).bind(row.created_at, row.created_at, row.id).first();
@@ -1123,7 +1131,7 @@ async function route(request, env, pathname) {
     let fill = 8;
     for (const b of r.results ?? []) {
       try { b.changes = b.changes ? JSON.parse(b.changes) : null; } catch { b.changes = null; }
-      if (!b.changes && fill > 0) {
+      if ((!b.changes || b.changes.v !== CHANGES_VERSION) && fill > 0) {
         fill--;
         b.changes = await fillBackupChanges(db, b.id).catch(() => null);
       }

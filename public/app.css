@@ -367,6 +367,11 @@
 #sheetList table { min-width: 560px; }
 #backupList td.chg { white-space: normal; min-width: 260px; max-width: 420px; font-size: 12.5px; color: var(--muted); }
 #backupList td.chg b { color: var(--text); font-weight: 600; }
+#backupList td.chg .chg-body { max-height: 4.5em; overflow: hidden; line-height: 1.5; }
+#backupList td.chg.open .chg-body { max-height: none; }
+#backupList td.chg .chg-more { display: block; margin-top: 4px; padding: 0; border: 0; background: none;
+  color: var(--primary); font: 600 12px inherit; cursor: pointer; }
+#backupList td.chg .chg-more[hidden] { display: none; }
 #backupList table { min-width: 720px; }
 #backupList td, #backupList th { white-space: nowrap; }
 #sheetList td, #sheetList th { white-space: nowrap; }
