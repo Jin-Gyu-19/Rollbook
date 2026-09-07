@@ -575,7 +575,9 @@ async function saveSnapshot(db, kind = 'auto', { onlyIfChanged = false } = {}) {
     const before = await db.prepare(
       'SELECT json FROM backups WHERE id <> ? ORDER BY created_at DESC, id DESC LIMIT 1',
     ).bind(last.id).first();
-    const changes = JSON.stringify(backupDiff(parse(before?.json), data));
+    const diff = backupDiff(parse(before?.json), data);
+    if (diff.text === '내용 같음') diff.text = '바꿨다가 되돌림 — 직전 백업과 같은 내용';
+    const changes = JSON.stringify(diff);
     await db.prepare(
       `UPDATE backups SET created_at = ?, members = ?, sheets = ?, records = ?, bytes = ?, fingerprint = ?, changes = ?, json = ?
         WHERE id = ?`,
@@ -1138,7 +1140,9 @@ async function route(request, env, pathname) {
   }
 
   if (pathname === '/api/backup/snapshot' && request.method === 'POST') {
-    const d = await saveSnapshot(db, 'manual');
+    // 직전 백업과 내용이 같으면 새 줄을 만들지 않는다 (같은 것이 두 줄 쌓이면 헷갈린다)
+    const d = await saveSnapshot(db, 'manual', { onlyIfChanged: true });
+    if (!d) return json({ ok: true, same: true });
     return json({ ok: true, members: d.members.length, sheets: d.sheets.length, records: d.attendance.length });
   }
 
@@ -1183,7 +1187,7 @@ async function route(request, env, pathname) {
     const body = await request.json().catch(() => null);
     if (!body || body.confirm !== true) return err('복원하려면 확인이 필요합니다.', 400);
     // 되돌리기 직전 상태를 먼저 떠 둔다 (잘못 복원했을 때 되살릴 수 있도록)
-    await saveSnapshot(db, 'manual').catch(() => {});
+    await saveSnapshot(db, 'manual', { onlyIfChanged: true }).catch(() => {});
     const n = await restoreBackup(db, body.data);
     return json({ ok: true, ...n });
   }

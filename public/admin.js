@@ -2549,7 +2549,8 @@
     b.disabled = true;
     try {
       const d = await api('/api/backup/snapshot', { method: 'POST', body: '{}' });
-      toast(`백업을 만들었습니다 — 명단 ${d.members}명 · 출석기록 ${d.records}건`);
+      if (d.same) toast('직전 백업과 내용이 같아 새로 만들지 않았습니다 — 마지막 백업이 지금 상태 그대로입니다');
+      else toast(`백업을 만들었습니다 — 명단 ${d.members}명 · 출석기록 ${d.records}건`);
       loadBackupTab();
     } catch (e) {
       toast(e.message, true);
