@@ -196,6 +196,14 @@ const newLoginToken = () => randomToken('RBL');
 const newScannerToken = () => randomToken('RBS');
 const newRecoveryCode = () => randomToken('RBR', 16);
 
+// 본문에서 글자값 하나 꺼내기 — 배열·객체·숫자가 와도 오류 없이 빈 값/글자로 다룬다.
+// (한도는 화면에 들어갈 만한 길이. 이름·부서가 수천 자일 이유는 없다)
+function text(v, max = 200) {
+  if (v == null) return '';
+  if (typeof v !== 'string') v = typeof v === 'number' ? String(v) : '';
+  return v.trim().slice(0, max);
+}
+
 async function readBody(request) {
   try {
     return await request.json();
@@ -337,8 +345,43 @@ function requiredRole(pathname, method) {
   return 'admin';
 }
 
+// 모든 응답에 붙는 보안 헤더 — 다른 사이트 안에 끼워 넣기(clickjacking)·형식 추측·주소 유출을 막는다
+function harden(res) {
+  if (!res || res.headers.has('x-frame-options')) return res;
+  try {
+    const out = new Response(res.body, res);
+    out.headers.set('x-frame-options', 'DENY');
+    out.headers.set('x-content-type-options', 'nosniff');
+    out.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+    return out;
+  } catch {
+    return res; // 바꿀 수 없는 응답(리다이렉트 등)은 그대로
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
+    return harden(await handle(request, env, ctx));
+  },
+
+  // 매일 자동 백업 (wrangler.jsonc 의 crons 설정)
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil((async () => {
+      try {
+        await ensureSchema(env.DB);
+        const d = await saveSnapshot(env.DB, 'auto', { onlyIfChanged: true });
+        console.log(d
+          ? `자동 백업 완료 — 명단 ${d.members.length}명, 출석기록 ${d.attendance.length}건`
+          : '변동 없음 — 백업도 정리도 하지 않음');
+      } catch (e) {
+        console.log('자동 백업 실패:', e.message);
+      }
+    })());
+  },
+};
+
+async function handle(request, env, ctx) {
+  {
     const url = new URL(request.url);
     const { pathname } = url;
 
@@ -405,23 +448,8 @@ export default {
       }
       return err(`서버 오류: ${e.message}`, 500);
     }
-  },
-
-  // 매일 자동 백업 (wrangler.jsonc 의 crons 설정)
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil((async () => {
-      try {
-        await ensureSchema(env.DB);
-        const d = await saveSnapshot(env.DB, 'auto', { onlyIfChanged: true });
-        console.log(d
-          ? `자동 백업 완료 — 명단 ${d.members.length}명, 출석기록 ${d.attendance.length}건`
-          : '변동 없음 — 백업도 정리도 하지 않음');
-      } catch (e) {
-        console.log('자동 백업 실패:', e.message);
-      }
-    })());
-  },
-};
+  }
+}
 
 // ── 백업 ────────────────────────────────────────────
 // 명단·출석부·출석기록을 JSON 한 덩어리로 뜬다.
@@ -641,6 +669,14 @@ function changesData(pathname, method) {
 async function restoreBackup(db, data) {
   if (!data || data.format !== 'rollbook-backup' || !Array.isArray(data.members)) {
     throw new Error('백업 파일 형식이 아닙니다.');
+  }
+  const bad = (what) => { const e = new Error(`백업 파일이 손상됐습니다 — ${what}`); e.status = 400; throw e; };
+  for (const m of data.members) {
+    if (!m || typeof m !== 'object' || !Number.isInteger(m.id) || typeof m.code !== 'string' || !m.code) bad('명단 항목');
+  }
+  for (const sh of data.sheets ?? []) if (!sh || !Number.isInteger(sh.id)) bad('출석부 항목');
+  for (const a of data.attendance ?? []) {
+    if (!a || !Number.isInteger(a.id) || !Number.isInteger(a.sheet_id) || !Number.isInteger(a.member_id)) bad('출석기록 항목');
   }
   const keep = new Map();
   const cur = await db.prepare('SELECT code, is_admin, login_token FROM members').all();
@@ -1218,7 +1254,13 @@ async function route(request, env, pathname) {
     if (!body || body.confirm !== true) return err('복원하려면 확인이 필요합니다.', 400);
     // 되돌리기 직전 상태를 먼저 떠 둔다 (잘못 복원했을 때 되살릴 수 있도록)
     await saveSnapshot(db, 'manual', { onlyIfChanged: true }).catch(() => {});
-    const n = await restoreBackup(db, body.data);
+    let n;
+    try {
+      n = await restoreBackup(db, body.data);
+    } catch (e) {
+      if (e.status === 400) return err(e.message, 400);
+      throw e;
+    }
     return json({ ok: true, ...n });
   }
 
@@ -1325,7 +1367,7 @@ async function route(request, env, pathname) {
   if (pathname === '/api/auth/claim' && method === 'POST') {
     if (await getSetting(db, 'recovery_code')) return err('이미 초기 설정이 끝났습니다.', 409);
     const body = await readBody(request);
-    const payload = String(body?.payload ?? '').trim();
+    const payload = text(body?.payload, 400);
     if (!/^ROLLBOOK-LOGIN:RBL-[A-Z2-9]{16,48}$/.test(payload)) {
       return err('관리자 로그인 QR 이 아닙니다.', 400);
     }
@@ -1404,7 +1446,7 @@ async function route(request, env, pathname) {
     const locked = await lockGuard(db, request);
     if (locked) return locked;
     const body = await readBody(request);
-    const code = String(body?.code ?? '').trim();
+    const code = text(body?.code);
     if (!code) return err('복구 코드를 입력해 주세요.');
     const hash = await getSetting(db, 'recovery_code');
     if (!hash || !(await verifyPassword(code, hash))) {
@@ -1433,7 +1475,7 @@ async function route(request, env, pathname) {
     if (locked) return locked;
 
     const body = await readBody(request);
-    const payload = String(body?.payload ?? '').trim();
+    const payload = text(body?.payload, 400);
     const isAdminQr = payload.startsWith('ROLLBOOK-LOGIN:');
     const isScannerQr = payload.startsWith('ROLLBOOK-SCANNER:');
     const isBadgeQr = payload.startsWith('ROLLBOOK:');
@@ -1524,7 +1566,7 @@ async function route(request, env, pathname) {
       const memberId = Number(seg[3]);
       if (!Number.isInteger(memberId)) return err('잘못된 회원 ID 입니다.');
       const body = await readBody(request);
-      const payload = String(body?.payload ?? '').trim();
+      const payload = text(body?.payload, 400);
       if (!/^ROLLBOOK-LOGIN:RBL-[A-Z2-9]{16,48}$/.test(payload)) {
         if (payload.startsWith('ROLLBOOK-SCANNER:')) return err('스캐너 PC 용 QR 입니다. 관리자 로그인 QR 을 비춰 주세요.');
         if (payload.startsWith('ROLLBOOK:')) return err('출석용 QR 입니다. 관리자 로그인 QR 을 비춰 주세요.');
@@ -1617,7 +1659,12 @@ async function route(request, env, pathname) {
       if (m) {
         const bin = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
         return new Response(bin, {
-          headers: { 'content-type': m[1], 'cache-control': 'no-store' },
+          headers: {
+            'content-type': m[1], 'cache-control': 'no-store',
+            // 이미지로만 쓰이게 — 예전에 올린 SVG 에 스크립트가 있어도 돌지 않는다
+            'x-content-type-options': 'nosniff',
+            'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'",
+          },
         });
       }
       const fallback = await env.ASSETS.fetch(new URL('/bdo-logo.png', request.url));
@@ -1631,6 +1678,8 @@ async function route(request, env, pathname) {
       if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(dataUrl)) {
         return err('이미지 파일(data URL)만 저장할 수 있습니다.');
       }
+      // SVG 는 안에 스크립트를 담을 수 있어 받지 않는다 (PNG·JPG·GIF·WebP 만)
+      if (/^data:image\/svg/i.test(dataUrl)) return err('SVG 는 쓸 수 없습니다. PNG 나 JPG 로 올려 주세요.');
       if (dataUrl.length > 2_000_000) return err('로고 파일이 너무 큽니다. 1MB 이하로 올려 주세요.');
       await db
         .prepare("INSERT INTO settings (key, value) VALUES ('brand_logo', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
@@ -1679,7 +1728,7 @@ async function route(request, env, pathname) {
   // ── 출석 체크 (스캐너) ────────────────────────────────
   if (pathname === '/api/checkin' && method === 'POST') {
     const body = await readBody(request);
-    let code = (body?.code ?? '').trim();
+    let code = text(body?.code, 100);
     if (!code) return err('QR 코드 값이 비어 있습니다.');
     if (code.startsWith('ROLLBOOK:')) code = code.slice('ROLLBOOK:'.length);
 
@@ -1731,10 +1780,10 @@ async function route(request, env, pathname) {
 
   if (pathname === '/api/members' && method === 'POST') {
     const body = await readBody(request);
-    const name = (body?.name ?? '').trim();
-    const title = (body?.title ?? '').trim();
-    const dept = (body?.dept ?? '').trim();
-    const cpaNo = String(body?.cpa_no ?? '').trim();
+    const name = text(body?.name);
+    const title = text(body?.title);
+    const dept = text(body?.dept);
+    const cpaNo = text(body?.cpa_no);
     if (!name) return err('이름을 입력해 주세요.');
 
     // 코드 충돌 시 몇 번 재시도
@@ -1783,10 +1832,10 @@ async function route(request, env, pathname) {
     const ambiguous = []; // 동명이인이라 판단할 수 없는 사람
 
     for (const m of list) {
-      const name = String(m?.name ?? '').trim();
-      const title = String(m?.title ?? '').trim();
-      const dept = String(m?.dept ?? '').trim();
-      const cpaNo = String(m?.cpa_no ?? '').trim();
+      const name = text(m?.name);
+      const title = text(m?.title);
+      const dept = text(m?.dept);
+      const cpaNo = text(m?.cpa_no);
       if (!name) { skipped++; continue; }
 
       const key = nameKey(name);
@@ -1843,10 +1892,10 @@ async function route(request, env, pathname) {
 
     if (method === 'PUT') {
       const body = await readBody(request);
-      const name = (body?.name ?? '').trim();
-      const title = (body?.title ?? '').trim();
-      const dept = (body?.dept ?? '').trim();
-      const cpaNo = String(body?.cpa_no ?? '').trim();
+      const name = text(body?.name);
+      const title = text(body?.title);
+      const dept = text(body?.dept);
+      const cpaNo = text(body?.cpa_no);
       if (!name) return err('이름을 입력해 주세요.');
       await db.prepare('UPDATE members SET name = ?, title = ?, dept = ?, cpa_no = ? WHERE id = ?')
         .bind(name, title, dept, cpaNo, id).run();
@@ -1882,8 +1931,8 @@ async function route(request, env, pathname) {
 
   if (pathname === '/api/sheets' && method === 'POST') {
     const body = await readBody(request);
-    const title = (body?.title ?? '').trim();
-    const sheetDate = (body?.sheet_date ?? '').trim();
+    const title = text(body?.title);
+    const sheetDate = text(body?.sheet_date);
     const activate = Boolean(body?.activate);
     if (!title) return err('출석부 이름을 입력해 주세요.');
     if (!sheetDate) return err('날짜를 선택해 주세요.');
@@ -1936,8 +1985,8 @@ async function route(request, env, pathname) {
 
     if (seg.length === 3 && method === 'PUT') {
       const body = await readBody(request);
-      const title = (body?.title ?? '').trim();
-      const sheetDate = (body?.sheet_date ?? '').trim();
+      const title = text(body?.title);
+      const sheetDate = text(body?.sheet_date);
       if (!title) return err('출석부 이름을 입력해 주세요.');
       if (!sheetDate) return err('날짜를 선택해 주세요.');
       await db
