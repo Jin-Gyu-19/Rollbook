@@ -170,6 +170,7 @@
       // 출석한 사람('' 과 비교)에게는 켜 준다.
       const top = d.entries[0].checked_at;
       if (latestCheckedAt !== null && top > latestCheckedAt) {
+        lastActivity = Date.now(); // 다른 PC 에서 스캔이 들어오고 있다 — 한동안 자주 묻는다
         glowCheckedAt = top;
         clearTimeout(glowTimer);
         glowTimer = setTimeout(() => {
@@ -190,8 +191,33 @@
       /* 다음 주기에 재시도 */
     }
   }
+  // ── 폴링 — 움직임이 있을 때만 자주 묻고, 조용하면 뜸하게 ──
+  // 클라우드플레어 무료 플랜은 하루 10만 요청이라, 5초마다 무조건 묻던 방식(PC 한 대에
+  // 시간당 720번)을 줄인다. 이 PC 가 스캔했거나 다른 PC 의 새 기록을 본 뒤 1분 동안은
+  // 4초마다, 그 뒤로는 30초마다. 화면이 가려져 있으면(다른 탭·최소화) 아예 묻지 않는다.
+  // 이 PC 의 스캔은 응답 즉시 목록을 갱신하므로 폴링은 '다른 PC 의 스캔' 을 보기 위한 것.
+  const POLL_FAST = 4000;
+  const POLL_SLOW = 30000;
+  const ACTIVE_FOR = 60000;
+  let lastActivity = Date.now();
+  let pollTimer = null;
+  function schedulePoll() {
+    clearTimeout(pollTimer);
+    const busy = Date.now() - lastActivity < ACTIVE_FOR;
+    pollTimer = setTimeout(pollTick, busy ? POLL_FAST : POLL_SLOW);
+  }
+  async function pollTick() {
+    if (!document.hidden) await loadRecent();
+    schedulePoll();
+  }
+  window.rbPollState = () => (Date.now() - lastActivity < ACTIVE_FOR ? 'fast' : 'slow'); // 점검용
   loadRecent();
-  setInterval(loadRecent, 5000);
+  schedulePoll();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    loadRecent();      // 다시 보이면 바로 한 번
+    schedulePoll();
+  });
 
   // 로그아웃 — 이 PC 를 다른 QR 로 다시 로그인시킬 때
   document.getElementById('btnLogout')?.addEventListener('click', async () => {
@@ -355,6 +381,7 @@
           msg: `${data.member.dept ? `${data.member.dept} · ` : ''}${fmtClock(data.checked_at)} 출석`,
           mark: '✓',
         });
+        lastActivity = Date.now();
         loadRecent(); // 우측 출석부에 바로 반영
       } else if (data.status === 'already') {
         showResult('warn', {

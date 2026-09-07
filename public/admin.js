@@ -443,8 +443,13 @@
   }
   $('statusSheetSel').addEventListener('change', () => renderStatus(Number($('statusSheetSel').value)));
 
-  // 여러 PC 에서 동시에 쓸 때 실시간으로 보이도록 5초마다 자동 새로고침
-  setInterval(() => {
+  // 여러 PC 에서 동시에 쓸 때 실시간으로 보이도록 자동 새로고침.
+  // 출석 수가 바뀌는 동안(1분)은 4초마다, 조용하면 30초마다 — 요청 수를 아낀다.
+  let lastStatusChange = 0;
+  let lastAttendedSeen = null;
+  function statusPollTick() {
+    const busy = Date.now() - lastStatusChange < 60000;
+    setTimeout(statusPollTick, busy ? 4000 : 30000);
     if (document.hidden) return;
     if ($('tab-status').classList.contains('hidden')) return;
     if (!$('editModal').classList.contains('hidden')) return;
@@ -453,7 +458,8 @@
     if (inSide) return;
     const id = Number($('statusSheetSel').value);
     if (id) renderStatus(id);
-  }, 5000);
+  }
+  setTimeout(statusPollTick, 4000);
 
   let statusRows = [];
   let statusSheetId = null;
@@ -480,6 +486,8 @@
     const rows = statusRows;
     const total = rows.length;
     const attended = rows.filter((r) => r.checked_at).length;
+    if (lastAttendedSeen !== null && attended !== lastAttendedSeen) lastStatusChange = Date.now();
+    lastAttendedSeen = attended;
     const pct = total ? Math.round((attended / total) * 100) : 0;
 
     if (!total) {

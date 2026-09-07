@@ -1717,12 +1717,12 @@ async function route(request, env, pathname) {
       `)
       .bind(sheet.id)
       .all();
-    const attended = await db
-      .prepare('SELECT COUNT(*) AS n FROM attendance WHERE sheet_id = ?')
+    // 두 개수를 한 번에 — 스캔 PC 마다 계속 묻는 곳이라 왕복을 아낀다
+    const c = await db
+      .prepare('SELECT (SELECT COUNT(*) FROM attendance WHERE sheet_id = ?) AS attended, (SELECT COUNT(*) FROM members) AS total')
       .bind(sheet.id)
       .first();
-    const total = await db.prepare('SELECT COUNT(*) AS n FROM members').first();
-    return json({ sheet, entries, attended: attended?.n ?? 0, total: total?.n ?? 0 });
+    return json({ sheet, entries, attended: c?.attended ?? 0, total: c?.total ?? 0 });
   }
 
   // ── 출석 체크 (스캐너) ────────────────────────────────
