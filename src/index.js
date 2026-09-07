@@ -551,8 +551,9 @@ async function fillBackupChanges(db, id) {
 
 // 백업 한 벌 저장.
 //  - onlyIfChanged : 내용이 직전 백업과 같으면 아무 것도 하지 않는다
-//  - 1분 안에 또 바뀌면 새 줄을 만들지 않고 마지막 자동 백업을 최신 내용으로 갱신한다
-//    (출석 스캔이 몰릴 때 줄이 수백 개로 늘어나지 않도록)
+//  - 1분 안에 '더해지기만' 하면(출석 스캔이 쌓일 때) 새 줄을 만들지 않고 마지막 자동 백업을
+//    갱신한다 — 줄이 수백 개로 늘어나지 않도록. 무언가 지워지거나 바뀐 변화(출석 취소·삭제·
+//    수정)는 언제나 새 줄이다. 그래야 되돌리기 전 상태가 백업에 남는다.
 async function saveSnapshot(db, kind = 'auto', { onlyIfChanged = false } = {}) {
   const data = await buildBackup(db);
   const text = JSON.stringify(data);
@@ -569,15 +570,20 @@ async function saveSnapshot(db, kind = 'auto', { onlyIfChanged = false } = {}) {
   if (onlyIfChanged && last && last.fingerprint === fp) return null; // 바뀐 게 없다
 
   const parse = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const sinceLast = backupDiff(parse(last?.json), data);
+  // 마지막 줄에 '더해지기만' 했는가 (스캔이 쌓이는 경우). 무언가 지워지거나 바뀌었으면
+  // 그 전 상태로 돌아갈 수 있어야 하므로 절대 덮어쓰지 않고 새 줄을 만든다.
+  const addOnly = !sinceLast.attendance.removed.list.length
+    && !sinceLast.members.removed.list.length && !sinceLast.members.changed.list.length
+    && !sinceLast.sheets.removed.list.length && !sinceLast.sheets.changed.list.length
+    && !sinceLast.logo;
   const fresh = last && Date.now() - Date.parse(last.created_at) < BACKUP_COALESCE_MS;
-  if (kind === 'auto' && last && last.kind === 'auto' && fresh) {
-    // 1분 안에 또 바뀐 것 — 마지막 줄을 갱신하므로, 변경 내역은 그 줄 '이전' 백업과 견준다
+  if (kind === 'auto' && last && last.kind === 'auto' && fresh && addOnly) {
+    // 1분 안에 더 쌓인 것 — 마지막 줄을 갱신하므로, 변경 내역은 그 줄 '이전' 백업과 견준다
     const before = await db.prepare(
       'SELECT json FROM backups WHERE id <> ? ORDER BY created_at DESC, id DESC LIMIT 1',
     ).bind(last.id).first();
-    const diff = backupDiff(parse(before?.json), data);
-    if (diff.text === '내용 같음') diff.text = '바꿨다가 되돌림 — 직전 백업과 같은 내용';
-    const changes = JSON.stringify(diff);
+    const changes = JSON.stringify(backupDiff(parse(before?.json), data));
     await db.prepare(
       `UPDATE backups SET created_at = ?, members = ?, sheets = ?, records = ?, bytes = ?, fingerprint = ?, changes = ?, json = ?
         WHERE id = ?`,
@@ -586,7 +592,7 @@ async function saveSnapshot(db, kind = 'auto', { onlyIfChanged = false } = {}) {
       text.length, fp, changes, text, last.id,
     ).run();
   } else {
-    const changes = JSON.stringify(backupDiff(parse(last?.json), data));
+    const changes = JSON.stringify(sinceLast);
     await db.prepare(
       'INSERT INTO backups (kind, members, sheets, records, bytes, fingerprint, changes, json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     ).bind(kind, data.members.length, data.sheets.length, data.attendance.length, text.length, fp, changes, text).run();
