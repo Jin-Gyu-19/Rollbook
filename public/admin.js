@@ -434,14 +434,25 @@
     sel.innerHTML = sheets
       .map((s) => `<option value="${s.id}" ${s.id === chosen ? 'selected' : ''}>${esc(s.sheet_date)} · ${esc(s.title)}${s.is_active ? ' (기록 중)' : ''}</option>`)
       .join('');
-    const sheet = sheets.find((x) => x.id === chosen);
-    if (sheet) {
-      if ($('rpSubject') && !$('rpSubject').value) $('rpSubject').value = sheet.title;
-      if ($('rpDate')) $('rpDate').value = sheet.sheet_date || $('rpDate').value;
-    }
+    fillReportFromSheet(chosen);
     await renderStatus(chosen);
   }
-  $('statusSheetSel').addEventListener('change', () => renderStatus(Number($('statusSheetSel').value)));
+  $('statusSheetSel').addEventListener('change', () => {
+    const id = Number($('statusSheetSel').value);
+    fillReportFromSheet(id);
+    renderStatus(id);
+  });
+
+  // 집계표의 과목명·일시는 고른 출석부에서 가져온다. 과목명은 고쳐 쓸 수 있고,
+  // 같은 출석부를 보는 동안에는 고친 값을 지키다가 다른 출석부로 바꾸면 그 이름으로 다시 채운다.
+  let rpFilledFor = null;
+  function fillReportFromSheet(id) {
+    const sheet = sheetsCache.find((x) => x.id === id);
+    if (!sheet) return;
+    if ($('rpSubject') && rpFilledFor !== id) $('rpSubject').value = sheet.title;
+    if ($('rpDate')) $('rpDate').value = sheet.sheet_date || $('rpDate').value;
+    rpFilledFor = id;
+  }
 
   // 여러 PC 에서 동시에 쓸 때 실시간으로 보이도록 자동 새로고침.
   // 출석 수가 바뀌는 동안(1분)은 4초마다, 조용하면 30초마다 — 요청 수를 아낀다.
@@ -551,7 +562,7 @@
   // ── 출석집계표 내려받기 ──────────────────────────────
   // 한국공인회계사회 양식 그대로: 머리말 6줄 + [등록번호 · 성명 · 연수시간 · 회원등록분류]
   // SheetJS 무료판은 서식을 못 넣어서 xlsx(=zip) 구조를 직접 만든다.
-  const RP_KEYS = ['rpSubject', 'rpCode', 'rpTeacher', 'rpPlace', 'rpHours'];
+  const RP_KEYS = ['rpCode', 'rpTeacher', 'rpPlace', 'rpHours']; // 과목명은 출석부 이름에서 가져오므로 기억하지 않는다
   RP_KEYS.forEach((k) => {
     const el = $(k);
     if (!el) return;
