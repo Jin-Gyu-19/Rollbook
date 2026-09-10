@@ -991,32 +991,41 @@ function wsSummary(data) {
 const WS_DIFF_CAP = 40;
 function wsDiff(prev, next) {
   if (!Array.isArray(prev) || !Array.isArray(next)) return null;
-  const key = (p) => `${p.name}|${p.hub ?? ''}`;
+  // 사람은 이름으로 맞춘다 (동명이인은 이름 뒤 숫자로 이미 구분돼 있다).
+  // 소속 표기가 통째로 바뀐 파일(예: '서울4본부' → '서울4')에서 전원이 빠지고 새로 들어온
+  // 것처럼 보이지 않도록 — 그런 건 '바뀜' 으로 따로 센다.
+  const key = (p) => String(p.name ?? '').replace(/\s+/g, '');
   const where = (p) => p.groupLabel || `${p.group}조`;
   const before = new Map(prev.map((p) => [key(p), p]));
   const after = new Map(next.map((p) => [key(p), p]));
   const added = [];
   const moved = [];
+  const changed = [];
   const removed = [];
   next.forEach((p) => {
     const o = before.get(key(p));
-    if (!o) added.push(p.name);
-    else if (where(o) !== where(p)) moved.push({ name: p.name, from: where(o), to: where(p) });
+    if (!o) { added.push(p.name); return; }
+    if (where(o) !== where(p)) moved.push({ name: p.name, from: where(o), to: where(p) });
+    const what = [];
+    if ((o.hub ?? '') !== (p.hub ?? '')) what.push(`소속 ${o.hub || '(없음)'}→${p.hub || '(없음)'}`);
+    if ((o.pos ?? '') !== (p.pos ?? '')) what.push(`직위 ${o.pos || '(없음)'}→${p.pos || '(없음)'}`);
+    if (!!o.ai !== !!p.ai) what.push(p.ai ? 'AI 담당 ○' : 'AI 담당 ×');
+    if (what.length) changed.push({ name: p.name, what: what.join(', ') });
   });
   prev.forEach((p) => { if (!after.has(key(p))) removed.push(p.name); });
   return {
     addedCount: added.length,
     removedCount: removed.length,
     movedCount: moved.length,
+    changedCount: changed.length,
     kept: next.length - added.length,
     added: added.slice(0, WS_DIFF_CAP),
     removed: removed.slice(0, WS_DIFF_CAP),
     moved: moved.slice(0, WS_DIFF_CAP),
+    changed: changed.slice(0, WS_DIFF_CAP),
   };
 }
 
-// 한 벌을 새 버전으로 쌓고 그것만 사용 중으로 둔다 (엑셀 게시·직접 편집 공용).
-// 실패하면 던지지 않고 { error, detail } 로 돌려준다 — 화면에 그대로 띄우기 위해서다.
 async function wsSaveDataset(env, data) {
   let prev = null;
   try {
@@ -1298,11 +1307,24 @@ async function route(request, env, pathname) {
     const { id } = await request.json().catch(() => ({}));
     if (id === undefined || id === null || id === '') return err('버전을 골라 주세요.', 400);
     await ensureWsSchema(env);
-    // id 0 = 올린 버전을 모두 쉬게 하고 앱 파일에 들어 있는 원래 자료를 쓴다
+    // id 0 = 올린 버전을 모두 쉬게 하고 앱 파일에 들어 있는 원래 자료를 쓴다.
+    // 이때도 '지금 참석자가 보던 자료' 와 파일 자료를 견줘 무엇이 달라지는지 돌려준다.
     if (Number(id) === 0) {
+      const prev = await wsActiveData(env).catch(() => null);
+      let fileData = null;
+      try {
+        const asset = await env.ASSETS.fetch(new Request(new URL('/workshop/', request.url)));
+        fileData = asset.ok ? wsExtract(await asset.text()) : null;
+      } catch { /* 비교는 곁다리 — 실패해도 전환은 한다 */ }
       await env.WSDB.prepare('UPDATE ws_dataset SET is_active = 0').run();
       wsCache = { id: null, html: null, font: null };
-      return json({ ok: true, id: 0, file: true });
+      if (!fileData) return json({ ok: true, id: 0, file: true });
+      return json({
+        ok: true, id: 0, file: true, source: 'file', prevId: prev?.id ?? null, at: new Date().toISOString(),
+        ...wsSummary(fileData),
+        diff: wsDiff(prev?.PEOPLE, fileData.PEOPLE),
+        dinnerDiff: wsDiff(prev?.DINNER, fileData.DINNER),
+      });
     }
     const hit = await env.WSDB.prepare('SELECT id FROM ws_dataset WHERE id = ?').bind(id).first();
     if (!hit) return err('그 버전을 찾을 수 없습니다.', 404);

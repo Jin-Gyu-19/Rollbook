@@ -208,8 +208,14 @@
         });
         var d = await r.json().catch(function () { return {}; });
         if (!r.ok) throw new Error(d.error || '바꾸지 못했습니다.');
-        useFile.textContent = '바뀌었습니다 — 새로고침 중';
-        setTimeout(function () { location.reload(); }, 800);
+        if (d.diff) {
+          // 무엇이 달라졌는지 보여 주고, 닫으면 새로고침
+          useFile.textContent = '바뀌었습니다';
+          showDone(d);
+        } else {
+          useFile.textContent = '바뀌었습니다 — 새로고침 중';
+          setTimeout(function () { location.reload(); }, 800);
+        }
       } catch (e) {
         useFile.disabled = false;
         useFile.textContent = '앱 파일의 자료로 바꾸기';
@@ -698,7 +704,7 @@
       box.appendChild(el('div', 'none', '처음 올린 자료라 견줄 이전 버전이 없습니다.'));
       return box;
     }
-    if (!d.addedCount && !d.removedCount && !d.movedCount) {
+    if (!d.addedCount && !d.removedCount && !d.movedCount && !d.changedCount) {
       box.appendChild(el('div', 'none', unit + ' 변동 없음 (' + d.kept + '명 그대로)'));
       return box;
     }
@@ -715,6 +721,14 @@
       }), d.movedCount)));
     }
     box.appendChild(mv);
+    if (d.changedCount) {
+      // 소속 표기·직위가 바뀐 사람 (조는 그대로)
+      var ch = line('소속·직위 바뀜', d.changedCount + '명');
+      ch.appendChild(el('span', 'names', ' — ' + names(d.changed.map(function (c) {
+        return c.name + ' (' + c.what + ')';
+      }), d.changedCount)));
+      box.appendChild(ch);
+    }
     box.appendChild(line('그대로', d.kept + '명'));
     return box;
   }
@@ -723,9 +737,9 @@
     repCard.innerHTML = '';
     repCard.appendChild(el('h3', null, '참석자 화면에 반영되었습니다'));
     repCard.appendChild(el('p', 'when',
-      '버전 ' + d.id + (d.prevId ? ' (이전 버전 ' + d.prevId + ')' : '') + ' · '
+      (d.id ? '버전 ' + d.id : '앱 파일 자료') + (d.prevId ? ' (이전 버전 ' + d.prevId + ')' : '') + ' · '
       + fmtKst(d.at || Date.now())
-      + ' · ' + (d.source === 'editor' ? '직접 편집' : '엑셀 파일')));
+      + ' · ' + (d.source === 'editor' ? '직접 편집' : d.source === 'file' ? '앱 파일의 자료' : '엑셀 파일')));
 
     var dl = el('dl');
     var put = function (k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); };
