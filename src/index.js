@@ -1123,19 +1123,13 @@ const WS_SURVEY_CSS = `
 .rb-sv.is-closed .rb-sv-x{display:grid}
 .rb-sv-x:hover{background:rgba(255,255,255,.28)}
 .rb-sv-x svg{width:13px;height:13px}
-.rb-sv-note{display:flex;align-items:center;gap:10px;margin:0 0 18px;padding:11px 14px;border-radius:12px;
-  background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);
-  font-size:13px;color:var(--text-muted)}
-.rb-sv-note button{margin-left:auto;flex:none;font-family:inherit;font-size:12.5px;font-weight:700;
-  color:var(--accent-strong);background:var(--accent-soft);border:1px solid var(--accent-soft-border);
-  border-radius:999px;padding:6px 12px;cursor:pointer}
-.rb-sv-note button:hover{background:var(--accent-soft-border)}
+.rb-sv.is-going{opacity:0;transform:scale(.97);transition:opacity .2s ease,transform .2s ease}
 .rb-sv-back{display:block;margin:22px auto 0;padding:8px 10px;font-family:inherit;font-size:12px;
   color:var(--text-muted);background:none;border:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .rb-sv-back:hover{color:var(--accent)}
 @media (max-width:380px){.rb-sv-in{flex-direction:column;align-items:stretch}.rb-sv-btn{justify-content:center}
   .rb-sv.is-closed .rb-sv-mini{display:none}}
-@media (prefers-reduced-motion:reduce){.rb-sv-body,.rb-sv-tg svg{transition:none}}
+@media (prefers-reduced-motion:reduce){.rb-sv-body,.rb-sv-tg svg,.rb-sv.is-going{transition:none}}
 `;
 // 숨김 기억은 설문 주소마다 따로 둔다 — 나중에 다른 설문으로 바꾸면 숨겼던 사람에게도 다시 보인다
 const wsSurveyKey = (url) => {
@@ -1158,28 +1152,26 @@ const WS_SURVEY_HTML = (s) => {
     + '<button type="button" class="rb-sv-x" aria-label="이 안내 다시 보지 않기">' + ex + '</button></div>'
     + '<div class="rb-sv-body" id="rbSurveyBody"><div><div class="rb-sv-in"><p>' + esc(s.sub) + '</p>'
     + '<a class="rb-sv-btn" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.cta) + arrow + '</a>'
-    + '</div></div></div></div>'
-    + '<div class="rb-sv-note" id="rbSurveyNote" hidden><span>설문 안내를 숨겼습니다.</span>'
-    + '<button type="button" id="rbSurveyUndo">되돌리기</button></div>';
+    + '</div></div></div></div>';
 };
 // 숨긴 사람에게만 보이는, 페이지 맨 아래 되돌리기 줄
 const WS_SURVEY_BACK = '<button type="button" class="rb-sv-back" id="rbSurveyBack" hidden>설문 안내 다시 보기</button>';
 const WS_SURVEY_JS = `(function(){
 var b=document.getElementById('rbSurvey');if(!b)return;
-var key=b.dataset.key,head=b.querySelector('.rb-sv-head'),note=document.getElementById('rbSurveyNote'),back=document.getElementById('rbSurveyBack'),timer=0;
+var key=b.dataset.key,head=b.querySelector('.rb-sv-head'),back=document.getElementById('rbSurveyBack');
 function get(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function put(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function setClosed(c,save){b.classList.toggle('is-closed',c);head.setAttribute('aria-expanded',c?'false':'true');if(save)put(key+'_c',c?'1':'0')}
-function hide(save,tell){b.hidden=true;if(back)back.hidden=false;if(save)put(key+'_h','1');
-  if(tell&&note){note.hidden=false;clearTimeout(timer);timer=setTimeout(function(){note.hidden=true},6000)}}
-function show(){if(note)note.hidden=true;clearTimeout(timer);b.hidden=false;if(back)back.hidden=true;put(key+'_h','0');setClosed(false,true)}
-if(get(key+'_h')==='1'){hide(false,false)}
+function gone(){b.hidden=true;b.classList.remove('is-going');if(back)back.hidden=false}
+function hide(fade){put(key+'_h','1');if(!fade){gone();return}
+  b.classList.add('is-going');setTimeout(gone,200)}
+function show(){b.hidden=false;b.classList.remove('is-going');if(back)back.hidden=true;put(key+'_h','0');setClosed(false,true)}
+if(get(key+'_h')==='1'){b.hidden=true;if(back)back.hidden=false}
 else if(get(key+'_c')==='1'){b.style.transition='none';setClosed(true,false);b.offsetHeight;b.style.transition=''}
 head.addEventListener('click',function(e){if(e.target.closest('a')||e.target.closest('.rb-sv-x'))return;setClosed(!b.classList.contains('is-closed'),true)});
 head.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();setClosed(!b.classList.contains('is-closed'),true)}});
-b.querySelector('.rb-sv-x').addEventListener('click',function(e){e.stopPropagation();hide(true,true)});
-Array.prototype.forEach.call(b.querySelectorAll('a[href]'),function(a){a.addEventListener('click',function(){setTimeout(function(){hide(true,false)},80)})});
-if(note)note.querySelector('#rbSurveyUndo').addEventListener('click',show);
+b.querySelector('.rb-sv-x').addEventListener('click',function(e){e.stopPropagation();hide(true)});
+Array.prototype.forEach.call(b.querySelectorAll('a[href]'),function(a){a.addEventListener('click',function(){setTimeout(function(){hide(false)},80)})});
 if(back)back.addEventListener('click',show);
 })();`;
 
