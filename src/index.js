@@ -1070,7 +1070,15 @@ const WS_SURVEY = {
   short: '워크샵 설문 참여',        // 접었을 때 한 줄 제목
   sub: '1분이면 충분해요. 여러분의 의견이 다음 워크샵을 만듭니다.',
   cta: '설문 참여하기',
+  until: '',                      // 'YYYY-MM-DD' 를 넣으면 그 날(한국시간)까지만 내보낸다. 비우면 계속 표시.
 };
+
+// 설문 마감일이 지났으면 아예 내보내지 않는다 (한국시간 기준)
+function wsSurveyLive(s) {
+  if (!s.until) return true;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return today <= s.until;
+}
 const WS_SURVEY_CSS = `
 .rb-sv{position:relative;margin:0 0 18px;border-radius:var(--radius,16px);overflow:hidden;
   background:linear-gradient(135deg,#1f4e78 0%,#2b6ea6 55%,#3d8fd1 100%);color:#fff;
@@ -1110,28 +1118,69 @@ const WS_SURVEY_CSS = `
 .rb-sv-mini{display:none;flex:none;font-size:12px;font-weight:700;color:#fff;text-decoration:underline;
   text-decoration-color:rgba(255,255,255,.5);text-underline-offset:3px;white-space:nowrap}
 .rb-sv.is-closed .rb-sv-mini{display:inline}
-@media (max-width:380px){.rb-sv-in{flex-direction:column;align-items:stretch}.rb-sv-btn{justify-content:center}}
+.rb-sv-x{display:none;flex:none;width:30px;height:30px;border:0;border-radius:50%;background:rgba(255,255,255,.14);
+  color:#fff;place-items:center;cursor:pointer;transition:background .15s ease}
+.rb-sv.is-closed .rb-sv-x{display:grid}
+.rb-sv-x:hover{background:rgba(255,255,255,.28)}
+.rb-sv-x svg{width:13px;height:13px}
+.rb-sv-note{display:flex;align-items:center;gap:10px;margin:0 0 18px;padding:11px 14px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);
+  font-size:13px;color:var(--text-muted)}
+.rb-sv-note button{margin-left:auto;flex:none;font-family:inherit;font-size:12.5px;font-weight:700;
+  color:var(--accent-strong);background:var(--accent-soft);border:1px solid var(--accent-soft-border);
+  border-radius:999px;padding:6px 12px;cursor:pointer}
+.rb-sv-note button:hover{background:var(--accent-soft-border)}
+.rb-sv-back{display:block;margin:22px auto 0;padding:8px 10px;font-family:inherit;font-size:12px;
+  color:var(--text-muted);background:none;border:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.rb-sv-back:hover{color:var(--accent)}
+@media (max-width:380px){.rb-sv-in{flex-direction:column;align-items:stretch}.rb-sv-btn{justify-content:center}
+  .rb-sv.is-closed .rb-sv-mini{display:none}}
 @media (prefers-reduced-motion:reduce){.rb-sv-body,.rb-sv-tg svg{transition:none}}
 `;
+// 숨김 기억은 설문 주소마다 따로 둔다 — 나중에 다른 설문으로 바꾸면 숨겼던 사람에게도 다시 보인다
+const wsSurveyKey = (url) => {
+  let h = 0;
+  for (let i = 0; i < url.length; i++) h = ((h << 5) - h + url.charCodeAt(i)) | 0;
+  return 'rb_sv_' + (h >>> 0).toString(36);
+};
 const WS_SURVEY_HTML = (s) => {
   const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   const chev = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
   const arrow = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5"/></svg>';
-  return '<div class="rb-sv" id="rbSurvey" data-key="rb_sv_closed">'
+  const ex = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+  const key = wsSurveyKey(s.url);
+  return '<div class="rb-sv" id="rbSurvey" data-key="' + key + '">'
     + '<div class="rb-sv-head" role="button" tabindex="0" aria-expanded="true" aria-controls="rbSurveyBody">'
     + '<span class="rb-sv-ico" aria-hidden="true">📋</span>'
     + '<span class="rb-sv-t"><span class="e">' + esc(s.eyebrow) + '</span><span class="h">' + esc(s.title) + '</span><span class="h2">' + esc(s.short) + '</span></span>'
     + '<a class="rb-sv-mini" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.cta) + ' ↗</a>'
-    + '<button type="button" class="rb-sv-tg" aria-label="접기/펼치기">' + chev + '</button></div>'
+    + '<button type="button" class="rb-sv-tg" aria-label="접기/펼치기">' + chev + '</button>'
+    + '<button type="button" class="rb-sv-x" aria-label="이 안내 다시 보지 않기">' + ex + '</button></div>'
     + '<div class="rb-sv-body" id="rbSurveyBody"><div><div class="rb-sv-in"><p>' + esc(s.sub) + '</p>'
     + '<a class="rb-sv-btn" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.cta) + arrow + '</a>'
-    + '</div></div></div></div>';
+    + '</div></div></div></div>'
+    + '<div class="rb-sv-note" id="rbSurveyNote" hidden><span>설문 안내를 숨겼습니다.</span>'
+    + '<button type="button" id="rbSurveyUndo">되돌리기</button></div>';
 };
-const WS_SURVEY_JS = `(function(){var b=document.getElementById('rbSurvey');if(!b)return;var k=b.dataset.key,h=b.querySelector('.rb-sv-head');
-function set(c,save){b.classList.toggle('is-closed',c);h.setAttribute('aria-expanded',c?'false':'true');if(save){try{localStorage.setItem(k,c?'1':'0')}catch(e){}}}
-try{if(localStorage.getItem(k)==='1'){b.style.transition='none';set(true);b.offsetHeight;b.style.transition=''}}catch(e){}
-h.addEventListener('click',function(e){if(e.target.closest('a'))return;set(!b.classList.contains('is-closed'),true)});
-h.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();set(!b.classList.contains('is-closed'),true)}});
+// 숨긴 사람에게만 보이는, 페이지 맨 아래 되돌리기 줄
+const WS_SURVEY_BACK = '<button type="button" class="rb-sv-back" id="rbSurveyBack" hidden>설문 안내 다시 보기</button>';
+const WS_SURVEY_JS = `(function(){
+var b=document.getElementById('rbSurvey');if(!b)return;
+var key=b.dataset.key,head=b.querySelector('.rb-sv-head'),note=document.getElementById('rbSurveyNote'),back=document.getElementById('rbSurveyBack'),timer=0;
+function get(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function put(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function setClosed(c,save){b.classList.toggle('is-closed',c);head.setAttribute('aria-expanded',c?'false':'true');if(save)put(key+'_c',c?'1':'0')}
+function hide(save,tell){b.hidden=true;if(back)back.hidden=false;if(save)put(key+'_h','1');
+  if(tell&&note){note.hidden=false;clearTimeout(timer);timer=setTimeout(function(){note.hidden=true},6000)}}
+function show(){if(note)note.hidden=true;clearTimeout(timer);b.hidden=false;if(back)back.hidden=true;put(key+'_h','0');setClosed(false,true)}
+if(get(key+'_h')==='1'){hide(false,false)}
+else if(get(key+'_c')==='1'){b.style.transition='none';setClosed(true,false);b.offsetHeight;b.style.transition=''}
+head.addEventListener('click',function(e){if(e.target.closest('a')||e.target.closest('.rb-sv-x'))return;setClosed(!b.classList.contains('is-closed'),true)});
+head.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();setClosed(!b.classList.contains('is-closed'),true)}});
+b.querySelector('.rb-sv-x').addEventListener('click',function(e){e.stopPropagation();hide(true,true)});
+Array.prototype.forEach.call(b.querySelectorAll('a[href]'),function(a){a.addEventListener('click',function(){setTimeout(function(){hide(true,false)},80)})});
+if(note)note.querySelector('#rbSurveyUndo').addEventListener('click',show);
+if(back)back.addEventListener('click',show);
 })();`;
 
 async function serveWorkshop(request, env, view) {
@@ -1176,9 +1225,16 @@ async function serveWorkshop(request, env, view) {
 
   const rw = new HTMLRewriter();
   // 설문 배너 — 참석자·관리자 화면 모두, .wrap 맨 위 (앱 파일은 그대로 두고 내보낼 때만 끼운다)
-  rw.on('head', { element(el) { el.append(`<style>${WS_SURVEY_CSS}</style>`, { html: true }); } })
-    .on('.wrap', { element(el) { el.prepend(WS_SURVEY_HTML(WS_SURVEY), { html: true }); } })
-    .on('body', { element(el) { el.append(`<script>${WS_SURVEY_JS}</script>`, { html: true }); } });
+  if (wsSurveyLive(WS_SURVEY)) {
+    rw.on('head', { element(el) { el.append(`<style>${WS_SURVEY_CSS}</style>`, { html: true }); } })
+      .on('.wrap', {
+        element(el) {
+          el.prepend(WS_SURVEY_HTML(WS_SURVEY), { html: true });
+          el.append(WS_SURVEY_BACK, { html: true });
+        },
+      })
+      .on('body', { element(el) { el.append(`<script>${WS_SURVEY_JS}</script>`, { html: true }); } });
+  }
   // 위에서 빼낸 글꼴은 여기서 다시 달아 준다 — 화면을 다 그린 뒤에 적용되도록.
   // 글꼴을 못 받아도(사내망 차단 등) 화면은 시스템 글꼴로 멀쩡히 뜬다.
   if (font) {
