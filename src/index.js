@@ -1061,55 +1061,77 @@ async function wsSaveDataset(env, data) {
   };
 }
 
-// ── 참석자 화면 설문 배너 ───────────────────────────────────────────────────
-// 앱 파일은 건드리지 않고, 내보낼 때 소제목 아래(탭 바로 위)에 끼워 넣는다.
-// 모양은 앱의 '전체 조 보기' 카드(.g-card/.g-head)와 '좌석 배치도' 단추(.seatmap-btn)를 그대로 따른다.
-// 접힘 상태는 브라우저(localStorage)에 기억.
+// ── 참석자 화면 맨 위 설문 배너 ──────────────────────────────────────────────
+// 앱 파일은 건드리지 않고, 내보낼 때 .wrap 맨 위에 끼워 넣는다. 접힘 상태는 브라우저(localStorage)에 기억.
 const WS_SURVEY = {
   url: 'https://bdosurvey.bdokorea.workers.dev/c/38s2t758w7',
-  title: '워크샵 설문',
-  note: '1분 소요',
-  body: '워크샵에 대한 의견을 남겨 주세요. 다음 워크샵 준비에 반영합니다.',
+  eyebrow: '2026 AI Workshop',
+  title: '워크샵 설문에 참여해 주세요',
+  short: '워크샵 설문 참여',        // 접었을 때 한 줄 제목
+  sub: '1분이면 충분해요. 여러분의 의견이 다음 워크샵을 만듭니다.',
   cta: '설문 참여하기',
 };
 const WS_SURVEY_CSS = `
-.rb-sv{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin:0 0 16px}
-.rb-sv-head{width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:transparent;border:none;
-  font-family:inherit;color:var(--text);cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent}
-.rb-sv-head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.rb-sv-num{flex:none;font-size:15px;line-height:1;color:var(--accent-strong);background:var(--accent-soft);border-radius:8px;padding:5px 8px}
-.rb-sv-title{font-size:14.5px;font-weight:700}
-.rb-sv-note{font-size:12px;color:var(--text-muted);margin-left:auto;margin-right:4px;white-space:nowrap}
-.rb-sv-head .chevron{display:inline-block;color:var(--text-muted);font-size:15px;line-height:1;transition:transform .15s ease}
-.rb-sv-head .chevron.open{transform:rotate(180deg)}
-.rb-sv-body{display:grid;grid-template-rows:1fr;transition:grid-template-rows .22s ease}
+.rb-sv{position:relative;margin:0 0 18px;border-radius:var(--radius,16px);overflow:hidden;
+  background:linear-gradient(135deg,#1f4e78 0%,#2b6ea6 55%,#3d8fd1 100%);color:#fff;
+  box-shadow:0 1px 2px rgba(18,48,73,.08),0 10px 28px -12px rgba(31,78,120,.55);
+  transition:box-shadow .25s ease}
+.rb-sv::before{content:"";position:absolute;inset:-40% -20% auto auto;width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.22),rgba(255,255,255,0) 70%);pointer-events:none}
+.rb-sv-head{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;cursor:pointer;user-select:none;
+  -webkit-tap-highlight-color:transparent}
+.rb-sv-ico{flex:none;width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.16);
+  display:grid;place-items:center;font-size:18px;line-height:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.rb-sv-t{flex:1;min-width:0}
+.rb-sv-t .e{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.8}
+.rb-sv-t .h{display:block;font-size:15px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rb-sv-tg{flex:none;width:30px;height:30px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;
+  display:grid;place-items:center;cursor:pointer;transition:background .15s ease,transform .3s cubic-bezier(.2,.8,.2,1)}
+.rb-sv-tg:hover{background:rgba(255,255,255,.26)}
+.rb-sv-tg svg{width:16px;height:16px;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.rb-sv.is-closed .rb-sv-tg svg{transform:rotate(-180deg)}
+.rb-sv-body{display:grid;grid-template-rows:1fr;transition:grid-template-rows .32s cubic-bezier(.2,.8,.2,1)}
 .rb-sv.is-closed .rb-sv-body{grid-template-rows:0fr}
 .rb-sv-body>div{overflow:hidden;min-height:0}
-.rb-sv-in{padding:0 14px 12px}
-.rb-sv-in p{margin:0 0 10px;font-size:13.5px;line-height:1.6;color:var(--text-muted);border-top:1px solid var(--border);padding-top:10px}
-.rb-sv-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;font-size:13.5px;font-weight:700;
-  color:var(--accent-strong);background:var(--accent-soft);border:1px solid var(--accent-soft-border);border-radius:12px;padding:11px 14px;text-decoration:none}
-.rb-sv-btn:hover{background:var(--accent-soft-border)}
-.rb-sv-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.rb-sv-btn .icon{font-size:15px;line-height:1}
-@media (prefers-reduced-motion:reduce){.rb-sv-body,.rb-sv-head .chevron{transition:none}}
+.rb-sv-in{display:flex;align-items:center;gap:12px;padding:2px 16px 16px}
+.rb-sv-in p{margin:0;flex:1;font-size:13px;line-height:1.55;opacity:.92}
+.rb-sv-btn{flex:none;display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:999px;
+  background:#fff;color:#1f4e78;font-weight:800;font-size:13px;text-decoration:none;
+  box-shadow:0 6px 16px -6px rgba(0,0,0,.35);transition:transform .15s ease,box-shadow .15s ease}
+.rb-sv-btn:hover{transform:translateY(-1px);box-shadow:0 10px 20px -8px rgba(0,0,0,.4)}
+.rb-sv-btn:active{transform:translateY(0)}
+.rb-sv-btn svg{width:14px;height:14px}
+.rb-sv.is-closed .rb-sv-head{padding-top:10px;padding-bottom:10px}
+.rb-sv.is-closed .rb-sv-ico{width:28px;height:28px;font-size:15px;border-radius:8px}
+.rb-sv.is-closed .rb-sv-t .e{display:none}
+.rb-sv-t .h2{display:none;font-size:14px;font-weight:800;white-space:nowrap}
+.rb-sv.is-closed .rb-sv-t .h{display:none}
+.rb-sv.is-closed .rb-sv-t .h2{display:block}
+.rb-sv-mini{display:none;flex:none;font-size:12px;font-weight:700;color:#fff;text-decoration:underline;
+  text-decoration-color:rgba(255,255,255,.5);text-underline-offset:3px;white-space:nowrap}
+.rb-sv.is-closed .rb-sv-mini{display:inline}
+@media (max-width:380px){.rb-sv-in{flex-direction:column;align-items:stretch}.rb-sv-btn{justify-content:center}}
+@media (prefers-reduced-motion:reduce){.rb-sv-body,.rb-sv-tg svg{transition:none}}
 `;
 const WS_SURVEY_HTML = (s) => {
   const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const chev = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+  const arrow = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5"/></svg>';
   return '<div class="rb-sv" id="rbSurvey" data-key="rb_sv_closed">'
-    + '<button type="button" class="rb-sv-head" aria-expanded="true" aria-controls="rbSurveyBody">'
-    + '<span class="rb-sv-num" aria-hidden="true">📋</span>'
-    + '<span class="rb-sv-title">' + esc(s.title) + '</span>'
-    + '<span class="rb-sv-note">' + esc(s.note) + '</span>'
-    + '<span class="chevron open" aria-hidden="true">⌄</span></button>'
-    + '<div class="rb-sv-body" id="rbSurveyBody"><div><div class="rb-sv-in"><p>' + esc(s.body) + '</p>'
-    + '<a class="rb-sv-btn" href="' + esc(s.url) + '" target="_blank" rel="noopener"><span class="icon">📝</span>' + esc(s.cta) + ' ↗</a>'
+    + '<div class="rb-sv-head" role="button" tabindex="0" aria-expanded="true" aria-controls="rbSurveyBody">'
+    + '<span class="rb-sv-ico" aria-hidden="true">📋</span>'
+    + '<span class="rb-sv-t"><span class="e">' + esc(s.eyebrow) + '</span><span class="h">' + esc(s.title) + '</span><span class="h2">' + esc(s.short) + '</span></span>'
+    + '<a class="rb-sv-mini" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.cta) + ' ↗</a>'
+    + '<button type="button" class="rb-sv-tg" aria-label="접기/펼치기">' + chev + '</button></div>'
+    + '<div class="rb-sv-body" id="rbSurveyBody"><div><div class="rb-sv-in"><p>' + esc(s.sub) + '</p>'
+    + '<a class="rb-sv-btn" href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.cta) + arrow + '</a>'
     + '</div></div></div></div>';
 };
-const WS_SURVEY_JS = `(function(){var b=document.getElementById('rbSurvey');if(!b)return;var k=b.dataset.key,h=b.querySelector('.rb-sv-head'),c=h.querySelector('.chevron');
-function set(closed,save){b.classList.toggle('is-closed',closed);c.classList.toggle('open',!closed);h.setAttribute('aria-expanded',closed?'false':'true');if(save){try{localStorage.setItem(k,closed?'1':'0')}catch(e){}}}
+const WS_SURVEY_JS = `(function(){var b=document.getElementById('rbSurvey');if(!b)return;var k=b.dataset.key,h=b.querySelector('.rb-sv-head');
+function set(c,save){b.classList.toggle('is-closed',c);h.setAttribute('aria-expanded',c?'false':'true');if(save){try{localStorage.setItem(k,c?'1':'0')}catch(e){}}}
 try{if(localStorage.getItem(k)==='1'){b.style.transition='none';set(true);b.offsetHeight;b.style.transition=''}}catch(e){}
-h.addEventListener('click',function(){set(!b.classList.contains('is-closed'),true)});
+h.addEventListener('click',function(e){if(e.target.closest('a'))return;set(!b.classList.contains('is-closed'),true)});
+h.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();set(!b.classList.contains('is-closed'),true)}});
 })();`;
 
 async function serveWorkshop(request, env, view) {
@@ -1153,9 +1175,9 @@ async function serveWorkshop(request, env, view) {
   const page = new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 
   const rw = new HTMLRewriter();
-  // 설문 배너 — 참석자·관리자 화면 모두, 소제목 아래·탭 위 (앱 파일은 그대로 두고 내보낼 때만 끼운다)
+  // 설문 배너 — 참석자·관리자 화면 모두, .wrap 맨 위 (앱 파일은 그대로 두고 내보낼 때만 끼운다)
   rw.on('head', { element(el) { el.append(`<style>${WS_SURVEY_CSS}</style>`, { html: true }); } })
-    .on('.wrap > p.sub', { element(el) { el.after(WS_SURVEY_HTML(WS_SURVEY), { html: true }); } })
+    .on('.wrap', { element(el) { el.prepend(WS_SURVEY_HTML(WS_SURVEY), { html: true }); } })
     .on('body', { element(el) { el.append(`<script>${WS_SURVEY_JS}</script>`, { html: true }); } });
   // 위에서 빼낸 글꼴은 여기서 다시 달아 준다 — 화면을 다 그린 뒤에 적용되도록.
   // 글꼴을 못 받아도(사내망 차단 등) 화면은 시스템 글꼴로 멀쩡히 뜬다.
