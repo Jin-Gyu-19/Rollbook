@@ -820,4 +820,199 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   }
+
+  // ── 설문 배너 고치기 ────────────────────────────────
+  // 참석자 화면 맨 위에 뜨는 배너의 주소·문구·마감일을 여기서 바꾼다.
+  // 고친 값은 워크샵 DB(ws_settings)에 들어가고, 배포 없이 바로 참석자 화면에 반영된다.
+  var svBtn = $('rbSvEdit');
+  if (svBtn) {
+    var svUi = null, svCur = null, svDef = null;
+
+    function svCss() {
+      if ($('rbSvStyle')) return;
+      var st = document.createElement('style');
+      st.id = 'rbSvStyle';
+      st.textContent = [
+        '.rb-svbox{position:fixed;inset:0;z-index:4000;background:rgba(10,16,22,.55);display:flex;',
+        '  align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto}',
+        '.rb-svbox[hidden]{display:none}',
+        '.rb-svcard{display:flex;flex-direction:column;width:min(560px,100%);max-height:calc(100vh - 48px);',
+        '  background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);font-family:inherit;color:var(--text)}',
+        '.rb-svhead{padding:20px 20px 0}',
+        '.rb-svscroll{flex:1;min-height:0;overflow:auto;padding:16px 20px 4px}',
+        '.rb-svfoot{padding:12px 20px 18px;border-top:1px solid var(--border);background:var(--surface);border-radius:0 0 var(--radius) var(--radius)}',
+        '.rb-svcard h3{margin:0 0 4px;font-size:17px;font-weight:800}',
+        '.rb-svcard .d{margin:0 0 4px;font-size:12.5px;color:var(--text-muted);line-height:1.6}',
+        '.rb-svf{margin-bottom:12px}',
+        '.rb-svf label{display:block;margin-bottom:5px;font-size:12.5px;font-weight:700;color:var(--text)}',
+        '.rb-svf .hint{font-weight:500;color:var(--text-muted);margin-left:6px}',
+        '.rb-svf input[type=text],.rb-svf input[type=date],.rb-svf textarea{width:100%;font-family:inherit;font-size:14px;',
+        '  padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);outline:none}',
+        '.rb-svf input:focus,.rb-svf textarea:focus{border-color:var(--accent)}',
+        '.rb-svf textarea{resize:vertical;min-height:62px;line-height:1.5}',
+        '.rb-svon{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:11px 13px;border-radius:10px;',
+        '  background:var(--surface-alt);border:1px solid var(--border);font-size:13px;font-weight:700;cursor:pointer}',
+        '.rb-svon input{width:17px;height:17px;accent-color:var(--accent);cursor:pointer}',
+        '.rb-svprev{margin:6px 0 16px;padding:12px;border-radius:12px;background:var(--surface-alt);border:1px solid var(--border)}',
+        '.rb-svprev .cap{font-size:11.5px;font-weight:700;color:var(--text-muted);margin-bottom:8px}',
+        '.rb-svrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
+        '.rb-svrow button{padding:10px 16px;border-radius:10px;border:1px solid var(--border);background:var(--surface-alt);',
+        '  color:var(--text);font:700 13px inherit;cursor:pointer}',
+        '.rb-svrow button:hover{background:var(--accent-soft);border-color:var(--accent-soft-border);color:var(--accent-strong)}',
+        '.rb-svrow button.primary{background:var(--accent);border-color:var(--accent);color:#fff}',
+        '.rb-svrow button.primary:hover{background:var(--accent-strong);border-color:var(--accent-strong);color:#fff}',
+        '.rb-svrow .sp{flex:1}',
+        '.rb-svmsg{margin-top:10px;font-size:12.5px;line-height:1.5}',
+        '.rb-svmsg:empty{display:none}',
+        '@media (max-width:560px){.rb-svbox{padding:12px 10px}.rb-svcard{max-height:calc(100vh - 24px)}',
+        '  .rb-svhead{padding:16px 16px 0}.rb-svscroll{padding:12px 16px 4px}.rb-svfoot{padding:10px 16px 14px}',
+        '  .rb-svrow button{flex:1 1 auto}.rb-svrow .sp{flex:1 0 100%;height:0}}',
+        '.rb-svmsg.ok{color:#15803D} .rb-svmsg.err{color:#C81330}',
+      ].join('\n');
+      document.head.appendChild(st);
+    }
+
+    function esc(v) {
+      return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    function svBuild() {
+      svCss();
+      var el = document.createElement('div');
+      el.className = 'rb-svbox';
+      el.id = 'rbSvBox';
+      el.hidden = true;
+      el.innerHTML = '<div class="rb-svcard">'
+        + '<div class="rb-svhead"><h3>설문 배너</h3>'
+        + '<p class="d">참석자 화면(<b>/workshop/</b>) 맨 위에 뜨는 안내입니다. 여기서 고치면 배포 없이 바로 바뀝니다.<br>'
+        + '주소를 바꾸면 전에 <b>✕</b> 로 숨긴 사람에게도 새 배너가 다시 보입니다.</p></div>'
+        + '<div class="rb-svscroll">'
+        + '<label class="rb-svon"><input type="checkbox" id="rbSvOn"><span>참석자 화면에 배너를 보여 준다</span></label>'
+        + '<div class="rb-svf"><label for="rbSvUrl">설문 주소</label>'
+        + '<input type="text" id="rbSvUrl" placeholder="https://..." autocomplete="off" spellcheck="false"></div>'
+        + '<div class="rb-svf"><label for="rbSvEyebrow">작은 윗줄<span class="hint">배너 맨 위 작은 글씨</span></label>'
+        + '<input type="text" id="rbSvEyebrow" autocomplete="off"></div>'
+        + '<div class="rb-svf"><label for="rbSvTitle">제목</label>'
+        + '<input type="text" id="rbSvTitle" autocomplete="off"></div>'
+        + '<div class="rb-svf"><label for="rbSvShort">접었을 때 제목<span class="hint">한 줄로 줄었을 때</span></label>'
+        + '<input type="text" id="rbSvShort" autocomplete="off"></div>'
+        + '<div class="rb-svf"><label for="rbSvSub">안내 문구</label>'
+        + '<textarea id="rbSvSub"></textarea></div>'
+        + '<div class="rb-svf"><label for="rbSvCta">단추 글자</label>'
+        + '<input type="text" id="rbSvCta" autocomplete="off"></div>'
+        + '<div class="rb-svf"><label for="rbSvUntil">마감일<span class="hint">이 날까지만 보여 줍니다. 비우면 계속</span></label>'
+        + '<input type="date" id="rbSvUntil"></div>'
+        + '<div class="rb-svprev"><div class="cap">미리보기</div><div id="rbSvPrev"></div></div>'
+        + '</div>'
+        + '<div class="rb-svfoot"><div class="rb-svrow">'
+        + '<button type="button" id="rbSvReset">처음 문구로</button><span class="sp"></span>'
+        + '<button type="button" id="rbSvCancel">닫기</button>'
+        + '<button type="button" class="primary" id="rbSvSave">저장</button></div>'
+        + '<p class="rb-svmsg" id="rbSvMsg"></p></div></div>';
+      document.body.appendChild(el);
+      el.addEventListener('click', function (e) { if (e.target === el) svClose(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !el.hidden) svClose(); });
+      $('rbSvCancel').addEventListener('click', svClose);
+      $('rbSvSave').addEventListener('click', svSave);
+      $('rbSvReset').addEventListener('click', function () { if (svDef) svFill(svDef); svPreview(); });
+      ['rbSvOn', 'rbSvUrl', 'rbSvEyebrow', 'rbSvTitle', 'rbSvShort', 'rbSvSub', 'rbSvCta', 'rbSvUntil'].forEach(function (id) {
+        var f = $(id);
+        f.addEventListener('input', svPreview);
+        f.addEventListener('change', svPreview);
+      });
+      return el;
+    }
+
+    function svFill(v) {
+      $('rbSvOn').checked = v.on !== false;
+      $('rbSvUrl').value = v.url || '';
+      $('rbSvEyebrow').value = v.eyebrow || '';
+      $('rbSvTitle').value = v.title || '';
+      $('rbSvShort').value = v.short || '';
+      $('rbSvSub').value = v.sub || '';
+      $('rbSvCta').value = v.cta || '';
+      $('rbSvUntil').value = v.until || '';
+    }
+
+    function svRead() {
+      return {
+        on: $('rbSvOn').checked,
+        url: $('rbSvUrl').value.trim(),
+        eyebrow: $('rbSvEyebrow').value.trim(),
+        title: $('rbSvTitle').value.trim(),
+        short: $('rbSvShort').value.trim(),
+        sub: $('rbSvSub').value.trim(),
+        cta: $('rbSvCta').value.trim(),
+        until: $('rbSvUntil').value.trim(),
+      };
+    }
+
+    // 참석자가 볼 모습 그대로 — 실제 배너와 같은 클래스를 써서 그린다
+    function svPreview() {
+      var v = svRead();
+      var box = $('rbSvPrev');
+      if (!v.on) {
+        box.innerHTML = '<p style="margin:0;font-size:12.5px;color:var(--text-muted)">배너를 보여 주지 않습니다.</p>';
+        return;
+      }
+      box.innerHTML = '<div class="rb-sv" style="margin:0">'
+        + '<div class="rb-sv-head">'
+        + '<span class="rb-sv-ico">\uD83D\uDCCB</span>'
+        + '<span class="rb-sv-t"><span class="e">' + esc(v.eyebrow) + '</span>'
+        + '<span class="h">' + esc(v.title) + '</span></span>'
+        + '<span class="rb-sv-tg" style="display:grid">'
+        + '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'
+        + ' stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></span></div>'
+        + '<div class="rb-sv-body"><div><div class="rb-sv-in"><p>' + esc(v.sub) + '</p>'
+        + '<span class="rb-sv-btn">' + esc(v.cta)
+        + '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"'
+        + ' stroke-linejoin="round"><path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5"/></svg></span>'
+        + '</div></div></div></div>';
+    }
+
+    function svSay(t, k) {
+      var m = $('rbSvMsg');
+      m.textContent = t || '';
+      m.className = 'rb-svmsg' + (k ? ' ' + k : '');
+    }
+
+    function svClose() { if (svUi) svUi.hidden = true; }
+
+    async function svSave() {
+      var btn = $('rbSvSave');
+      btn.disabled = true;
+      svSay('저장하는 중…');
+      try {
+        var r = await fetch('/api/workshop/survey', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(svRead()),
+        });
+        var d = await r.json().catch(function () { return {}; });
+        if (!r.ok) throw new Error(d.error || '저장하지 못했습니다.');
+        svCur = d.survey;
+        svSay(d.live
+          ? '저장했습니다. 참석자 화면에 바로 반영됩니다. 잠시 후 새로고침됩니다.'
+          : '저장했습니다. 지금은 배너를 보여 주지 않습니다. 잠시 후 새로고침됩니다.', 'ok');
+        setTimeout(function () { location.reload(); }, 1400);
+      } catch (e) {
+        svSay(e.message, 'err');
+        btn.disabled = false;
+      }
+    }
+
+    svBtn.addEventListener('click', async function () {
+      if (!svUi) svUi = svBuild();
+      if (!svUi.hidden) { svClose(); return; }
+      svUi.hidden = false;
+      svSay('');
+      $('rbSvSave').disabled = false;
+      try {
+        var r = await fetch('/api/workshop/survey');
+        var d = await r.json();
+        svCur = d.survey; svDef = d.defaults;
+        svFill(svCur);
+        svPreview();
+        if (svCur.until && !d.live && svCur.on !== false) svSay('마감일이 지나서 지금은 배너가 나오지 않습니다.', 'err');
+      } catch (e) { svSay(e.message, 'err'); }
+    });
+  }
 })();

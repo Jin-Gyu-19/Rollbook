@@ -742,18 +742,26 @@ function wsDeferFont(html) {
 
 async function ensureWsSchema(env) {
   if (wsSchemaReady || !env.WSDB) return;
-  await env.WSDB.prepare(`CREATE TABLE IF NOT EXISTS ws_dataset (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    note TEXT NOT NULL DEFAULT '',
-    people_count INTEGER NOT NULL DEFAULT 0,
-    group_count INTEGER NOT NULL DEFAULT 0,
-    meta_json TEXT NOT NULL,
-    people_json TEXT NOT NULL,
-    program_json TEXT NOT NULL,
-    dinner_json TEXT NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 0
-  )`).run();
+  await env.WSDB.batch([
+    env.WSDB.prepare(`CREATE TABLE IF NOT EXISTS ws_dataset (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      note TEXT NOT NULL DEFAULT '',
+      people_count INTEGER NOT NULL DEFAULT 0,
+      group_count INTEGER NOT NULL DEFAULT 0,
+      meta_json TEXT NOT NULL,
+      people_json TEXT NOT NULL,
+      program_json TEXT NOT NULL,
+      dinner_json TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 0
+    )`),
+    // 설문 배너처럼 관리 화면에서 고치는 자잘한 설정
+    env.WSDB.prepare(`CREATE TABLE IF NOT EXISTS ws_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )`),
+  ]);
   wsSchemaReady = true;
 }
 
@@ -1073,8 +1081,72 @@ const WS_SURVEY = {
   until: '',                      // 'YYYY-MM-DD' 를 넣으면 그 날(한국시간)까지만 내보낸다. 비우면 계속 표시.
 };
 
+// 관리 화면에서 고친 값은 워크샵 DB(ws_settings)에 둔다. 아무것도 안 고쳤으면 위의 기본값.
+let wsSurveyCache = null;          // { at, value } — 워커가 살아 있는 동안만
+const WS_SURVEY_TTL = 30 * 1000;
+
+const WS_SURVEY_FIELDS = [
+  { k: 'url',   max: 500, label: '설문 주소' },
+  { k: 'eyebrow', max: 60, label: '작은 윗줄' },
+  { k: 'title', max: 80,  label: '제목' },
+  { k: 'short', max: 40,  label: '접었을 때 제목' },
+  { k: 'sub',   max: 200, label: '안내 문구' },
+  { k: 'cta',   max: 30,  label: '단추 글자' },
+];
+
+// 관리자가 보낸 값을 그대로 믿지 않고 하나씩 살펴 다듬는다
+function wsSurveyClean(input) {
+  const out = { ...WS_SURVEY };
+  if (!input || typeof input !== 'object') throw Object.assign(new Error('보낸 내용을 읽지 못했습니다.'), { status: 400 });
+  out.on = input.on !== false;
+  for (const f of WS_SURVEY_FIELDS) {
+    const v = typeof input[f.k] === 'string' ? input[f.k].trim() : '';
+    if (v.length > f.max) throw Object.assign(new Error(`${f.label} 은(는) ${f.max}자까지 넣을 수 있습니다.`), { status: 400 });
+    out[f.k] = v;
+  }
+  if (!out.url) throw Object.assign(new Error('설문 주소를 넣어 주세요.'), { status: 400 });
+  let u;
+  try { u = new URL(out.url); } catch { throw Object.assign(new Error('설문 주소가 올바르지 않습니다. https:// 로 시작하는 주소를 넣어 주세요.'), { status: 400 }); }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+    throw Object.assign(new Error('설문 주소는 https:// 또는 http:// 로 시작해야 합니다.'), { status: 400 });
+  }
+  out.url = u.toString();
+  if (!out.title) throw Object.assign(new Error('제목을 넣어 주세요.'), { status: 400 });
+  if (!out.cta) out.cta = WS_SURVEY.cta;
+  if (!out.short) out.short = out.title;
+  const until = typeof input.until === 'string' ? input.until.trim() : '';
+  if (until && !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+    throw Object.assign(new Error('마감일은 2026-09-30 처럼 적어 주세요.'), { status: 400 });
+  }
+  out.until = until;
+  return out;
+}
+
+async function wsSurveyLoad(env) {
+  if (!env.WSDB) return { ...WS_SURVEY, on: true };
+  if (wsSurveyCache && Date.now() - wsSurveyCache.at < WS_SURVEY_TTL) return wsSurveyCache.value;
+  let value = { ...WS_SURVEY, on: true };
+  try {
+    await ensureWsSchema(env);
+    const row = await env.WSDB.prepare("SELECT value FROM ws_settings WHERE key = 'survey'").first();
+    if (row?.value) value = { ...value, ...JSON.parse(row.value) };
+  } catch { /* 설정을 못 읽어도 기본값으로 화면은 뜬다 */ }
+  wsSurveyCache = { at: Date.now(), value };
+  return value;
+}
+
+async function wsSurveySave(env, value) {
+  await ensureWsSchema(env);
+  await env.WSDB.prepare(
+    `INSERT INTO ws_settings (key, value, updated_at) VALUES ('survey', ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).bind(JSON.stringify(value)).run();
+  wsSurveyCache = { at: Date.now(), value };
+}
+
 // 설문 마감일이 지났으면 아예 내보내지 않는다 (한국시간 기준)
 function wsSurveyLive(s) {
+  if (s.on === false) return false;
   if (!s.until) return true;
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   return today <= s.until;
@@ -1217,14 +1289,19 @@ async function serveWorkshop(request, env, view) {
 
   const rw = new HTMLRewriter();
   // 설문 배너 — 참석자·관리자 화면 모두, .wrap 맨 위 (앱 파일은 그대로 두고 내보낼 때만 끼운다)
-  if (wsSurveyLive(WS_SURVEY)) {
-    rw.on('head', { element(el) { el.append(`<style>${WS_SURVEY_CSS}</style>`, { html: true }); } })
-      .on('.wrap', {
-        element(el) {
-          el.prepend(WS_SURVEY_HTML(WS_SURVEY), { html: true });
-          el.append(WS_SURVEY_BACK, { html: true });
-        },
-      })
+  const survey = await wsSurveyLoad(env);
+  const surveyLive = wsSurveyLive(survey);
+  // 배너를 꺼 두었어도 관리 화면에는 모양을 그려 줘야 '설문 배너' 창의 미리보기가 제대로 보인다
+  if (surveyLive || view === 'admin') {
+    rw.on('head', { element(el) { el.append(`<style>${WS_SURVEY_CSS}</style>`, { html: true }); } });
+  }
+  if (surveyLive) {
+    rw.on('.wrap', {
+      element(el) {
+        el.prepend(WS_SURVEY_HTML(survey), { html: true });
+        el.append(WS_SURVEY_BACK, { html: true });
+      },
+    })
       .on('body', { element(el) { el.append(`<script>${WS_SURVEY_JS}</script>`, { html: true }); } });
   }
   // 위에서 빼낸 글꼴은 여기서 다시 달아 준다 — 화면을 다 그린 뒤에 적용되도록.
@@ -1257,6 +1334,7 @@ async function serveWorkshop(request, env, view) {
             '<span class="t">워크샵 관리<span class="s">엑셀로 한꺼번에 갱신하거나, 직접 편집으로 한 줄씩 고칩니다</span></span>' +
             '<button type="button" id="rbEditOpen">직접 편집</button>' +
             '<button type="button" id="rbPubList">지난 버전</button>' +
+            '<button type="button" id="rbSvEdit">설문 배너</button>' +
             '<a class="view" href="/workshop/" target="_blank" rel="noopener">참석자 화면 보기 ↗</a></div>' +
             '<div class="rb-pub" id="rbPubBox" hidden><span class="msg" id="rbPubMsg"></span>' +
             '<div id="rbPubVers"></div></div>' +
@@ -1416,6 +1494,24 @@ async function route(request, env, pathname) {
     const saved = await wsSaveDataset(env, checked.data);
     if (saved.error) return wsFail(saved, '저장');
     return json({ ok: true, source: 'editor', ...saved });
+  }
+
+  // 설문 배너 설정 — 관리 화면에서 주소·문구·마감일을 고친다
+  if (pathname === '/api/workshop/survey' && request.method === 'GET') {
+    const value = await wsSurveyLoad(env);
+    return json({ survey: value, defaults: { ...WS_SURVEY, on: true }, live: wsSurveyLive(value) });
+  }
+
+  if (pathname === '/api/workshop/survey' && request.method === 'POST') {
+    if (!env.WSDB) return err('워크샵 데이터베이스가 연결되어 있지 않습니다.', 503);
+    let value;
+    try {
+      value = wsSurveyClean(await readBody(request));
+    } catch (e) {
+      return err(e.message, e.status === 400 ? 400 : 500);
+    }
+    await wsSurveySave(env, value);
+    return json({ ok: true, survey: value, live: wsSurveyLive(value) });
   }
 
   if (pathname === '/api/workshop/versions' && request.method === 'GET') {
