@@ -845,7 +845,11 @@
         '.rb-svbox[hidden]{display:none}',
         '.rb-svcard{display:flex;flex-direction:column;width:min(600px,100%);max-height:calc(100vh - 48px);',
         '  background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);font-family:inherit;color:var(--text)}',
-        '.rb-svhead{padding:20px 20px 0}',
+        '.rb-svhead{position:relative;padding:20px 52px 0 20px}',
+        '.rb-svx{position:absolute;top:14px;right:14px;width:32px;height:32px;display:grid;place-items:center;',
+        '  border:1px solid var(--border);border-radius:999px;background:var(--surface-alt);color:var(--text);',
+        '  font:600 15px/1 inherit;cursor:pointer;padding:0}',
+        '.rb-svx:hover{background:var(--accent-soft);border-color:var(--accent-soft-border);color:var(--accent-strong)}',
         '.rb-svscroll{flex:1;min-height:0;overflow:auto;padding:16px 20px 4px}',
         '.rb-svfoot{padding:12px 20px 18px;border-top:1px solid var(--border);background:var(--surface);border-radius:0 0 var(--radius) var(--radius)}',
         '.rb-svcard h3{margin:0 0 4px;font-size:17px;font-weight:800}',
@@ -914,7 +918,8 @@
         '@media (max-width:560px){.rb-svbox{padding:12px 10px}.rb-svcard{max-height:calc(100vh - 24px)}',
         '  .rb-svhead{padding:16px 16px 0}.rb-svscroll{padding:12px 16px 4px}.rb-svfoot{padding:10px 16px 14px}',
         '  .rb-svtwo{flex-direction:column;gap:0}',
-        '  .rb-svrow button{flex:1 1 auto}.rb-svrow .sp{flex:1 0 100%;height:0}}',
+        '  .rb-svrow{gap:6px}.rb-svrow button{flex:1 1 auto;padding:10px 8px;font-size:12.5px}',
+        '  .rb-svrow .sp{flex:1 0 100%;height:0}}',
       ].join('\n');
       document.head.appendChild(st);
     }
@@ -938,12 +943,14 @@
       el.id = 'rbSvBox';
       el.hidden = true;
       el.innerHTML = '<div class="rb-svcard">'
-        + '<div class="rb-svhead"><h3 id="rbSvH">설문 배너</h3><p class="d" id="rbSvD"></p></div>'
+        + '<div class="rb-svhead"><button type="button" class="rb-svx" id="rbSvX" aria-label="닫기">\u2715</button>'
+        + '<h3 id="rbSvH">설문 배너</h3><p class="d" id="rbSvD"></p></div>'
         + '<div class="rb-svscroll" id="rbSvBody"></div>'
         + '<div class="rb-svfoot"><div class="rb-svrow" id="rbSvActs"></div>'
         + '<p class="rb-svmsg" id="rbSvMsg"></p></div></div>';
       document.body.appendChild(el);
       el.addEventListener('click', function (e) { if (e.target === el) svClose(); });
+      el.querySelector('#rbSvX').addEventListener('click', svClose);
       document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !el.hidden) svClose(); });
       return el;
     }
@@ -1083,7 +1090,7 @@
       $('rbSvH').textContent = '배너 고치기';
       $('rbSvD').textContent = '고친 내용은 ‘목록으로’ 를 눌러 담아 두고, 마지막에 저장을 누르면 한꺼번에 반영됩니다.';
       $('rbSvBody').innerHTML = ''
-        + '<label class="rb-svon"><input type="checkbox" id="rbSvOn"><span>이 배너를 쓴다</span></label>'
+        + '<label class="rb-svon"><input type="checkbox" id="rbSvOn"><span>이 배너 바로 사용</span></label>'
         + '<div class="rb-svf"><label for="rbSvName">배너 이름<span class="hint">목록에서만 보입니다</span></label>'
         + '<input type="text" id="rbSvName" autocomplete="off"></div>'
         + '<div class="rb-svtwo">'
@@ -1105,6 +1112,7 @@
         + '<div class="rb-svprev"><div class="cap">미리보기</div><div id="rbSvPrev"></div></div>';
       $('rbSvActs').innerHTML = '<button type="button" id="rbSvReset">기본 문구 채우기</button>'
         + '<button type="button" id="rbSvDrop">이 배너 지우기</button><span class="sp"></span>'
+        + '<button type="button" id="rbSvShut">닫기</button>'
         + '<button type="button" class="primary" id="rbSvBack">목록으로</button>';
 
       $('rbSvOn').checked = b.on !== false;
@@ -1122,6 +1130,7 @@
         cfg.banners[editing] = Object.assign({}, defaults, keep);
         drawEdit(editing);
       });
+      $('rbSvShut').addEventListener('click', svClose);
       $('rbSvDrop').addEventListener('click', function () {
         var cur = cfg.banners[editing];
         if (cur.title && !window.confirm('‘' + (cur.name || cur.title) + '’ 배너를 지울까요?')) return;
