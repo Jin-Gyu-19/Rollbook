@@ -1150,9 +1150,14 @@ function wsSurveyCleanOne(input, i) {
     out[f.k] = v;
   }
   if (!out.url) throw where('설문 주소를 넣어 주세요.');
+  // 브라우저 주소창에서 복사하면 'https://' 가 빠진 채로 오는 일이 잦다 — 그럴 때는 붙여 준다.
+  // 'javascript:' 처럼 스킴이 이미 붙어 있으면 손대지 않고 아래에서 막는다.
+  let raw = out.url;
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) raw = 'https://' + raw;
   let u;
-  try { u = new URL(out.url); } catch { throw where('주소가 올바르지 않습니다. https:// 로 시작하는 주소를 넣어 주세요.'); }
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw where('주소는 https:// 또는 http:// 로 시작해야 합니다.');
+  try { u = new URL(raw); } catch { throw where('주소가 올바르지 않습니다. 인터넷 주소를 그대로 붙여 넣어 주세요.'); }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw where('여기에는 인터넷 주소(https://…)만 넣을 수 있습니다.');
+  if (!u.hostname || !u.hostname.includes('.')) throw where('주소가 올바르지 않습니다. 인터넷 주소를 그대로 붙여 넣어 주세요.');
   out.url = u.toString();
   if (!out.title) throw where('제목을 넣어 주세요.');
   if (!out.cta) out.cta = WS_SURVEY.cta;

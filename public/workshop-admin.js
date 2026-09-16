@@ -1098,7 +1098,7 @@
         + '<input type="datetime-local" id="rbSvFrom"></div>'
         + '<div class="rb-svf"><label for="rbSvUntil">표시 끝<span class="hint">비우면 계속</span></label>'
         + '<input type="datetime-local" id="rbSvUntil"></div></div>'
-        + '<div class="rb-svf"><label for="rbSvUrl">링크 주소</label>'
+        + '<div class="rb-svf"><label for="rbSvUrl">링크 주소<span class="hint">복사한 주소를 그대로 붙여 넣으세요</span></label>'
         + '<input type="text" id="rbSvUrl" placeholder="https://..." autocomplete="off" spellcheck="false"></div>'
         + '<div class="rb-svf"><label for="rbSvEyebrow">작은 윗줄<span class="hint">배너 맨 위 작은 글씨</span></label>'
         + '<input type="text" id="rbSvEyebrow" autocomplete="off"></div>'
