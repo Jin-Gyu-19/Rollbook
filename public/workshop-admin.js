@@ -821,12 +821,19 @@
     });
   }
 
-  // ── 설문 배너 고치기 ────────────────────────────────
-  // 참석자 화면 맨 위에 뜨는 배너의 주소·문구·마감일을 여기서 바꾼다.
-  // 고친 값은 워크샵 DB(ws_settings)에 들어가고, 배포 없이 바로 참석자 화면에 반영된다.
+  // ── 설문 배너 ──────────────────────────────────────
+  // 배너를 여러 개 만들어 두고, 각각 표시 시작·끝 시각(한국시간)을 정한다.
+  // 자동이면 시간이 되는 대로 저절로 바뀌고, 직접 고르기면 목록에서 고른 하나만 나간다.
+  // 고친 값은 워크샵 DB(ws_settings)에 들어가고 배포 없이 참석자 화면에 바로 반영된다.
   var svBtn = $('rbSvEdit');
   if (svBtn) {
-    var svUi = null, svCur = null, svDef = null;
+    var svUi = null;
+    var cfg = null;        // { mode, pinnedId, banners:[] }
+    var states = {};       // id → live|soon|done|idle|off
+    var blank = null;      // 새 배너의 빈 서식
+    var defaults = null;   // '처음 문구로' 값
+    var editing = -1;      // 지금 고치는 배너 자리 (-1 이면 목록 화면)
+    var svNow = '';
 
     function svCss() {
       if ($('rbSvStyle')) return;
@@ -836,25 +843,63 @@
         '.rb-svbox{position:fixed;inset:0;z-index:4000;background:rgba(10,16,22,.55);display:flex;',
         '  align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto}',
         '.rb-svbox[hidden]{display:none}',
-        '.rb-svcard{display:flex;flex-direction:column;width:min(560px,100%);max-height:calc(100vh - 48px);',
+        '.rb-svcard{display:flex;flex-direction:column;width:min(600px,100%);max-height:calc(100vh - 48px);',
         '  background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);font-family:inherit;color:var(--text)}',
         '.rb-svhead{padding:20px 20px 0}',
         '.rb-svscroll{flex:1;min-height:0;overflow:auto;padding:16px 20px 4px}',
         '.rb-svfoot{padding:12px 20px 18px;border-top:1px solid var(--border);background:var(--surface);border-radius:0 0 var(--radius) var(--radius)}',
         '.rb-svcard h3{margin:0 0 4px;font-size:17px;font-weight:800}',
         '.rb-svcard .d{margin:0 0 4px;font-size:12.5px;color:var(--text-muted);line-height:1.6}',
+
+        /* 자동 / 직접 고르기 */
+        '.rb-svmode{display:flex;gap:6px;padding:4px;margin-bottom:14px;background:var(--surface-alt);',
+        '  border:1px solid var(--border);border-radius:12px}',
+        '.rb-svmode button{flex:1;padding:9px 0;border:0;border-radius:9px;background:transparent;color:var(--text-muted);',
+        '  font:600 13px inherit;cursor:pointer}',
+        '.rb-svmode button.on{background:var(--surface);color:var(--accent-strong);font-weight:700;box-shadow:var(--shadow)}',
+        '.rb-svmodenote{margin:-8px 0 14px;font-size:12px;color:var(--text-muted);line-height:1.55}',
+
+        /* 배너 목록 */
+        '.rb-svlist{display:flex;flex-direction:column;gap:8px}',
+        '.rb-svitem{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:12px 14px}',
+        '.rb-svitem.live{border-color:var(--accent-soft-border);background:var(--accent-soft)}',
+        '.rb-svitem.off{opacity:.62}',
+        '.rb-svtop{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+        '.rb-svname{font-size:14px;font-weight:700;flex:1;min-width:120px;word-break:keep-all}',
+        '.rb-svtag{flex:none;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;',
+        '  background:var(--chip-bg);color:var(--text-muted);border:1px solid var(--border)}',
+        '.rb-svtag.live{background:var(--accent);color:#fff;border-color:var(--accent)}',
+        '.rb-svtag.soon{background:var(--highlight-bg);color:var(--highlight-text);border-color:var(--highlight-border)}',
+        '.rb-svwhen{margin-top:5px;font-size:12px;color:var(--text-muted);line-height:1.5}',
+        '.rb-svacts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}',
+        '.rb-svacts button{padding:6px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface);',
+        '  color:var(--text);font:600 12px inherit;cursor:pointer}',
+        '.rb-svacts button:hover{background:var(--accent-soft);border-color:var(--accent-soft-border);color:var(--accent-strong)}',
+        '.rb-svacts button.now{background:var(--accent);border-color:var(--accent);color:#fff}',
+        '.rb-svacts button.now:hover{background:var(--accent-strong);border-color:var(--accent-strong);color:#fff}',
+        '.rb-svacts button.del:hover{background:#FEF2F2;border-color:#FCA5A5;color:#C81330}',
+        '.rb-svacts .sp{flex:1}',
+        '.rb-svadd{width:100%;margin-top:10px;padding:11px;border:1px dashed var(--accent-soft-border);border-radius:11px;',
+        '  background:var(--accent-soft);color:var(--accent-strong);font:700 13px inherit;cursor:pointer}',
+        '.rb-svadd:hover{border-style:solid}',
+        '.rb-svempty{padding:22px 4px;text-align:center;font-size:13px;color:var(--text-muted);line-height:1.6}',
+
+        /* 편집 서식 */
         '.rb-svf{margin-bottom:12px}',
         '.rb-svf label{display:block;margin-bottom:5px;font-size:12.5px;font-weight:700;color:var(--text)}',
         '.rb-svf .hint{font-weight:500;color:var(--text-muted);margin-left:6px}',
-        '.rb-svf input[type=text],.rb-svf input[type=date],.rb-svf textarea{width:100%;font-family:inherit;font-size:14px;',
-        '  padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);outline:none}',
+        '.rb-svf input[type=text],.rb-svf input[type=datetime-local],.rb-svf textarea{width:100%;font-family:inherit;',
+        '  font-size:14px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);',
+        '  background:var(--surface);color:var(--text);outline:none}',
         '.rb-svf input:focus,.rb-svf textarea:focus{border-color:var(--accent)}',
         '.rb-svf textarea{resize:vertical;min-height:62px;line-height:1.5}',
+        '.rb-svtwo{display:flex;gap:10px}.rb-svtwo>*{flex:1;min-width:0}',
         '.rb-svon{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:11px 13px;border-radius:10px;',
         '  background:var(--surface-alt);border:1px solid var(--border);font-size:13px;font-weight:700;cursor:pointer}',
         '.rb-svon input{width:17px;height:17px;accent-color:var(--accent);cursor:pointer}',
         '.rb-svprev{margin:6px 0 16px;padding:12px;border-radius:12px;background:var(--surface-alt);border:1px solid var(--border)}',
         '.rb-svprev .cap{font-size:11.5px;font-weight:700;color:var(--text-muted);margin-bottom:8px}',
+
         '.rb-svrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
         '.rb-svrow button{padding:10px 16px;border-radius:10px;border:1px solid var(--border);background:var(--surface-alt);',
         '  color:var(--text);font:700 13px inherit;cursor:pointer}',
@@ -864,16 +909,25 @@
         '.rb-svrow .sp{flex:1}',
         '.rb-svmsg{margin-top:10px;font-size:12.5px;line-height:1.5}',
         '.rb-svmsg:empty{display:none}',
+        '.rb-svmsg.ok{color:#15803D} .rb-svmsg.err{color:#C81330}',
         '@media (max-width:560px){.rb-svbox{padding:12px 10px}.rb-svcard{max-height:calc(100vh - 24px)}',
         '  .rb-svhead{padding:16px 16px 0}.rb-svscroll{padding:12px 16px 4px}.rb-svfoot{padding:10px 16px 14px}',
+        '  .rb-svtwo{flex-direction:column;gap:0}',
         '  .rb-svrow button{flex:1 1 auto}.rb-svrow .sp{flex:1 0 100%;height:0}}',
-        '.rb-svmsg.ok{color:#15803D} .rb-svmsg.err{color:#C81330}',
       ].join('\n');
       document.head.appendChild(st);
     }
 
     function esc(v) {
       return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    // '2026-09-21T09:00' → '9/21 09:00'
+    function whenText(v) {
+      if (!v) return '';
+      var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(v);
+      if (!m) return v;
+      return Number(m[2]) + '/' + Number(m[3]) + ' ' + m[4] + ':' + m[5];
     }
 
     function svBuild() {
@@ -883,12 +937,160 @@
       el.id = 'rbSvBox';
       el.hidden = true;
       el.innerHTML = '<div class="rb-svcard">'
-        + '<div class="rb-svhead"><h3>설문 배너</h3>'
-        + '<p class="d">참석자 화면(<b>/workshop/</b>) 맨 위에 뜨는 안내입니다. 여기서 고치면 배포 없이 바로 바뀝니다.<br>'
-        + '주소를 바꾸면 전에 <b>✕</b> 로 숨긴 사람에게도 새 배너가 다시 보입니다.</p></div>'
-        + '<div class="rb-svscroll">'
-        + '<label class="rb-svon"><input type="checkbox" id="rbSvOn"><span>참석자 화면에 배너를 보여 준다</span></label>'
-        + '<div class="rb-svf"><label for="rbSvUrl">설문 주소</label>'
+        + '<div class="rb-svhead"><h3 id="rbSvH">설문 배너</h3><p class="d" id="rbSvD"></p></div>'
+        + '<div class="rb-svscroll" id="rbSvBody"></div>'
+        + '<div class="rb-svfoot"><div class="rb-svrow" id="rbSvActs"></div>'
+        + '<p class="rb-svmsg" id="rbSvMsg"></p></div></div>';
+      document.body.appendChild(el);
+      el.addEventListener('click', function (e) { if (e.target === el) svClose(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !el.hidden) svClose(); });
+      return el;
+    }
+
+    function svSay(t, k) {
+      var m = $('rbSvMsg');
+      if (!m) return;
+      m.textContent = t || '';
+      m.className = 'rb-svmsg' + (k ? ' ' + k : '');
+    }
+
+    function svClose() { if (svUi) svUi.hidden = true; }
+
+    // ── 목록 화면 ──
+    function drawList() {
+      editing = -1;
+      $('rbSvH').textContent = '설문 배너';
+      $('rbSvD').innerHTML = '참석자 화면(<b>/workshop/</b>) 맨 위에 뜨는 안내입니다. 여러 개를 만들어 두고'
+        + ' 시각에 맞춰 저절로 바뀌게 하거나, 목록에서 바로 골라 바꿉니다. 저장하면 배포 없이 바로 반영됩니다.';
+
+      var auto = cfg.mode !== 'pin';
+      var html = '<div class="rb-svmode">'
+        + '<button type="button" data-mode="auto"' + (auto ? ' class="on"' : '') + '>자동 (시각대로)</button>'
+        + '<button type="button" data-mode="pin"' + (auto ? '' : ' class="on"') + '>직접 고르기</button></div>'
+        + '<p class="rb-svmodenote">' + (auto
+          ? '지금 시각이 표시 기간에 든 배너가 나갑니다. 겹치면 <b>늦게 시작한 쪽</b>이 이기고, 기간을 안 정한 배너는 그 사이를 메웁니다.'
+          : '시각과 상관없이 <b>고른 배너 하나</b>만 나갑니다.') + '</p>';
+
+      if (!cfg.banners.length) {
+        html += '<div class="rb-svempty">아직 만들어 둔 배너가 없습니다.<br>아래에서 하나 추가해 보세요.</div>';
+      } else {
+        html += '<div class="rb-svlist">' + cfg.banners.map(function (b, i) {
+          var st = states[b.id] || 'idle';
+          var tag = { live: '지금 표시 중', soon: '예정', done: '끝남', off: '꺼짐', idle: '대기' }[st];
+          var when = b.from || b.until
+            ? (whenText(b.from) || '처음') + ' ~ ' + (whenText(b.until) || '계속')
+            : '표시 기간 없음 (다른 배너가 없을 때 나갑니다)';
+          return '<div class="rb-svitem ' + st + '">'
+            + '<div class="rb-svtop"><span class="rb-svname">' + esc(b.name || b.title) + '</span>'
+            + '<span class="rb-svtag ' + st + '">' + tag + '</span></div>'
+            + '<div class="rb-svwhen">' + esc(b.title) + '<br>' + esc(when) + '</div>'
+            + '<div class="rb-svacts">'
+            + (st === 'live' ? '' : '<button type="button" class="now" data-now="' + i + '">지금 이걸로</button>')
+            + '<button type="button" data-edit="' + i + '">고치기</button>'
+            + '<button type="button" data-copy="' + i + '">복제</button>'
+            + '<span class="sp"></span>'
+            + '<button type="button" class="del" data-del="' + i + '">삭제</button>'
+            + '</div></div>';
+        }).join('') + '</div>';
+      }
+      html += '<button type="button" class="rb-svadd" id="rbSvAdd">+ 배너 추가</button>';
+      $('rbSvBody').innerHTML = html;
+      $('rbSvActs').innerHTML = '<span class="sp"></span>'
+        + '<button type="button" id="rbSvCancel">닫기</button>'
+        + '<button type="button" class="primary" id="rbSvSave">저장</button>';
+
+      $('rbSvBody').querySelectorAll('[data-mode]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          if (b.dataset.mode === 'pin' && !cfg.pinnedId) {
+            var first = cfg.banners.find(function (x) { return x.on !== false; });
+            if (!first) { svSay('켜 둔 배너가 없습니다. 먼저 배너를 켜 주세요.', 'err'); return; }
+            cfg.pinnedId = first.id;
+          }
+          cfg.mode = b.dataset.mode;
+          recount(); drawList(); svSay('');
+        });
+      });
+      $('rbSvBody').querySelectorAll('[data-now]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var t = cfg.banners[Number(b.dataset.now)];
+          cfg.mode = 'pin'; cfg.pinnedId = t.id; t.on = true;
+          recount(); drawList();
+          svSay('‘' + (t.name || t.title) + '’ 을(를) 지금 보여 주도록 했습니다. 저장을 눌러야 반영됩니다.');
+        });
+      });
+      $('rbSvBody').querySelectorAll('[data-edit]').forEach(function (b) {
+        b.addEventListener('click', function () { drawEdit(Number(b.dataset.edit)); });
+      });
+      $('rbSvBody').querySelectorAll('[data-copy]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var src = cfg.banners[Number(b.dataset.copy)];
+          var copy = JSON.parse(JSON.stringify(src));
+          copy.id = 'b' + Date.now().toString(36);
+          copy.name = (src.name || src.title) + ' 복사본';
+          cfg.banners.splice(Number(b.dataset.copy) + 1, 0, copy);
+          recount(); drawList(); svSay('');
+        });
+      });
+      $('rbSvBody').querySelectorAll('[data-del]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var t = cfg.banners[Number(b.dataset.del)];
+          if (!window.confirm('‘' + (t.name || t.title) + '’ 배너를 지울까요?')) return;
+          cfg.banners.splice(Number(b.dataset.del), 1);
+          if (cfg.pinnedId === t.id) { cfg.pinnedId = ''; cfg.mode = 'auto'; }
+          recount(); drawList(); svSay('');
+        });
+      });
+      $('rbSvAdd').addEventListener('click', function () {
+        var b = JSON.parse(JSON.stringify(blank));
+        b.id = 'b' + Date.now().toString(36);
+        b.name = '새 배너';
+        cfg.banners.push(b);
+        drawEdit(cfg.banners.length - 1);
+      });
+      $('rbSvCancel').addEventListener('click', svClose);
+      $('rbSvSave').addEventListener('click', svSave);
+    }
+
+    // 저장 전에도 목록의 '지금 표시 중' 이 맞게 보이도록 브라우저에서 한 번 더 셈한다
+    function recount() {
+      var now = svNow;
+      var on = cfg.banners.filter(function (b) { return b.on !== false; });
+      var pick = null;
+      if (cfg.mode === 'pin') {
+        pick = on.find(function (b) { return b.id === cfg.pinnedId; }) || null;
+      } else {
+        var live = on.filter(function (b) {
+          return (!b.from || b.from <= now) && (!b.until || now <= b.until);
+        });
+        live.sort(function (a, b) { return (b.from || '').localeCompare(a.from || ''); });
+        pick = live[0] || null;
+      }
+      states = {};
+      cfg.banners.forEach(function (b) {
+        if (b.on === false) { states[b.id] = 'off'; return; }
+        if (cfg.mode === 'pin') { states[b.id] = b.id === cfg.pinnedId ? 'live' : 'idle'; return; }
+        if (b.until && now > b.until) { states[b.id] = 'done'; return; }
+        if (b.from && now < b.from) { states[b.id] = 'soon'; return; }
+        states[b.id] = pick && pick.id === b.id ? 'live' : 'idle';
+      });
+    }
+
+    // ── 편집 화면 ──
+    function drawEdit(i) {
+      editing = i;
+      var b = cfg.banners[i];
+      $('rbSvH').textContent = '배너 고치기';
+      $('rbSvD').textContent = '고친 내용은 ‘목록으로’ 를 눌러 담아 두고, 마지막에 저장을 누르면 한꺼번에 반영됩니다.';
+      $('rbSvBody').innerHTML = ''
+        + '<label class="rb-svon"><input type="checkbox" id="rbSvOn"><span>이 배너를 쓴다</span></label>'
+        + '<div class="rb-svf"><label for="rbSvName">배너 이름<span class="hint">목록에서만 보입니다</span></label>'
+        + '<input type="text" id="rbSvName" autocomplete="off"></div>'
+        + '<div class="rb-svtwo">'
+        + '<div class="rb-svf"><label for="rbSvFrom">표시 시작<span class="hint">비우면 처음부터</span></label>'
+        + '<input type="datetime-local" id="rbSvFrom"></div>'
+        + '<div class="rb-svf"><label for="rbSvUntil">표시 끝<span class="hint">비우면 계속</span></label>'
+        + '<input type="datetime-local" id="rbSvUntil"></div></div>'
+        + '<div class="rb-svf"><label for="rbSvUrl">링크 주소</label>'
         + '<input type="text" id="rbSvUrl" placeholder="https://..." autocomplete="off" spellcheck="false"></div>'
         + '<div class="rb-svf"><label for="rbSvEyebrow">작은 윗줄<span class="hint">배너 맨 위 작은 글씨</span></label>'
         + '<input type="text" id="rbSvEyebrow" autocomplete="off"></div>'
@@ -896,68 +1098,70 @@
         + '<input type="text" id="rbSvTitle" autocomplete="off"></div>'
         + '<div class="rb-svf"><label for="rbSvShort">접었을 때 제목<span class="hint">한 줄로 줄었을 때</span></label>'
         + '<input type="text" id="rbSvShort" autocomplete="off"></div>'
-        + '<div class="rb-svf"><label for="rbSvSub">안내 문구</label>'
-        + '<textarea id="rbSvSub"></textarea></div>'
+        + '<div class="rb-svf"><label for="rbSvSub">안내 문구</label><textarea id="rbSvSub"></textarea></div>'
         + '<div class="rb-svf"><label for="rbSvCta">단추 글자</label>'
         + '<input type="text" id="rbSvCta" autocomplete="off"></div>'
-        + '<div class="rb-svf"><label for="rbSvUntil">마감일<span class="hint">이 날까지만 보여 줍니다. 비우면 계속</span></label>'
-        + '<input type="date" id="rbSvUntil"></div>'
-        + '<div class="rb-svprev"><div class="cap">미리보기</div><div id="rbSvPrev"></div></div>'
-        + '</div>'
-        + '<div class="rb-svfoot"><div class="rb-svrow">'
-        + '<button type="button" id="rbSvReset">처음 문구로</button><span class="sp"></span>'
-        + '<button type="button" id="rbSvCancel">닫기</button>'
-        + '<button type="button" class="primary" id="rbSvSave">저장</button></div>'
-        + '<p class="rb-svmsg" id="rbSvMsg"></p></div></div>';
-      document.body.appendChild(el);
-      el.addEventListener('click', function (e) { if (e.target === el) svClose(); });
-      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !el.hidden) svClose(); });
-      $('rbSvCancel').addEventListener('click', svClose);
-      $('rbSvSave').addEventListener('click', svSave);
-      $('rbSvReset').addEventListener('click', function () { if (svDef) svFill(svDef); svPreview(); });
-      ['rbSvOn', 'rbSvUrl', 'rbSvEyebrow', 'rbSvTitle', 'rbSvShort', 'rbSvSub', 'rbSvCta', 'rbSvUntil'].forEach(function (id) {
-        var f = $(id);
-        f.addEventListener('input', svPreview);
-        f.addEventListener('change', svPreview);
+        + '<div class="rb-svprev"><div class="cap">미리보기</div><div id="rbSvPrev"></div></div>';
+      $('rbSvActs').innerHTML = '<button type="button" id="rbSvReset">기본 문구 채우기</button>'
+        + '<button type="button" id="rbSvDrop">이 배너 지우기</button><span class="sp"></span>'
+        + '<button type="button" class="primary" id="rbSvBack">목록으로</button>';
+
+      $('rbSvOn').checked = b.on !== false;
+      ['Name', 'From', 'Until', 'Url', 'Eyebrow', 'Title', 'Short', 'Sub', 'Cta'].forEach(function (k) {
+        $('rbSv' + k).value = b[k.toLowerCase()] || '';
       });
-      return el;
+      ['rbSvOn', 'rbSvName', 'rbSvFrom', 'rbSvUntil', 'rbSvUrl', 'rbSvEyebrow', 'rbSvTitle', 'rbSvShort', 'rbSvSub', 'rbSvCta']
+        .forEach(function (id) {
+          var f = $(id);
+          f.addEventListener('input', pullEdit);
+          f.addEventListener('change', pullEdit);
+        });
+      $('rbSvReset').addEventListener('click', function () {
+        var keep = { id: b.id, name: b.name, from: b.from, until: b.until, on: b.on };
+        cfg.banners[editing] = Object.assign({}, defaults, keep);
+        drawEdit(editing);
+      });
+      $('rbSvDrop').addEventListener('click', function () {
+        var cur = cfg.banners[editing];
+        if (cur.title && !window.confirm('‘' + (cur.name || cur.title) + '’ 배너를 지울까요?')) return;
+        cfg.banners.splice(editing, 1);
+        if (cfg.pinnedId === cur.id) { cfg.pinnedId = ''; cfg.mode = 'auto'; }
+        recount(); drawList(); svSay('');
+      });
+      $('rbSvBack').addEventListener('click', function () {
+        pullEdit();
+        var cur = cfg.banners[editing];
+        if (!cur.url || !cur.title) {
+          svSay('링크 주소와 제목을 채워 주세요. 이 배너가 필요 없으면 ‘이 배너 지우기’ 를 누르세요.', 'err');
+          return;
+        }
+        recount(); drawList(); svSay('');
+      });
+      pullEdit();
     }
 
-    function svFill(v) {
-      $('rbSvOn').checked = v.on !== false;
-      $('rbSvUrl').value = v.url || '';
-      $('rbSvEyebrow').value = v.eyebrow || '';
-      $('rbSvTitle').value = v.title || '';
-      $('rbSvShort').value = v.short || '';
-      $('rbSvSub').value = v.sub || '';
-      $('rbSvCta').value = v.cta || '';
-      $('rbSvUntil').value = v.until || '';
-    }
-
-    function svRead() {
-      return {
-        on: $('rbSvOn').checked,
-        url: $('rbSvUrl').value.trim(),
-        eyebrow: $('rbSvEyebrow').value.trim(),
-        title: $('rbSvTitle').value.trim(),
-        short: $('rbSvShort').value.trim(),
-        sub: $('rbSvSub').value.trim(),
-        cta: $('rbSvCta').value.trim(),
-        until: $('rbSvUntil').value.trim(),
-      };
+    // 편집 화면의 값을 cfg 로 옮기고 미리보기를 다시 그린다
+    function pullEdit() {
+      if (editing < 0) return;
+      var b = cfg.banners[editing];
+      b.on = $('rbSvOn').checked;
+      ['name', 'from', 'until', 'url', 'eyebrow', 'title', 'short', 'sub', 'cta'].forEach(function (k) {
+        b[k] = $('rbSv' + k.charAt(0).toUpperCase() + k.slice(1)).value.trim();
+      });
+      drawPreview(b);
     }
 
     // 참석자가 볼 모습 그대로 — 실제 배너와 같은 클래스를 써서 그린다
-    function svPreview() {
-      var v = svRead();
+    function drawPreview(v) {
       var box = $('rbSvPrev');
-      if (!v.on) {
-        box.innerHTML = '<p style="margin:0;font-size:12.5px;color:var(--text-muted)">배너를 보여 주지 않습니다.</p>';
+      if (!box) return;
+      if (v.on === false) {
+        box.innerHTML = '<p style="margin:0;font-size:12.5px;color:var(--text-muted)">이 배너는 쓰지 않습니다.</p>';
         return;
       }
       box.innerHTML = '<div class="rb-sv" style="margin:0">'
         + '<div class="rb-sv-head">'
-        + '<span class="rb-sv-ico">\uD83D\uDCCB</span>'
+        + '<span class="rb-sv-ico">📋</span>'
         + '<span class="rb-sv-t"><span class="e">' + esc(v.eyebrow) + '</span>'
         + '<span class="h">' + esc(v.title) + '</span></span>'
         + '<span class="rb-sv-tg" style="display:grid">'
@@ -970,29 +1174,20 @@
         + '</div></div></div></div>';
     }
 
-    function svSay(t, k) {
-      var m = $('rbSvMsg');
-      m.textContent = t || '';
-      m.className = 'rb-svmsg' + (k ? ' ' + k : '');
-    }
-
-    function svClose() { if (svUi) svUi.hidden = true; }
-
     async function svSave() {
       var btn = $('rbSvSave');
       btn.disabled = true;
       svSay('저장하는 중…');
       try {
         var r = await fetch('/api/workshop/survey', {
-          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(svRead()),
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cfg),
         });
         var d = await r.json().catch(function () { return {}; });
         if (!r.ok) throw new Error(d.error || '저장하지 못했습니다.');
-        svCur = d.survey;
-        svSay(d.live
-          ? '저장했습니다. 참석자 화면에 바로 반영됩니다. 잠시 후 새로고침됩니다.'
-          : '저장했습니다. 지금은 배너를 보여 주지 않습니다. 잠시 후 새로고침됩니다.', 'ok');
-        setTimeout(function () { location.reload(); }, 1400);
+        svSay(d.activeId
+          ? '저장했습니다. 지금은 ‘' + (d.activeName || '') + '’ 이(가) 참석자 화면에 나갑니다. 잠시 후 새로고침됩니다.'
+          : '저장했습니다. 지금 시각에 내보낼 배너가 없어 참석자 화면에는 아무것도 뜨지 않습니다. 잠시 후 새로고침됩니다.', 'ok');
+        setTimeout(function () { location.reload(); }, 1600);
       } catch (e) {
         svSay(e.message, 'err');
         btn.disabled = false;
@@ -1004,14 +1199,11 @@
       if (!svUi.hidden) { svClose(); return; }
       svUi.hidden = false;
       svSay('');
-      $('rbSvSave').disabled = false;
       try {
         var r = await fetch('/api/workshop/survey');
         var d = await r.json();
-        svCur = d.survey; svDef = d.defaults;
-        svFill(svCur);
-        svPreview();
-        if (svCur.until && !d.live && svCur.on !== false) svSay('마감일이 지나서 지금은 배너가 나오지 않습니다.', 'err');
+        cfg = d.config; states = d.states || {}; blank = d.blank; defaults = d.defaults; svNow = d.now;
+        drawList();
       } catch (e) { svSay(e.message, 'err'); }
     });
   }

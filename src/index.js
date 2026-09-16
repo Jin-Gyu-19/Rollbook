@@ -1082,10 +1082,15 @@ const WS_SURVEY = {
 };
 
 // 관리 화면에서 고친 값은 워크샵 DB(ws_settings)에 둔다. 아무것도 안 고쳤으면 위의 기본값.
+// 배너는 여러 개를 만들어 둘 수 있고, 각각 표시 시작·끝 시각(한국시간)을 정한다.
+//   자동  — 지금 시각이 표시 기간 안에 든 배너를 내보낸다. 여럿이면 늦게 시작한 쪽이 이긴다.
+//   직접  — 목록에서 고른 하나를 시각과 상관없이 내보낸다.
 let wsSurveyCache = null;          // { at, value } — 워커가 살아 있는 동안만
 const WS_SURVEY_TTL = 30 * 1000;
+const WS_SURVEY_MAX = 20;          // 배너 개수 한도
 
 const WS_SURVEY_FIELDS = [
+  { k: 'name',  max: 40,  label: '배너 이름' },
   { k: 'url',   max: 500, label: '설문 주소' },
   { k: 'eyebrow', max: 60, label: '작은 윗줄' },
   { k: 'title', max: 80,  label: '제목' },
@@ -1094,42 +1099,120 @@ const WS_SURVEY_FIELDS = [
   { k: 'cta',   max: 30,  label: '단추 글자' },
 ];
 
+// 화면에 보이는 시각은 늘 한국시간. 표시 기간도 한국시간으로 적고 한국시간으로 견준다.
+function kstNowLocal() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul', hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date());
+  const g = (t) => parts.find((x) => x.type === t).value;
+  return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
+}
+
+function wsSurveyDefaultConfig() {
+  return {
+    v: 2,
+    mode: 'auto',
+    pinnedId: '',
+    banners: [{ ...WS_SURVEY, id: 'b1', name: '설문 안내', on: true, from: '', until: '' }],
+  };
+}
+
+// 예전에 저장해 둔 '배너 하나' 모양을 목록 모양으로 옮긴다 (마감일은 그 날 끝까지로 본다)
+function wsSurveyMigrate(raw) {
+  if (!raw || typeof raw !== 'object') return wsSurveyDefaultConfig();
+  if (Array.isArray(raw.banners)) {
+    return {
+      v: 2,
+      mode: raw.mode === 'pin' ? 'pin' : 'auto',
+      pinnedId: typeof raw.pinnedId === 'string' ? raw.pinnedId : '',
+      banners: raw.banners,
+    };
+  }
+  const one = { ...WS_SURVEY, ...raw, id: 'b1', name: '설문 안내', from: '' };
+  one.on = raw.on !== false;
+  one.until = /^\d{4}-\d{2}-\d{2}$/.test(raw.until || '') ? `${raw.until}T23:59` : '';
+  return { v: 2, mode: 'auto', pinnedId: '', banners: [one] };
+}
+
+const WS_DT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
 // 관리자가 보낸 값을 그대로 믿지 않고 하나씩 살펴 다듬는다
-function wsSurveyClean(input) {
+function wsSurveyCleanOne(input, i) {
+  const where = (msg) => Object.assign(new Error(`${i + 1}번째 배너 — ${msg}`), { status: 400 });
+  if (!input || typeof input !== 'object') throw where('내용을 읽지 못했습니다.');
   const out = { ...WS_SURVEY };
-  if (!input || typeof input !== 'object') throw Object.assign(new Error('보낸 내용을 읽지 못했습니다.'), { status: 400 });
+  out.id = typeof input.id === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(input.id) ? input.id : `b${Date.now().toString(36)}${i}`;
   out.on = input.on !== false;
   for (const f of WS_SURVEY_FIELDS) {
     const v = typeof input[f.k] === 'string' ? input[f.k].trim() : '';
-    if (v.length > f.max) throw Object.assign(new Error(`${f.label} 은(는) ${f.max}자까지 넣을 수 있습니다.`), { status: 400 });
+    if (v.length > f.max) throw where(`${f.label} 은(는) ${f.max}자까지 넣을 수 있습니다.`);
     out[f.k] = v;
   }
-  if (!out.url) throw Object.assign(new Error('설문 주소를 넣어 주세요.'), { status: 400 });
+  if (!out.url) throw where('설문 주소를 넣어 주세요.');
   let u;
-  try { u = new URL(out.url); } catch { throw Object.assign(new Error('설문 주소가 올바르지 않습니다. https:// 로 시작하는 주소를 넣어 주세요.'), { status: 400 }); }
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') {
-    throw Object.assign(new Error('설문 주소는 https:// 또는 http:// 로 시작해야 합니다.'), { status: 400 });
-  }
+  try { u = new URL(out.url); } catch { throw where('주소가 올바르지 않습니다. https:// 로 시작하는 주소를 넣어 주세요.'); }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw where('주소는 https:// 또는 http:// 로 시작해야 합니다.');
   out.url = u.toString();
-  if (!out.title) throw Object.assign(new Error('제목을 넣어 주세요.'), { status: 400 });
+  if (!out.title) throw where('제목을 넣어 주세요.');
   if (!out.cta) out.cta = WS_SURVEY.cta;
   if (!out.short) out.short = out.title;
-  const until = typeof input.until === 'string' ? input.until.trim() : '';
-  if (until && !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
-    throw Object.assign(new Error('마감일은 2026-09-30 처럼 적어 주세요.'), { status: 400 });
+  if (!out.name) out.name = out.title;
+  for (const k of ['from', 'until']) {
+    const v = typeof input[k] === 'string' ? input[k].trim() : '';
+    if (v && !WS_DT.test(v)) throw where(`${k === 'from' ? '표시 시작' : '표시 끝'} 시각을 2026-09-21 09:00 처럼 골라 주세요.`);
+    out[k] = v;
   }
-  out.until = until;
+  if (out.from && out.until && out.from > out.until) throw where('표시 끝이 시작보다 빠릅니다.');
   return out;
 }
 
+function wsSurveyClean(input) {
+  if (!input || typeof input !== 'object') throw Object.assign(new Error('보낸 내용을 읽지 못했습니다.'), { status: 400 });
+  const list = Array.isArray(input.banners) ? input.banners : [input];
+  if (!list.length) throw Object.assign(new Error('배너를 하나 이상 남겨 주세요.'), { status: 400 });
+  if (list.length > WS_SURVEY_MAX) throw Object.assign(new Error(`배너는 ${WS_SURVEY_MAX}개까지 만들 수 있습니다.`), { status: 400 });
+  const banners = list.map(wsSurveyCleanOne);
+  const seen = new Set();
+  for (const b of banners) {
+    while (seen.has(b.id)) b.id += 'x';
+    seen.add(b.id);
+  }
+  const mode = input.mode === 'pin' ? 'pin' : 'auto';
+  let pinnedId = typeof input.pinnedId === 'string' ? input.pinnedId : '';
+  if (pinnedId && !seen.has(pinnedId)) pinnedId = '';
+  if (mode === 'pin' && !pinnedId) throw Object.assign(new Error('직접 고르기를 쓰려면 보여 줄 배너를 하나 골라 주세요.'), { status: 400 });
+  return { v: 2, mode, pinnedId, banners };
+}
+
+// 지금 참석자에게 내보낼 배너 하나를 고른다 (없으면 null)
+function wsSurveyPick(cfg, now = kstNowLocal()) {
+  const banners = (cfg.banners ?? []).filter((b) => b && b.on !== false);
+  if (cfg.mode === 'pin') return banners.find((b) => b.id === cfg.pinnedId) ?? null;
+  const live = banners.filter((b) => (!b.from || b.from <= now) && (!b.until || now <= b.until));
+  if (!live.length) return null;
+  // 표시 기간을 정해 둔 쪽이 '기간 없는 기본 배너' 보다 앞선다. 둘 다 있으면 늦게 시작한 쪽.
+  live.sort((a, b) => (b.from || '').localeCompare(a.from || ''));
+  return live[0];
+}
+
+// 배너 하나가 지금 어떤 상태인지 (관리 화면 목록에 뜨는 글자)
+function wsSurveyState(cfg, b, now = kstNowLocal()) {
+  if (b.on === false) return 'off';
+  if (cfg.mode === 'pin') return b.id === cfg.pinnedId ? 'live' : 'idle';
+  if (b.until && now > b.until) return 'done';
+  if (b.from && now < b.from) return 'soon';
+  return wsSurveyPick(cfg, now)?.id === b.id ? 'live' : 'idle';
+}
+
 async function wsSurveyLoad(env) {
-  if (!env.WSDB) return { ...WS_SURVEY, on: true };
+  if (!env.WSDB) return wsSurveyDefaultConfig();
   if (wsSurveyCache && Date.now() - wsSurveyCache.at < WS_SURVEY_TTL) return wsSurveyCache.value;
-  let value = { ...WS_SURVEY, on: true };
+  let value = wsSurveyDefaultConfig();
   try {
     await ensureWsSchema(env);
     const row = await env.WSDB.prepare("SELECT value FROM ws_settings WHERE key = 'survey'").first();
-    if (row?.value) value = { ...value, ...JSON.parse(row.value) };
+    if (row?.value) value = wsSurveyMigrate(JSON.parse(row.value));
   } catch { /* 설정을 못 읽어도 기본값으로 화면은 뜬다 */ }
   wsSurveyCache = { at: Date.now(), value };
   return value;
@@ -1142,14 +1225,6 @@ async function wsSurveySave(env, value) {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
   ).bind(JSON.stringify(value)).run();
   wsSurveyCache = { at: Date.now(), value };
-}
-
-// 설문 마감일이 지났으면 아예 내보내지 않는다 (한국시간 기준)
-function wsSurveyLive(s) {
-  if (s.on === false) return false;
-  if (!s.until) return true;
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  return today <= s.until;
 }
 const WS_SURVEY_CSS = `
 .rb-sv{position:relative;margin:0 0 18px;border-radius:var(--radius,16px);overflow:hidden;
@@ -1289,13 +1364,12 @@ async function serveWorkshop(request, env, view) {
 
   const rw = new HTMLRewriter();
   // 설문 배너 — 참석자·관리자 화면 모두, .wrap 맨 위 (앱 파일은 그대로 두고 내보낼 때만 끼운다)
-  const survey = await wsSurveyLoad(env);
-  const surveyLive = wsSurveyLive(survey);
+  const survey = wsSurveyPick(await wsSurveyLoad(env));
   // 배너를 꺼 두었어도 관리 화면에는 모양을 그려 줘야 '설문 배너' 창의 미리보기가 제대로 보인다
-  if (surveyLive || view === 'admin') {
+  if (survey || view === 'admin') {
     rw.on('head', { element(el) { el.append(`<style>${WS_SURVEY_CSS}</style>`, { html: true }); } });
   }
-  if (surveyLive) {
+  if (survey) {
     rw.on('.wrap', {
       element(el) {
         el.prepend(WS_SURVEY_HTML(survey), { html: true });
@@ -1498,20 +1572,35 @@ async function route(request, env, pathname) {
 
   // 설문 배너 설정 — 관리 화면에서 주소·문구·마감일을 고친다
   if (pathname === '/api/workshop/survey' && request.method === 'GET') {
-    const value = await wsSurveyLoad(env);
-    return json({ survey: value, defaults: { ...WS_SURVEY, on: true }, live: wsSurveyLive(value) });
+    const cfg = await wsSurveyLoad(env);
+    const now = kstNowLocal();
+    return json({
+      config: cfg,
+      now,
+      activeId: wsSurveyPick(cfg, now)?.id ?? null,
+      states: Object.fromEntries((cfg.banners ?? []).map((b) => [b.id, wsSurveyState(cfg, b, now)])),
+      blank: { ...WS_SURVEY, name: '', title: '', short: '', sub: '', url: '', on: true, from: '', until: '' },
+      defaults: { ...wsSurveyDefaultConfig().banners[0] },
+    });
   }
 
   if (pathname === '/api/workshop/survey' && request.method === 'POST') {
     if (!env.WSDB) return err('워크샵 데이터베이스가 연결되어 있지 않습니다.', 503);
-    let value;
+    let cfg;
     try {
-      value = wsSurveyClean(await readBody(request));
+      cfg = wsSurveyClean(await readBody(request));
     } catch (e) {
       return err(e.message, e.status === 400 ? 400 : 500);
     }
-    await wsSurveySave(env, value);
-    return json({ ok: true, survey: value, live: wsSurveyLive(value) });
+    await wsSurveySave(env, cfg);
+    const now = kstNowLocal();
+    const picked = wsSurveyPick(cfg, now);
+    return json({
+      ok: true, config: cfg, now,
+      activeId: picked?.id ?? null,
+      activeName: picked?.name ?? '',
+      states: Object.fromEntries(cfg.banners.map((b) => [b.id, wsSurveyState(cfg, b, now)])),
+    });
   }
 
   if (pathname === '/api/workshop/versions' && request.method === 'GET') {
