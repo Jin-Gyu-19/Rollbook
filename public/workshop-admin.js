@@ -857,6 +857,7 @@
         '.rb-svmode button{flex:1;padding:9px 0;border:0;border-radius:9px;background:transparent;color:var(--text-muted);',
         '  font:600 13px inherit;cursor:pointer}',
         '.rb-svmode button.on{background:var(--surface);color:var(--accent-strong);font-weight:700;box-shadow:var(--shadow)}',
+        '.rb-svmode button .sm{font-size:11.5px;font-weight:500;opacity:.75;margin-left:3px}',
         '.rb-svmodenote{margin:-8px 0 14px;font-size:12px;color:var(--text-muted);line-height:1.55}',
 
         /* 배너 목록 */
@@ -965,7 +966,7 @@
 
       var auto = cfg.mode !== 'pin';
       var html = '<div class="rb-svmode">'
-        + '<button type="button" data-mode="auto"' + (auto ? ' class="on"' : '') + '>예약대로</button>'
+        + '<button type="button" data-mode="auto"' + (auto ? ' class="on"' : '') + '>자동 전환<span class="sm">(시간 예약)</span></button>'
         + '<button type="button" data-mode="pin"' + (auto ? '' : ' class="on"') + '>직접 고르기</button></div>'
         + '<p class="rb-svmodenote">' + (auto
           ? '배너마다 정해 둔 <b>표시 기간</b>에 맞춰 저절로 바뀝니다. 기간이 겹치면 늦게 시작한 쪽이 이기고, 기간을 안 정한 배너가 그 사이를 메웁니다.'
@@ -979,7 +980,7 @@
           var tag = { live: '지금 표시 중', soon: '예정', done: '끝남', off: '꺼짐', idle: '대기' }[st];
           var when = b.from || b.until
             ? (whenText(b.from) || '처음') + ' ~ ' + (whenText(b.until) || '계속')
-            : '표시 기간 없음 — 예약된 배너가 없는 동안 나갑니다';
+            : '표시 기간 없음 — 예약한 배너가 없는 동안 나갑니다';
           return '<div class="rb-svitem ' + st + '">'
             + '<div class="rb-svtop"><span class="rb-svname">' + esc(b.name || b.title) + '</span>'
             + '<span class="rb-svtag ' + st + '">' + tag + '</span></div>'
