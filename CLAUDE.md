@@ -41,7 +41,7 @@
 - 참석자 화면 맨 위 **설문 배너**도 앱 파일을 고치지 않고 내보낼 때 끼워 넣는다 (`src/index.js` 의 `WS_SURVEY`·`WS_SURVEY_CSS`·`WS_SURVEY_HTML`·`WS_SURVEY_JS`).
   **배너는 여러 개를 만들어 두고 관리 화면의 `설문 배너` 단추에서 관리한다** — 워크샵 DB `ws_settings`('survey' 칸)에
   `{v:2, mode, pinnedId, banners:[…]}` 로 들어가고 배포 없이 바로 반영된다 (`/api/workshop/survey`, 관리자 전용, 30초 캐시).
-  - `mode:'auto'` 는 지금 시각(한국시간)이 표시 기간(`from`~`until`, 비우면 제한 없음)에 든 배너를 내보낸다.
+  - `mode:'auto'`(화면에는 `예약대로`)는 지금 시각(한국시간)이 표시 기간(`from`~`until`, 비우면 제한 없음)에 든 배너를 내보낸다.
     겹치면 **늦게 시작한 쪽**이 이기고(`wsSurveyPick` 의 `from` 내림차순), 기간 없는 배너가 그 사이를 메운다.
   - `mode:'pin'` 은 시각과 상관없이 `pinnedId` 배너 하나만 내보낸다 (목록의 `지금 이걸로`).
   - 예전의 '배너 하나' 모양은 `wsSurveyMigrate` 가 목록으로 옮긴다 (옛 `until` 은 그 날 23:59 로).

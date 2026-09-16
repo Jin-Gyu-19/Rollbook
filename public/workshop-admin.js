@@ -961,15 +961,15 @@
       editing = -1;
       $('rbSvH').textContent = '설문 배너';
       $('rbSvD').innerHTML = '참석자 화면(<b>/workshop/</b>) 맨 위에 뜨는 안내입니다. 여러 개를 만들어 두고'
-        + ' 시각에 맞춰 저절로 바뀌게 하거나, 목록에서 바로 골라 바꿉니다. 저장하면 배포 없이 바로 반영됩니다.';
+        + ' 정해 둔 시각에 저절로 바뀌게 하거나, 목록에서 바로 골라 바꿉니다. 저장하면 배포 없이 바로 반영됩니다.';
 
       var auto = cfg.mode !== 'pin';
       var html = '<div class="rb-svmode">'
-        + '<button type="button" data-mode="auto"' + (auto ? ' class="on"' : '') + '>자동 (시각대로)</button>'
+        + '<button type="button" data-mode="auto"' + (auto ? ' class="on"' : '') + '>예약대로</button>'
         + '<button type="button" data-mode="pin"' + (auto ? '' : ' class="on"') + '>직접 고르기</button></div>'
         + '<p class="rb-svmodenote">' + (auto
-          ? '지금 시각이 표시 기간에 든 배너가 나갑니다. 겹치면 <b>늦게 시작한 쪽</b>이 이기고, 기간을 안 정한 배너는 그 사이를 메웁니다.'
-          : '시각과 상관없이 <b>고른 배너 하나</b>만 나갑니다.') + '</p>';
+          ? '배너마다 정해 둔 <b>표시 기간</b>에 맞춰 저절로 바뀝니다. 기간이 겹치면 늦게 시작한 쪽이 이기고, 기간을 안 정한 배너가 그 사이를 메웁니다.'
+          : '표시 기간을 무시하고 <b>고른 배너 하나</b>만 계속 나갑니다.') + '</p>';
 
       if (!cfg.banners.length) {
         html += '<div class="rb-svempty">아직 만들어 둔 배너가 없습니다.<br>아래에서 하나 추가해 보세요.</div>';
@@ -979,7 +979,7 @@
           var tag = { live: '지금 표시 중', soon: '예정', done: '끝남', off: '꺼짐', idle: '대기' }[st];
           var when = b.from || b.until
             ? (whenText(b.from) || '처음') + ' ~ ' + (whenText(b.until) || '계속')
-            : '표시 기간 없음 (다른 배너가 없을 때 나갑니다)';
+            : '표시 기간 없음 — 예약된 배너가 없는 동안 나갑니다';
           return '<div class="rb-svitem ' + st + '">'
             + '<div class="rb-svtop"><span class="rb-svname">' + esc(b.name || b.title) + '</span>'
             + '<span class="rb-svtag ' + st + '">' + tag + '</span></div>'
