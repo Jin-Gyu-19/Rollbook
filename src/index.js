@@ -13,6 +13,12 @@ const err = (message, status = 400) => json({ error: message }, status);
 // 테이블이 없으면 만들어 둔다 (마이그레이션을 깜빡해도 동작하도록)
 // 한 번에 받아 주는 본문 크기 — 백업 복원·워크샵 자료도 넉넉히 들어간다.
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
+// 오프라인 출석 — 한 번에 올릴 수 있는 건수, 시각 허용 범위, SQL IN·batch 묶음 크기
+const OFFLINE_BATCH_MAX = 300;
+const OFFLINE_FUTURE_MS = 10 * 60 * 1000;        // 스캔 PC 시계가 10분까지 빨라도 받아 준다
+const OFFLINE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const SQL_IN_CHUNK = 80;
+const DB_BATCH_CHUNK = 50;
 
 // 표·열을 바꿀 때마다 이 값을 올린다. 올리지 않으면 예전 DB 가 고쳐지지 않는다.
 const SCHEMA_VERSION = '2026-09-05-1';
@@ -342,6 +348,8 @@ function requiredRole(pathname, method) {
   if (pathname === '/workshop' || pathname === '/workshop/' || pathname === '/workshop/index.html') return null;
   if (pathname === '/' || pathname === '/index.html' || pathname === '/scan' || pathname === '/scanner.js') return 'scanner';
   if (pathname === '/api/status' || pathname === '/api/recent' || pathname === '/api/checkin') return 'scanner';
+  // 오프라인 출석 — 스캔 PC 가 쓰는 것들 (서비스 워커 파일 포함)
+  if (pathname === '/sw.js' || pathname === '/api/offline/pack' || pathname === '/api/checkin/batch') return 'scanner';
   return 'admin';
 }
 
@@ -2104,6 +2112,155 @@ async function route(request, env, pathname) {
       member: { name: member.name, title: member.title, dept: member.dept },
       sheet: { title: sheet.title },
       checked_at: checkedAt,
+    });
+  }
+
+  // ── 오프라인 출석 ─────────────────────────────────────
+  // 행사장 인터넷이 끊겨도 스캔이 멈추지 않게, 스캔 PC 가 미리 명단을 받아 두고
+  // 끊긴 동안은 그 PC 안에 기록해 두었다가 연결이 돌아오면 한꺼번에 올린다.
+
+  // 스캔 PC 가 미리 받아 두는 꾸러미 — 명단 · 지금 기록 중인 출석부 · 이미 출석한 사람
+  if (pathname === '/api/offline/pack' && method === 'GET') {
+    const sheet = await db
+      .prepare('SELECT id, title, sheet_date FROM sheets WHERE is_active = 1 LIMIT 1')
+      .first();
+    const { results: members } = await db
+      .prepare('SELECT id, code, name, title, dept FROM members ORDER BY id')
+      .all();
+    let attended = [];
+    if (sheet) {
+      const { results } = await db
+        .prepare('SELECT member_id, checked_at FROM attendance WHERE sheet_id = ?')
+        .bind(sheet.id)
+        .all();
+      attended = results.map((r) => [r.member_id, r.checked_at]);
+    }
+    return json({ at: new Date().toISOString(), sheet: sheet ?? null, members, attended });
+  }
+
+  // 오프라인 동안 쌓인 기록을 한꺼번에 올린다.
+  // 같은 사람이 여러 PC 에서 찍혔어도 한 줄만 남고, 시각은 '가장 먼저 찍힌 때' 로 맞춘다.
+  if (pathname === '/api/checkin/batch' && method === 'POST') {
+    const body = await readBody(request);
+    const items = Array.isArray(body?.items) ? body.items : null;
+    if (!items) return err('올릴 기록 목록이 없습니다.');
+    if (items.length > OFFLINE_BATCH_MAX) {
+      return err(`한 번에 ${OFFLINE_BATCH_MAX}건까지 올릴 수 있습니다.`, 400);
+    }
+    if (!items.length) return json({ ok: true, results: [], saved: 0, already: 0, unknown: 0 });
+
+    const now = Date.now();
+    // 보낸 값을 그대로 믿지 않는다 — 코드·시각·출석부 번호를 하나씩 살핀다
+    const cleaned = items.map((it, i) => {
+      let code = text(it?.code, 100);
+      if (code.startsWith('ROLLBOOK:')) code = code.slice('ROLLBOOK:'.length);
+      const at = typeof it?.at === 'string' ? it.at : '';
+      const t = Date.parse(at);
+      const sheetId = Number(it?.sheet_id);
+      let bad = '';
+      if (!code) bad = '코드가 비어 있습니다.';
+      else if (!at || Number.isNaN(t)) bad = '시각이 올바르지 않습니다.';
+      else if (t > now + OFFLINE_FUTURE_MS) bad = '시각이 미래입니다.';
+      else if (now - t > OFFLINE_MAX_AGE_MS) bad = '너무 오래된 기록입니다.';
+      else if (!Number.isInteger(sheetId) || sheetId <= 0) bad = '출석부 번호가 올바르지 않습니다.';
+      return { i, code, at: bad ? '' : new Date(t).toISOString(), sheetId, bad };
+    });
+
+    const good = cleaned.filter((c) => !c.bad);
+    const results = cleaned.map((c) => (c.bad ? { i: c.i, status: 'invalid', error: c.bad } : null));
+
+    if (good.length) {
+      // 1) 코드 → 회원, 2) 출석부 존재 확인, 3) 이미 있는 기록 — 세 번만 물어본다
+      const codes = [...new Set(good.map((c) => c.code))];
+      const memberByCode = new Map();
+      for (let i = 0; i < codes.length; i += SQL_IN_CHUNK) {
+        const part = codes.slice(i, i + SQL_IN_CHUNK);
+        const { results: rows } = await db
+          .prepare(`SELECT id, code, name, title, dept FROM members WHERE code IN (${part.map(() => '?').join(',')})`)
+          .bind(...part)
+          .all();
+        for (const r of rows) memberByCode.set(r.code, r);
+      }
+      const sheetIds = [...new Set(good.map((c) => c.sheetId))];
+      const liveSheets = new Set();
+      for (let i = 0; i < sheetIds.length; i += SQL_IN_CHUNK) {
+        const part = sheetIds.slice(i, i + SQL_IN_CHUNK);
+        const { results: rows } = await db
+          .prepare(`SELECT id FROM sheets WHERE id IN (${part.map(() => '?').join(',')})`)
+          .bind(...part)
+          .all();
+        for (const r of rows) liveSheets.add(r.id);
+      }
+      const existing = new Map();   // `${sheetId}:${memberId}` → checked_at
+      const pairs = good
+        .map((c) => ({ sheetId: c.sheetId, member: memberByCode.get(c.code) }))
+        .filter((x) => x.member && liveSheets.has(x.sheetId));
+      for (const sid of new Set(pairs.map((p) => p.sheetId))) {
+        const ids = [...new Set(pairs.filter((p) => p.sheetId === sid).map((p) => p.member.id))];
+        for (let i = 0; i < ids.length; i += SQL_IN_CHUNK) {
+          const part = ids.slice(i, i + SQL_IN_CHUNK);
+          const { results: rows } = await db
+            .prepare(`SELECT member_id, checked_at FROM attendance WHERE sheet_id = ? AND member_id IN (${part.map(() => '?').join(',')})`)
+            .bind(sid, ...part)
+            .all();
+          for (const r of rows) existing.set(`${sid}:${r.member_id}`, r.checked_at);
+        }
+      }
+
+      // 같은 꾸러미 안에 같은 사람이 여러 번 있으면 가장 이른 것만 남긴다
+      const want = new Map();
+      for (const c of good) {
+        const m = memberByCode.get(c.code);
+        if (!m) { results[c.i] = { i: c.i, status: 'unknown' }; continue; }
+        if (!liveSheets.has(c.sheetId)) { results[c.i] = { i: c.i, status: 'no_sheet' }; continue; }
+        const key = `${c.sheetId}:${m.id}`;
+        const prev = want.get(key);
+        if (!prev || c.at < prev.at) want.set(key, { at: c.at, sheetId: c.sheetId, memberId: m.id, member: m });
+        results[c.i] = { i: c.i, status: 'pending', key };
+      }
+
+      const stmts = [];
+      const outcome = new Map();
+      for (const [key, w] of want) {
+        const had = existing.get(key);
+        if (had === undefined) {
+          stmts.push(db.prepare('INSERT OR IGNORE INTO attendance (sheet_id, member_id, checked_at) VALUES (?, ?, ?)')
+            .bind(w.sheetId, w.memberId, w.at));
+          outcome.set(key, 'saved');
+        } else if (w.at < had) {
+          // 오프라인에서 더 먼저 찍혔다 — 실제로 도착한 시각으로 맞춘다
+          stmts.push(db.prepare('UPDATE attendance SET checked_at = ? WHERE sheet_id = ? AND member_id = ?')
+            .bind(w.at, w.sheetId, w.memberId));
+          outcome.set(key, 'earlier');
+        } else {
+          outcome.set(key, 'already');
+        }
+      }
+      for (let i = 0; i < stmts.length; i += DB_BATCH_CHUNK) {
+        await db.batch(stmts.slice(i, i + DB_BATCH_CHUNK));
+      }
+
+      for (const r of results) {
+        if (r && r.status === 'pending') {
+          const w = want.get(r.key);
+          r.status = outcome.get(r.key) ?? 'already';
+          r.checked_at = w?.at;
+          if (w?.member) r.member = { name: w.member.name, title: w.member.title, dept: w.member.dept };
+          delete r.key;
+        }
+      }
+    }
+
+    const count = (st) => results.filter((r) => r && r.status === st).length;
+    return json({
+      ok: true,
+      results,
+      saved: count('saved') + count('earlier'),
+      already: count('already'),
+      unknown: count('unknown'),
+      no_sheet: count('no_sheet'),
+      invalid: count('invalid'),
+      at: new Date().toISOString(),
     });
   }
 

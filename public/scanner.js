@@ -116,6 +116,232 @@
   const esc = (s) =>
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // ── 오프라인 출석 ────────────────────────────────────
+  // 행사장 인터넷이 끊겨도 스캔이 멈추면 안 된다. 그래서
+  //   1) 연결돼 있을 때 명단·출석부를 이 PC 에 받아 두고,
+  //   2) 끊긴 동안은 이 PC 안에 기록을 쌓고,
+  //   3) 연결이 돌아오면 쌓아 둔 것을 한꺼번에 올린다.
+  // 쌓아 둔 기록은 서버가 받았다고 확인해 준 것만 지운다 — 그래야 한 건도 안 없어진다.
+  const OFF_PACK = 'rb_off_pack';      // 명단 꾸러미
+  const OFF_QUEUE = 'rb_off_queue';    // 아직 못 올린 기록
+  const PACK_REFRESH_MS = 5 * 60 * 1000;
+  const BATCH_SIZE = 100;
+
+  const store = {
+    get(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+    },
+  };
+
+  let pack = store.get(OFF_PACK, null);       // { at, sheet, members:[], attended:[[id,at]] }
+  let queue = store.get(OFF_QUEUE, []);       // [{ code, at, sheet_id, member_id, name, title, dept }]
+  if (!Array.isArray(queue)) queue = [];
+  let byCode = new Map();
+  let byId = new Map();
+  let localAttended = new Map();              // member_id → checked_at (꾸러미 + 대기열)
+  let packAt = 0;
+  let syncing = false;
+  // 스캔 PC 의 시계가 틀어져 있어도 기록 시각이 맞도록, 연결돼 있을 때
+  // 서버 시각과의 차이를 재 두었다가 오프라인 기록에 반영한다.
+  let clockSkew = Number(store.get('rb_off_skew', 0)) || 0;
+  const nowIso = () => new Date(Date.now() + clockSkew).toISOString();
+  let offlineMode = false;                    // 마지막 서버 요청이 실패했나
+  let offlineSince = 0;
+  // 인터넷이 죽었는데 와이파이는 잡혀 있는 곳에서는 요청이 '멈춰 서서' 시간을 다 잡아먹는다.
+  // 한 번 끊긴 것을 알면 잠시 동안은 서버를 건너뛰고 바로 이 PC 에 기록한다.
+  const OFFLINE_HOLD_MS = 15000;
+  function markOffline() { offlineMode = true; offlineSince = Date.now(); }
+  function markOnline() { offlineMode = false; offlineSince = 0; }
+  const skipServer = () => !navigator.onLine || (offlineMode && Date.now() - offlineSince < OFFLINE_HOLD_MS);
+
+  function indexPack() {
+    byCode = new Map();
+    byId = new Map();
+    localAttended = new Map();
+    if (!pack) return;
+    for (const m of pack.members || []) { byCode.set(m.code, m); byId.set(m.id, m); }
+    for (const [id, at] of pack.attended || []) localAttended.set(id, at);
+    for (const q of queue) {
+      if (!q.member_id) continue;
+      const had = localAttended.get(q.member_id);
+      if (!had || q.at < had) localAttended.set(q.member_id, q.at);
+    }
+  }
+  indexPack();
+
+  // 이 사람은 이미 출석했다고 이 PC 에 남긴다 (온라인·오프라인 모두).
+  // 꾸러미에 같이 적어 두어야 새로고침해도 기억한다.
+  function markAttended(memberId, at) {
+    if (!memberId || !at) return;
+    const had = localAttended.get(memberId);
+    if (had && had <= at) return;
+    localAttended.set(memberId, at);
+    if (!pack) return;
+    if (!Array.isArray(pack.attended)) pack.attended = [];
+    const i = pack.attended.findIndex((x) => x[0] === memberId);
+    if (i < 0) pack.attended.push([memberId, at]);
+    else pack.attended[i][1] = at;
+    store.set(OFF_PACK, pack);
+  }
+
+  function saveQueue() {
+    if (!store.set(OFF_QUEUE, queue)) {
+      // 저장소가 막힌 PC — 조용히 넘어가면 기록이 사라지므로 화면에 알린다
+      setOffChip('저장 공간을 쓸 수 없습니다 — 관리자에게 알려 주세요', true);
+    }
+    paintOffChip();
+  }
+
+  // 화면 위쪽 상태 알림 (연결 상태 · 아직 못 올린 건수)
+  const offChip = document.getElementById('offChip');
+  const offChipText = document.getElementById('offChipText');
+  let chipOverride = '';
+  function setOffChip(msg, sticky) {
+    chipOverride = msg || '';
+    paintOffChip();
+    if (msg && !sticky) setTimeout(() => { if (chipOverride === msg) { chipOverride = ''; paintOffChip(); } }, 4000);
+  }
+  function paintOffChip() {
+    if (!offChip) return;
+    const pending = queue.length;
+    let cls = 'scan-chip off-chip';
+    let text;
+    if (chipOverride) {
+      text = chipOverride;
+      cls += ' warn';
+    } else if (offlineMode || !navigator.onLine) {
+      text = pending ? `오프라인 · 이 PC 에 ${pending}건 저장됨` : '오프라인 · 명단으로 출석 받는 중';
+      cls += ' bad';
+    } else if (pending) {
+      text = `올리는 중 · ${pending}건 남음`;
+      cls += ' warn';
+    } else if (!pack) {
+      text = '오프라인 준비 안 됨';
+      cls += ' warn';
+    } else {
+      text = `오프라인 준비됨 · ${(pack.members || []).length}명`;
+      cls += ' good';
+    }
+    offChipText.textContent = text;
+    offChip.className = cls;
+    offChip.hidden = false;
+  }
+
+  // 명단 꾸러미 받아 두기 (연결돼 있을 때만)
+  async function refreshPack(force) {
+    if (!force && Date.now() - packAt < PACK_REFRESH_MS) return;
+    try {
+      const r = await fetch('/api/offline/pack', { cache: 'no-store' });
+      if (r.status === 401) return toLogin();
+      if (!r.ok) return;
+      const d = await r.json();
+      if (!Array.isArray(d.members)) return;
+      pack = d;
+      packAt = Date.now();
+      const serverAt = Date.parse(d.at);
+      if (!Number.isNaN(serverAt)) {
+        const skew = serverAt - Date.now();
+        // 하루 넘게 벌어진 값은 무언가 잘못된 것이니 쓰지 않는다
+        clockSkew = Math.abs(skew) < 24 * 60 * 60 * 1000 ? skew : 0;
+        store.set('rb_off_skew', clockSkew);
+      }
+      store.set(OFF_PACK, pack);
+      indexPack();
+      markOnline();
+      paintOffChip();
+    } catch {
+      markOffline();
+      paintOffChip();
+    }
+  }
+
+  // 오프라인에서 QR 한 장 처리 — 받아 둔 명단으로 판단하고 이 PC 에 쌓는다
+  function offlineCheckin(rawCode) {
+    const code = rawCode.startsWith('ROLLBOOK:') ? rawCode.slice('ROLLBOOK:'.length) : rawCode;
+    if (!pack || !byCode.size) return { status: 'not_ready' };
+    if (!pack.sheet) return { status: 'no_sheet' };
+    const m = byCode.get(code);
+    if (!m) return { status: 'unknown' };
+    const had = localAttended.get(m.id);
+    if (had) return { status: 'already', member: m, checked_at: had, offline: true };
+    const at = nowIso();
+    queue.push({ code, at, sheet_id: pack.sheet.id, member_id: m.id, name: m.name, title: m.title, dept: m.dept });
+    markAttended(m.id, at);
+    saveQueue();
+    return { status: 'ok', member: m, checked_at: at, offline: true };
+  }
+
+  // 쌓아 둔 기록 올리기 — 서버가 확인해 준 것만 대기열에서 뺀다
+  async function syncQueue(manual) {
+    if (syncing || !queue.length) return;
+    if (!navigator.onLine && !manual) return;
+    syncing = true;
+    paintOffChip();
+    let sent = 0, dropped = 0, kept = 0;
+    try {
+      while (queue.length) {
+        const chunk = queue.slice(0, BATCH_SIZE);
+        const r = await fetch('/api/checkin/batch', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ items: chunk.map((q) => ({ code: q.code, at: q.at, sheet_id: q.sheet_id })) }),
+        });
+        if (r.status === 401) { toLogin(); break; }
+        if (!r.ok) { kept = queue.length; break; }          // 서버가 거절 — 그대로 두고 다음에 다시
+        const d = await r.json().catch(() => null);
+        if (!d || !Array.isArray(d.results)) { kept = queue.length; break; }
+        // 서버가 결과를 준 자리만 대기열에서 뺀다
+        const keepIdx = new Set();
+        d.results.forEach((res, i) => {
+          if (!res) { keepIdx.add(i); return; }
+          if (res.status === 'no_sheet') { keepIdx.add(i); return; }  // 출석부가 아직 없다 — 나중에 다시
+          if (res.status === 'unknown' || res.status === 'invalid') dropped += 1;
+          else sent += 1;
+        });
+        const keepItems = chunk.filter((_, i) => keepIdx.has(i));
+        queue = keepItems.concat(queue.slice(chunk.length));
+        saveQueue();
+        if (keepItems.length === chunk.length) { kept = queue.length; break; }  // 더 못 올린다
+      }
+      markOnline();
+      if (sent || dropped) {
+        const bits = [];
+        if (sent) bits.push(`${sent}건 올림`);
+        if (dropped) bits.push(`${dropped}건은 등록되지 않은 QR 이라 건너뜀`);
+        if (kept) bits.push(`${kept}건은 다음에 다시 시도`);
+        setOffChip(bits.join(' · '));
+      }
+      await refreshPack(true);
+      loadRecent();
+    } catch {
+      markOffline();
+    } finally {
+      syncing = false;
+      paintOffChip();
+    }
+  }
+
+  window.addEventListener('online', () => { markOnline(); paintOffChip(); refreshPack(true); syncQueue(); });
+  window.addEventListener('offline', () => { markOffline(); paintOffChip(); });
+  offChip?.addEventListener('click', () => { refreshPack(true); syncQueue(true); });
+
+  // 점검용 — 카메라 없이 콘솔에서 QR 값을 넣어 볼 수 있다.
+  //   rbScan('RB-XXXX-XXXX')  ← 스캔한 것과 똑같이 동작한다
+  //   rbOffline.state()       ← 지금 상태 (대기 건수·명단 수·연결)
+  window.rbScan = (code) => onCode(String(code || '').trim());
+  window.rbOffline = {
+    state: () => ({ pending: queue.length, members: (pack?.members || []).length, sheet: pack?.sheet?.id ?? null, offline: offlineMode }),
+    queue: () => queue.slice(),
+    sync: () => syncQueue(true),
+    refresh: () => refreshPack(true),
+  };
+
   // ── 우측 실시간 출석부 패널 ──────────────────────────
   const attPanel = document.getElementById('attPanel');
   const panelList = document.getElementById('panelList');
@@ -187,9 +413,47 @@
           <span class="att-time">${fmtClock(e.checked_at)}</span>
         </div>`).join('');
       latestCheckedAt = top;
+      markOnline();
+      paintOffChip();
     } catch {
-      /* 다음 주기에 재시도 */
+      // 서버에 못 닿았다 — 이 PC 가 아는 것으로 그린다
+      markOffline();
+      paintOffChip();
+      renderPanel();
     }
+  }
+
+  // 오프라인일 때의 우측 패널 — 받아 둔 명단 + 이 PC 에 쌓인 기록으로 그린다
+  function renderPanel() {
+    if (!pack) {
+      panelSheetTitle.textContent = '출석부';
+      panelSheetSub.className = 'scan-panel-sub off';
+      panelSheetSub.innerHTML = '<span class="rec-dot"></span>오프라인 · 받아 둔 명단 없음';
+      panelCount.textContent = '';
+      panelList.innerHTML = '<div class="att-empty">인터넷이 될 때 이 화면을<br>한 번 열어 두어야 합니다</div>';
+      return;
+    }
+    panelSheetTitle.textContent = pack.sheet ? pack.sheet.title : '출석부';
+    panelSheetSub.className = 'scan-panel-sub off';
+    panelSheetSub.innerHTML = `<span class="rec-dot"></span>오프라인 · ${esc(pack.sheet ? pack.sheet.sheet_date : '출석부 없음')}`;
+    panelCount.textContent = `${localAttended.size} / ${(pack.members || []).length}명`;
+    const rows = [...localAttended.entries()]
+      .map(([id, at]) => ({ m: byId.get(id), at }))
+      .filter((x) => x.m)
+      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    if (!rows.length) {
+      panelList.innerHTML = '<div class="att-empty">아직 출석한 사람이 없습니다</div>';
+      return;
+    }
+    const n = rows.length;
+    panelList.innerHTML = rows.map((e, i) => `
+        <div class="att-row">
+          <span class="att-no">${n - i}</span>
+          <span class="att-check">✓</span>
+          <span class="att-name">${esc(e.m.name)}${e.m.title ? `<small>${esc(e.m.title)}</small>` : ''}</span>
+          <span class="att-dept">${esc(e.m.dept)}</span>
+          <span class="att-time">${fmtClock(e.at)}</span>
+        </div>`).join('');
   }
   // ── 폴링 — 움직임이 있을 때만 자주 묻고, 조용하면 뜸하게 ──
   // 클라우드플레어 무료 플랜은 하루 10만 요청이라, 5초마다 무조건 묻던 방식(PC 한 대에
@@ -213,6 +477,21 @@
   window.rbPollState = () => (Date.now() - lastActivity < ACTIVE_FOR ? 'fast' : 'slow'); // 점검용
   loadRecent();
   schedulePoll();
+
+  // 오프라인 채비 — 명단을 받아 두고, 지난번에 못 올린 것이 있으면 올린다
+  paintOffChip();
+  refreshPack(true).then(() => syncQueue());
+  setInterval(() => { if (!document.hidden && navigator.onLine) { refreshPack(); syncQueue(); } }, PACK_REFRESH_MS);
+  // 끊긴 동안에는 더 자주 두드려 본다 — 인터넷이 돌아오면 바로 올리기 위해
+  setInterval(() => {
+    if (document.hidden || !navigator.onLine) return;
+    if (offlineMode || queue.length) { refreshPack(true); syncQueue(); }
+  }, 20000);
+
+  // 인터넷이 끊겨도 이 화면이 열리도록 화면 파일을 이 PC 에 담아 둔다
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* 안 되면 온라인으로만 동작 */ });
+  }
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     loadRecent();      // 다시 보이면 바로 한 번
@@ -355,6 +634,10 @@
     if (text) onCode(text.trim());
   }
 
+  // 서버가 죽었는데 끊긴 줄도 모르는 상황(사내망 차단 등)에서 스캔이 멈추지 않게,
+  // 이만큼 기다려도 답이 없으면 오프라인으로 본다.
+  const CHECKIN_TIMEOUT_MS = 5000;
+
   async function onCode(code) {
     if (!code) return;
     const t = Date.now();
@@ -364,14 +647,31 @@
 
     busy = true;
     setCam('확인 중…', '');
+    // 이미 끊긴 것을 알면 서버를 기다리지 않고 바로 이 PC 에 기록한다
+    if (skipServer()) return showOffline(offlineCheckin(code));
     try {
-      const r = await fetch('/api/checkin', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), CHECKIN_TIMEOUT_MS);
+      let r;
+      try {
+        r = await fetch('/api/checkin', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ code }),
+          signal: ac.signal,
+        });
+      } finally { clearTimeout(timer); }
       if (r.status === 401) return toLogin();
+      markOnline();
+      paintOffChip();
       const data = await r.json().catch(() => ({}));
+      // 온라인으로 찍힌 사람도 이 PC 의 '이미 출석' 목록에 넣어 둔다.
+      // 안 그러면 곧바로 인터넷이 끊겼을 때 같은 사람을 또 받아 버린다.
+      if (data.status === 'ok' || data.status === 'already') {
+        const bare = code.startsWith('ROLLBOOK:') ? code.slice('ROLLBOOK:'.length) : code;
+        const m = byCode.get(bare);
+        if (m && data.checked_at) markAttended(m.id, data.checked_at);
+      }
       const who = data.member
         ? `${data.member.name}${data.member.title ? ` ${data.member.title}` : ''}님`
         : '';
@@ -398,8 +698,38 @@
         showResult('err', { name: '오류', msg: data.error || '출석 처리 중 오류가 발생했습니다.', mark: '✕' });
       }
     } catch {
-      showResult('err', { name: '연결 오류', msg: '네트워크 연결을 확인해 주세요.', mark: '✕' });
+      // 서버에 닿지 못했다 — 받아 둔 명단으로 이 PC 에 기록한다
+      markOffline();
+      showOffline(offlineCheckin(code));
     }
+  }
+
+  // 오프라인으로 처리한 결과를 화면에 보여 준다
+  function showOffline(res) {
+    const m = res.member;
+    const who = m ? `${m.name}${m.title ? ` ${m.title}` : ''}님` : '';
+    if (res.status === 'ok') {
+      showResult('ok', {
+        name: who,
+        msg: `${m.dept ? `${m.dept} · ` : ''}${fmtClock(res.checked_at)} 출석 · 오프라인 기록`,
+        mark: '✓',
+      });
+      lastActivity = Date.now();
+      renderPanel();
+    } else if (res.status === 'already') {
+      showResult('warn', { name: who, msg: `이미 출석 처리되어 있습니다 · ${fmtClock(res.checked_at)}`, mark: '!' });
+    } else if (res.status === 'unknown') {
+      showResult('err', { name: '알 수 없는 QR', msg: '받아 둔 명단에 없는 QR 입니다.', mark: '✕' });
+    } else if (res.status === 'no_sheet') {
+      showResult('err', { name: '출석부 없음', msg: '받아 둘 때 기록 중인 출석부가 없었습니다.', mark: '✕' });
+    } else {
+      showResult('err', {
+        name: '오프라인 준비 안 됨',
+        msg: '인터넷이 될 때 이 화면을 한 번 열어 명단을 받아 두어야 합니다.',
+        mark: '✕',
+      });
+    }
+    paintOffChip();
   }
 
   function showResult(kind, { name = '', msg = '', mark = '✓' } = {}) {
