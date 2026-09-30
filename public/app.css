@@ -482,3 +482,6 @@ button.mini-btn:disabled { opacity: .6; cursor: default; }
 
 .nowrap { white-space: nowrap; }
 .rowno { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* 출석 현황 오른쪽 패널의 칸 나눔 줄 */
+.status-side .side-div { height: 1px; background: var(--line, #E5E7EB); margin: 18px 0 16px; }

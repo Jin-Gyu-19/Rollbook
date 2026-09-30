@@ -36,7 +36,7 @@
     for (const part of new Intl.DateTimeFormat('en-GB', {
       timeZone: KST, hourCycle: 'h23',
       year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
     }).formatToParts(d)) out[part.type] = part.value;
     return out;
   }
@@ -748,6 +748,89 @@
       $('rpHint').textContent = `${list.length}명으로 만들었습니다.`
         + (noCpa.length ? ` 회계사 번호가 없는 ${noCpa.length}명(${noCpa.slice(0, 5).map((x) => x.name).join(', ')}${noCpa.length > 5 ? ' 외' : ''})은 ${$('rpOnlyCpa').checked ? '빠졌습니다' : '등록번호 칸이 비어 있습니다'} — 명단 탭에서 번호를 채울 수 있습니다.` : '');
       toast(`출석집계표 ${list.length}명을 내려받았습니다`);
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  });
+
+  // ── 출석 체크 내역 내려받기 ──────────────────────────
+  // 집계표와 달리 '가공 없는 기록' 이다. QR 을 찍은 순서대로 누가 언제 출석했는지
+  // 그대로 내려받아, 엑셀에서 정렬·필터로 바로 들여다볼 수 있게 한다.
+  $('btnLog')?.addEventListener('click', async () => {
+    const btn = $('btnLog');
+    const sheetId = Number($('statusSheetSel').value);
+    if (!sheetId) { toast('출석부를 먼저 고르세요', true); return; }
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = '만드는 중…';
+    try {
+      const { sheet, rows } = await api(`/api/sheets/${sheetId}`);
+      const attended = rows.filter((r) => r.checked_at);
+      const withAll = $('lgAll').checked;
+      const withCode = $('lgCode').checked;
+      if (!attended.length && !withAll) {
+        $('lgHint').textContent = '이 출석부에는 아직 출석 기록이 없습니다.'
+          + ' 출석부를 맞게 골랐는지 확인하거나, ‘출석 안 한 사람도 포함’ 을 켜면 명단 전체를 받을 수 있습니다.';
+        toast('내려받을 출석 기록이 없습니다', true);
+        return;
+      }
+      // 찍은 순서대로. 안 찍은 사람은 뒤에 이름순으로 붙인다.
+      const list = withAll ? rows.slice() : attended;
+      list.sort((a, b) => {
+        if (a.checked_at && b.checked_at) return a.checked_at < b.checked_at ? -1 : a.checked_at > b.checked_at ? 1 : 0;
+        if (a.checked_at) return -1;
+        if (b.checked_at) return 1;
+        return String(a.name).localeCompare(String(b.name), 'ko');
+      });
+
+      await needXlsx();
+      const head = ['순번', '이름', '직함', '부서', '회계사 번호', '출석일', '출석시각', '상태'];
+      if (withCode) head.push('QR 코드');
+      const aoa = [head];
+      let n = 0;
+      for (const r of list) {
+        const t = r.checked_at ? kstParts(r.checked_at) : null;
+        const row = [
+          r.checked_at ? ++n : '',
+          r.name ?? '',
+          r.title ?? '',
+          r.dept ?? '',
+          String(r.cpa_no ?? ''),
+          t ? `${t.year}-${t.month}-${t.day}` : '',
+          t ? `${t.hour}:${t.minute}:${t.second}` : '',
+          r.checked_at ? '출석' : '미출석',
+        ];
+        if (withCode) row.push(r.code ?? '');
+        aoa.push(row);
+      }
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 12 },
+        { wch: 12 }, { wch: 10 }, { wch: 8 }].concat(withCode ? [{ wch: 16 }] : []);
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: head.length - 1 } }) };
+      ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetNameSafe('출석 체크 내역'));
+      const stamp = (kstParts(Date.now()) || {});
+      const fname = `출석체크내역_${sheetNameSafe(sheet.title)}_${sheet.sheet_date || `${stamp.year}-${stamp.month}-${stamp.day}`}.xlsx`;
+      // 집계표 내려받기와 같은 방식 — 파일 이름이 확실히 붙도록 직접 내려받는다
+      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+
+      const first = attended[0] ? fmtTime(attended.slice().sort((a, b) => (a.checked_at < b.checked_at ? -1 : 1))[0].checked_at) : '';
+      const last = attended.length ? fmtTime(attended.slice().sort((a, b) => (a.checked_at < b.checked_at ? 1 : -1))[0].checked_at) : '';
+      $('lgHint').textContent = `출석 ${attended.length}명`
+        + (withAll ? ` · 미출석 ${rows.length - attended.length}명 포함` : '')
+        + (attended.length ? ` · 첫 출석 ${first} ~ 마지막 ${last} (한국시간)` : '');
+      toast(`출석 체크 내역 ${withAll ? rows.length : attended.length}줄을 내려받았습니다`);
     } catch (e) {
       toast(e.message, true);
     } finally {

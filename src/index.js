@@ -2310,7 +2310,7 @@ async function route(request, env, pathname) {
       if (!sheet) return err('출석부를 찾을 수 없습니다.', 404);
       const { results } = await db
         .prepare(`
-          SELECT m.id AS member_id, m.name, m.title, m.dept, m.cpa_no, a.checked_at
+          SELECT m.id AS member_id, m.name, m.title, m.dept, m.cpa_no, m.code, a.checked_at
           FROM members m
           LEFT JOIN attendance a ON a.member_id = m.id AND a.sheet_id = ?
           ORDER BY m.name, m.id
