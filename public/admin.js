@@ -759,6 +759,65 @@
   // ── 출석 체크 내역 내려받기 ──────────────────────────
   // 집계표와 달리 '가공 없는 기록' 이다. QR 을 찍은 순서대로 누가 언제 출석했는지
   // 그대로 내려받아, 엑셀에서 정렬·필터로 바로 들여다볼 수 있게 한다.
+  // 한 개 받기와 '모든 출석부 한꺼번에' 가 같은 모양의 파일을 쓰도록 여기서 만든다.
+  const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  // 찍은 순서대로. 안 찍은 사람은 뒤에 이름순으로 붙인다.
+  function logRows(rows, withAll) {
+    const list = withAll ? rows.slice() : rows.filter((r) => r.checked_at);
+    return list.sort((a, b) => {
+      if (a.checked_at && b.checked_at) return a.checked_at < b.checked_at ? -1 : a.checked_at > b.checked_at ? 1 : 0;
+      if (a.checked_at) return -1;
+      if (b.checked_at) return 1;
+      return String(a.name).localeCompare(String(b.name), 'ko');
+    });
+  }
+
+  // 출석부 하나의 내역을 xlsx 로 (XLSX 가 불려 있어야 한다)
+  function logWorkbook(rows, withAll, withCode) {
+    const head = ['순번', '이름', '직함', '부서', '회계사 번호', '출석일', '출석시각', '상태'];
+    if (withCode) head.push('QR 코드');
+    const aoa = [head];
+    let n = 0;
+    for (const r of logRows(rows, withAll)) {
+      const t = r.checked_at ? kstParts(r.checked_at) : null;
+      const row = [
+        r.checked_at ? ++n : '',
+        r.name ?? '',
+        r.title ?? '',
+        r.dept ?? '',
+        String(r.cpa_no ?? ''),
+        t ? `${t.year}-${t.month}-${t.day}` : '',
+        t ? `${t.hour}:${t.minute}:${t.second}` : '',
+        r.checked_at ? '출석' : '미출석',
+      ];
+      if (withCode) row.push(r.code ?? '');
+      aoa.push(row);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 12 },
+      { wch: 12 }, { wch: 10 }, { wch: 8 }].concat(withCode ? [{ wch: 16 }] : []);
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: head.length - 1 } }) };
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetNameSafe('출석 체크 내역'));
+    return XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  }
+
+  // 파일 이름에 못 쓰는 글자를 뺀다 (윈도 탐색기 기준)
+  const fileSafe = (v) => String(v ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+
+  // 집계표와 같은 방식 — 파일 이름이 확실히 붙도록 직접 내려받는다
+  function saveBlob(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+
   $('btnLog')?.addEventListener('click', async () => {
     const btn = $('btnLog');
     const sheetId = Number($('statusSheetSel').value);
@@ -777,60 +836,69 @@
         toast('내려받을 출석 기록이 없습니다', true);
         return;
       }
-      // 찍은 순서대로. 안 찍은 사람은 뒤에 이름순으로 붙인다.
-      const list = withAll ? rows.slice() : attended;
-      list.sort((a, b) => {
-        if (a.checked_at && b.checked_at) return a.checked_at < b.checked_at ? -1 : a.checked_at > b.checked_at ? 1 : 0;
-        if (a.checked_at) return -1;
-        if (b.checked_at) return 1;
-        return String(a.name).localeCompare(String(b.name), 'ko');
-      });
-
       await needXlsx();
-      const head = ['순번', '이름', '직함', '부서', '회계사 번호', '출석일', '출석시각', '상태'];
-      if (withCode) head.push('QR 코드');
-      const aoa = [head];
-      let n = 0;
-      for (const r of list) {
-        const t = r.checked_at ? kstParts(r.checked_at) : null;
-        const row = [
-          r.checked_at ? ++n : '',
-          r.name ?? '',
-          r.title ?? '',
-          r.dept ?? '',
-          String(r.cpa_no ?? ''),
-          t ? `${t.year}-${t.month}-${t.day}` : '',
-          t ? `${t.hour}:${t.minute}:${t.second}` : '',
-          r.checked_at ? '출석' : '미출석',
-        ];
-        if (withCode) row.push(r.code ?? '');
-        aoa.push(row);
-      }
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 12 },
-        { wch: 12 }, { wch: 10 }, { wch: 8 }].concat(withCode ? [{ wch: 16 }] : []);
-      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: head.length - 1 } }) };
-      ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, sheetNameSafe('출석 체크 내역'));
       const stamp = (kstParts(Date.now()) || {});
       const fname = `출석체크내역_${sheetNameSafe(sheet.title)}_${sheet.sheet_date || `${stamp.year}-${stamp.month}-${stamp.day}`}.xlsx`;
-      // 집계표 내려받기와 같은 방식 — 파일 이름이 확실히 붙도록 직접 내려받는다
-      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-      a.download = fname;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      saveBlob(new Blob([logWorkbook(rows, withAll, withCode)], { type: XLSX_TYPE }), fname);
 
-      const first = attended[0] ? fmtTime(attended.slice().sort((a, b) => (a.checked_at < b.checked_at ? -1 : 1))[0].checked_at) : '';
-      const last = attended.length ? fmtTime(attended.slice().sort((a, b) => (a.checked_at < b.checked_at ? 1 : -1))[0].checked_at) : '';
+      const order = attended.slice().sort((a, b) => (a.checked_at < b.checked_at ? -1 : 1));
       $('lgHint').textContent = `출석 ${attended.length}명`
         + (withAll ? ` · 미출석 ${rows.length - attended.length}명 포함` : '')
-        + (attended.length ? ` · 첫 출석 ${first} ~ 마지막 ${last} (한국시간)` : '');
+        + (attended.length ? ` · 첫 출석 ${fmtTime(order[0].checked_at)} ~ 마지막 ${fmtTime(order[order.length - 1].checked_at)} (한국시간)` : '');
       toast(`출석 체크 내역 ${withAll ? rows.length : attended.length}줄을 내려받았습니다`);
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  });
+
+  // ── 모든 출석부 한꺼번에 ─────────────────────────────
+  // 출석부마다 엑셀 파일 하나씩 만들어 ZIP 하나로 묶는다.
+  // (파일 여러 개를 연달아 내려받게 하면 브라우저가 막거나 하나씩 허락을 묻는다)
+  // 모양은 위의 '출석 체크 내역' 과 같고, 두 체크(미출석 포함 · QR 코드)도 그대로 따른다.
+  $('btnLogAll')?.addEventListener('click', async () => {
+    const btn = $('btnLogAll');
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = '출석부 목록 받는 중…';
+    try {
+      const { sheets } = await api('/api/sheets');
+      if (!sheets?.length) {
+        $('lgAllHint').textContent = '아직 만든 출석부가 없습니다.';
+        toast('내려받을 출석부가 없습니다', true);
+        return;
+      }
+      const withAll = $('lgAll').checked;
+      const withCode = $('lgCode').checked;
+      await Promise.all([needXlsx(), needZip()]);
+      const zip = new JSZip();
+      const used = new Set();
+      let totalAtt = 0;
+      const empty = [];
+      // 목록과 같은 순서로, 앞에 번호를 붙여 탐색기에서도 같은 순서로 보이게 한다
+      const width = String(sheets.length).length < 2 ? 2 : String(sheets.length).length;
+      for (let i = 0; i < sheets.length; i++) {
+        const sh = sheets[i];
+        btn.textContent = `만드는 중… ${i + 1} / ${sheets.length}`;
+        const { rows } = await api(`/api/sheets/${sh.id}`);
+        const att = rows.filter((r) => r.checked_at).length;
+        totalAtt += att;
+        if (!att) empty.push(sh.title);
+        let base = `${String(i + 1).padStart(width, '0')}_${fileSafe(sh.sheet_date)}_${fileSafe(sh.title) || '출석부'}`;
+        let name = `${base}.xlsx`;
+        for (let k = 2; used.has(name); k++) name = `${base} (${k}).xlsx`;
+        used.add(name);
+        zip.file(name, logWorkbook(rows, withAll, withCode));
+      }
+      btn.textContent = '묶는 중…';
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+      const t = kstParts(Date.now()) || {};
+      saveBlob(blob, `Rollbook_출석부전체_${t.year}-${t.month}-${t.day}.zip`);
+      $('lgAllHint').textContent = `출석부 ${sheets.length}개 · 출석 기록 ${totalAtt}건을 묶었습니다.`
+        + (empty.length ? ` 기록이 없는 출석부 ${empty.length}개(${empty.slice(0, 3).join(', ')}${empty.length > 3 ? ' 외' : ''})는 ${withAll ? '명단만' : '칸 이름만'} 들어 있습니다.` : '');
+      toast(`출석부 ${sheets.length}개를 ZIP 하나로 내려받았습니다`);
     } catch (e) {
       toast(e.message, true);
     } finally {
