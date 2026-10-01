@@ -63,7 +63,11 @@
       <div class="card status-main">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
           <h2 style="margin:0;">출석 현황</h2>
-          <select id="statusSheetSel" style="width:auto; margin:0; min-width:220px;"></select>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <select id="statusSheetSel" style="width:auto; margin:0; min-width:220px;"></select>
+            <button class="ghost" id="btnRecon" title="내 엑셀에는 출석인데 여기엔 미출석인 사람을 골라 출석으로 맞춥니다">엑셀로 출석 맞추기</button>
+            <input type="file" id="reconFile" accept=".xlsx,.xls,.csv" hidden>
+          </div>
         </div>
         <input id="statusSearch" placeholder="이름·직함·부서·회계사 번호로 찾기" style="margin:12px 0 0;">
         <div id="statusBody" style="margin-top:16px;"></div>

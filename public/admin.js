@@ -91,8 +91,10 @@
   function openEdit(title, fieldsHtml, onSave) {
     $('editModalTitle').textContent = title;
     $('editModalFields').innerHTML = fieldsHtml;
+    $('editModalFields').onchange = null;
     editSaveHandler = onSave;
     $('btnEditSave').hidden = false;
+    $('btnEditSave').textContent = '저장';
     $('btnEditCancel').textContent = '취소';
     editModal.classList.remove('hidden');
   }
@@ -108,6 +110,8 @@
   }
   function closeEdit() {
     $('btnEditSave').hidden = false;
+    $('btnEditSave').textContent = '저장';
+    $('btnEditSave').disabled = false;
     $('btnEditCancel').textContent = '취소';
     editModal.querySelector('.modal-body').style.maxWidth = '420px';
     editModal.classList.add('hidden');
@@ -116,12 +120,15 @@
   $('btnEditCancel').addEventListener('click', closeEdit);
   editModal.addEventListener('click', (e) => { if (e.target === editModal) closeEdit(); });
   $('btnEditSave').addEventListener('click', async () => {
-    if (!editSaveHandler) return;
+    if (!editSaveHandler || $('btnEditSave').disabled) return;
+    $('btnEditSave').disabled = true;   // 두 번 눌러 두 번 저장되지 않게
     try {
       await editSaveHandler();
       closeEdit();
     } catch (e) {
       toast(e.message, true);
+    } finally {
+      $('btnEditSave').disabled = false;
     }
   });
 
@@ -556,6 +563,295 @@
       } catch (e2) {
         toast(e2.message, true);
       }
+    };
+  }
+
+  // ── 엑셀로 출석 맞추기 ───────────────────────────────
+  // 내가 따로 관리한 엑셀에는 '출석' 인데 여기엔 미출석인 사람을 골라, 고른 시각으로 출석 처리한다.
+  // 이미 출석한 사람의 기록(시각)은 건드리지 않고, 엑셀에 미출석이라고 돼 있어도 지우지 않는다.
+  const normName = (v) => String(v ?? '').replace(/\s/g, '').toLowerCase();
+  const normCpa = (v) => String(v ?? '').trim().replace(/\.0+$/, '').replace(/\D/g, '').replace(/^0+/, '');
+  // 출석 여부 칸 — '출석여부', '출결', '참석', '상태' 등. '출석시각'·'출석일' 같은 칸은 따로 본다.
+  const attendHeaderScore = (v) => {
+    const w = v.replace(/\s/g, '').toLowerCase();
+    if (!w) return 0;
+    if (['출석여부', '출석', '출결', '출결여부', '출결상태', '출석상태', '출석체크', '출석확인', '출석유무',
+      '참석여부', '참석', '참석유무', '참석확인', '상태', '체크', '확인', 'attendance', 'status', 'present'].includes(w)) return 3;
+    if (/(시각|시간|일자|일시|날짜|일$|time|date)/.test(w)) return 0;
+    if (/(출석|출결|참석)/.test(w)) return 2;
+    return 0;
+  };
+  // 값이 있으면 출석으로 보는 칸 — '출석시각', '체크 시간' 등 (출석 여부 칸이 없을 때만 쓴다)
+  const isAttendTimeHeader = (v) => /^(출석|체크|입실|도착)(시각|시간|일시)$/.test(v.replace(/\s/g, ''));
+  // 칸의 값 → true(출석) · false(미출석) · null(빈칸) · undefined(알 수 없음)
+  function attendValue(raw) {
+    if (typeof raw === 'boolean') return raw;
+    if (typeof raw === 'number') return raw > 0;          // 1 · 엑셀 날짜/시각 숫자
+    const w = String(raw ?? '').replace(/\s/g, '').toLowerCase();
+    if (!w) return null;
+    if (/^(미|불|결석|결근|부재|취소|×|✕|✗|☐|absent)/.test(w)) return false;
+    if (/^(n|no|x|false|0|-)(\(|$)/.test(w)) return false;
+    if (/^(○|◯|●|◎|✓|✔|☑|√|출석|참석|출근|지각|조퇴|참$|present|attended)/.test(w)) return true;
+    if (/^(y|yes|o|ok|v|1|true)(\(|$)/.test(w)) return true;
+    if (/^\d{1,2}:\d{2}/.test(w) || /^\d{4}[-./]\d{1,2}[-./]\d{1,2}/.test(w)) return true; // 시각·날짜가 적혀 있으면 출석
+    return undefined;
+  }
+
+  // 엑셀 표 → [{ name, title, dept, cpa, present, raw, row }]
+  function extractAttendance(rows) {
+    const grid = rows.map((r) => (Array.isArray(r) ? r : []));
+    const str = (c) => String(c ?? '').trim();
+    let nameCol = -1; let titleCol = -1; let deptCol = -1; let cpaCol = -1; let stCol = -1; let timeCol = -1;
+    let startRow = 0;
+    let headerFound = false;
+    for (let i = 0; i < Math.min(grid.length, 20) && !headerFound; i++) {
+      const hr = grid[i].map(str);
+      const j = hr.findIndex(isNameHeader);
+      if (j < 0) continue;
+      nameCol = j;
+      let deptBest = 0; let titleBest = 0; let stBest = 0;
+      hr.forEach((h, k) => {
+        if (k === j) return;
+        const ds = deptScore(h); if (ds > deptBest) { deptBest = ds; deptCol = k; }
+        const ts = titleScore(h); if (ts > titleBest) { titleBest = ts; titleCol = k; }
+        if (cpaCol < 0 && isCpaHeader(h)) cpaCol = k;
+        const ss = attendHeaderScore(h); if (ss > stBest) { stBest = ss; stCol = k; }
+        if (timeCol < 0 && isAttendTimeHeader(h)) timeCol = k;
+      });
+      startRow = i + 1;
+      headerFound = true;
+    }
+    if (!headerFound) {
+      const vals = grid.map((r) => str(r[0])).filter(Boolean);
+      nameCol = vals.filter((v) => /^\d+$/.test(v)).length / Math.max(vals.length, 1) > 0.6 ? 1 : 0;
+    }
+    const mode = stCol >= 0 ? 'status' : (timeCol >= 0 ? 'time' : 'all');
+    const out = [];
+    for (let i = startRow; i < grid.length; i++) {
+      const r = grid[i];
+      const name = str(r[nameCol]);
+      if (!name || /^\d+$/.test(name) || isNameHeader(name) || name.length > 20) continue;
+      let present = true;
+      let raw = '';
+      if (mode === 'status') { raw = r[stCol]; present = attendValue(raw); }
+      if (mode === 'time') { raw = r[timeCol]; present = str(raw) ? true : null; }
+      out.push({
+        name,
+        title: titleCol >= 0 ? str(r[titleCol]) : '',
+        dept: deptCol >= 0 ? str(r[deptCol]) : '',
+        cpa: cpaCol >= 0 ? normCpa(r[cpaCol]) : '',
+        present, raw: str(raw), row: i + 1,
+      });
+    }
+    out.mode = mode;
+    out.statusHeader = stCol >= 0 ? str(grid[startRow - 1][stCol]) : (timeCol >= 0 ? str(grid[startRow - 1][timeCol]) : '');
+    out.hasCpa = cpaCol >= 0;
+    out.headerFound = headerFound;
+    return out;
+  }
+
+  // 엑셀 사람 → 명단 사람. 회계사 번호가 같으면 그 사람, 아니면 이름(공백 무시)으로.
+  // 동명이인은 부서·직함으로 좁혀 보고, 그래도 여럿이면 관리자가 고르게 둔다.
+  function matchAttendance(xrows, members) {
+    const byCpa = new Map();
+    const byName = new Map();
+    for (const m of members) {
+      const c = normCpa(m.cpa_no);
+      if (c) (byCpa.get(c) || byCpa.set(c, []).get(c)).push(m);
+      const n = normName(m.name);
+      (byName.get(n) || byName.set(n, []).get(n)).push(m);
+    }
+    const narrow = (list, x) => {
+      if (list.length < 2) return list;
+      for (const key of ['dept', 'title']) {
+        if (!x[key]) continue;
+        const f = list.filter((m) => normName(m[key]) === normName(x[key]));
+        if (f.length) list = f;
+        if (list.length === 1) break;
+      }
+      return list;
+    };
+    return xrows.map((x) => {
+      let cands = x.cpa ? (byCpa.get(x.cpa) || []) : [];
+      if (cands.length > 1) {
+        const same = cands.filter((m) => normName(m.name) === normName(x.name));
+        cands = narrow(same.length ? same : cands, x);
+      }
+      if (cands.length) return { ...x, cands };
+      cands = narrow(byName.get(normName(x.name)) || [], x);
+      // 이름은 같은데 회계사 번호가 서로 다르면 다른 사람일 수 있다 — 관리자가 확인하게 둔다
+      const cpaDiff = !!x.cpa && cands.length === 1 && !!normCpa(cands[0].cpa_no);
+      return { ...x, cands, cpaDiff };
+    });
+  }
+
+  const reconHm = (iso) => { const t = kstParts(iso); return t ? `${t.hour}:${t.minute}` : ''; };
+
+  $('btnRecon')?.addEventListener('click', () => {
+    if (!Number($('statusSheetSel').value)) { toast('출석부를 먼저 고르세요', true); return; }
+    $('reconFile').value = '';
+    $('reconFile').click();
+  });
+
+  $('reconFile')?.addEventListener('change', async () => {
+    const file = $('reconFile').files[0];
+    $('reconFile').value = '';
+    if (!file) return;
+    const sheetId = Number($('statusSheetSel').value);
+    const sheet = sheetsCache.find((x) => x.id === sheetId);
+    if (!sheet) { toast('출석부를 먼저 고르세요', true); return; }
+    const btn = $('btnRecon');
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '엑셀 읽는 중…';
+    let xrows;
+    let members;
+    try {
+      const buf = await file.arrayBuffer();
+      let rows;
+      if (/\.csv$/i.test(file.name)) {
+        let text = new TextDecoder('utf-8').decode(buf);
+        if (text.includes('�')) text = new TextDecoder('euc-kr').decode(buf);
+        rows = text.replace(/^﻿/, '').split(/\r?\n/).map((l) => l.split(',').map((v) => v.trim().replace(/^"(.*)"$/, '$1')));
+      } else {
+        await needXlsx();
+        const wb = XLSX.read(buf);
+        // 시트가 여럿이면 '이름/성명' 머리가 있는 첫 시트를 쓴다
+        const pick = wb.SheetNames.find((n) => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' })
+          .slice(0, 20).some((r) => r.some((c) => isNameHeader(String(c ?? '').trim())))) || wb.SheetNames[0];
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[pick], { header: 1, defval: '' });
+      }
+      xrows = extractAttendance(rows);
+      members = (await api(`/api/sheets/${sheetId}`)).rows;
+    } catch (e) {
+      toast(`파일을 읽지 못했습니다: ${e.message}`, true);
+      return;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+    // 이름 머리가 없는데 명단과 맞는 사람도 하나 없으면 엉뚱한 파일로 본다
+    const noName = !xrows.length || (!xrows.headerFound && !matchAttendance(xrows, members).some((x) => x.cands.length));
+    if (noName) { toast('파일에서 이름(성명) 칸을 찾지 못했습니다 — 열 제목을 ‘이름’ 이나 ‘성명’ 으로 두고 다시 올려 주세요', true); return; }
+    showRecon(sheet, file.name, xrows, members);
+  });
+
+  function showRecon(sheet, fileName, xrows, members) {
+    const matched = matchAttendance(xrows, members);
+    const add = new Map();      // member_id → { m, x } — 엑셀 출석 · 여기 미출석
+    const already = new Map();  // 엑셀 출석 · 여기도 출석 (시각 그대로)
+    const ambiguous = [];       // 동명이인 — 직접 고르기
+    const notFound = [];        // 명단에 없음
+    const unknown = [];         // 출석 여부를 알 수 없는 값
+    const xAbsent = new Map();  // 엑셀 미출석 · 여기 출석 (참고만)
+    for (const x of matched) {
+      if (x.present === undefined) { unknown.push(x); continue; }
+      if (!x.present) {
+        if (x.cands.length === 1 && x.cands[0].checked_at) xAbsent.set(x.cands[0].member_id, { m: x.cands[0], x });
+        continue;
+      }
+      if (!x.cands.length) { notFound.push(x); continue; }
+      if (x.cands.length > 1 || x.cpaDiff) { ambiguous.push(x); continue; }
+      const m = x.cands[0];
+      if (m.checked_at) already.set(m.member_id, { m, x });
+      else add.set(m.member_id, { m, x });
+    }
+    // 같은 사람이 엑셀 여러 줄에서 '출석' 이면 한 번만, 다른 줄에서 미출석이어도 출석 쪽을 따른다
+    for (const id of [...add.keys(), ...already.keys()]) xAbsent.delete(id);
+    const presentCount = matched.filter((x) => x.present === true).length;
+
+    // 기본 시각: 그 출석부 날짜에 찍힌 가장 이른 출석 시각, 없으면 09:00
+    const defDate = sheet.sheet_date || kstToday();
+    const kstDay = (iso) => { const t = kstParts(iso); return t ? `${t.year}-${t.month}-${t.day}` : ''; };
+    const times = members.map((m) => m.checked_at).filter((v) => v && kstDay(v) === defDate).sort();
+    const defTime = times.length ? reconHm(times[0]) : '09:00';
+
+    const who = (m) => `<b>${esc(m.name)}</b> <span class="muted">${esc([m.title, m.dept].filter(Boolean).join(' · '))}</span>`;
+    const box = (inner) => `<div style="max-height:240px; overflow:auto; border:1px solid var(--line, #E5E7EB); border-radius:10px; padding:6px 10px; margin:6px 0 4px;">${inner}</div>`;
+    const sec = (title, n, inner, open) => `<details ${open ? 'open' : ''} style="margin:10px 0;"><summary style="cursor:pointer; font-weight:700;">${title} <span class="muted">${n}명</span></summary>${inner}</details>`;
+    const modeNote = xrows.mode === 'status'
+      ? `‘${esc(xrows.statusHeader)}’ 칸으로 출석 여부를 봤습니다.`
+      : xrows.mode === 'time'
+        ? `‘${esc(xrows.statusHeader)}’ 칸에 값이 있는 사람을 출석으로 봤습니다.`
+        : '<b>출석 여부 칸이 없어 파일에 있는 사람 모두를 출석으로 봤습니다.</b>';
+
+    const addList = [...add.values()];
+    let html = `
+      <p class="hint" style="margin:0 0 10px;">대상 출석부: <b>${esc(sheet.sheet_date)} · ${esc(sheet.title)}</b><br>
+        ‘${esc(fileName)}’ ${matched.length}줄 중 출석 ${presentCount}명 · ${modeNote}</p>
+      <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+        <label style="margin:0;">출석 날짜 <input type="date" id="rcDate" value="${esc(defDate)}" style="margin:4px 0 0;"></label>
+        <label style="margin:0;">출석 시각 (한국시간) <input type="time" id="rcTime" value="${esc(defTime)}" style="margin:4px 0 0;"></label>
+      </div>
+      <p class="hint" style="margin:6px 0 0;">아래에서 고른 사람만 이 시각으로 출석 처리됩니다. 이미 출석한 사람의 시각은 바꾸지 않습니다.</p>`;
+
+    html += sec(`✅ 출석으로 바꿀 사람 — 엑셀엔 출석, 여기엔 미출석`, addList.length, addList.length
+      ? `<label class="check-inline" style="margin:6px 0 0;"><input type="checkbox" id="rcAll" checked> 모두 고르기</label>`
+        + box(addList.map(({ m }) => `<label class="check-inline" style="font-weight:400; margin:4px 0;">
+            <input type="checkbox" class="rc-add" value="${m.member_id}" checked> ${who(m)}</label>`).join(''))
+      : '<p class="hint" style="margin:6px 0;">없습니다 — 엑셀과 여기가 이미 맞습니다.</p>', true);
+
+    if (ambiguous.length) {
+      html += sec('👥 동명이인 · 회계사 번호 다름 — 누구인지 골라 주세요', ambiguous.length, box(ambiguous.map((x, i) => `
+        <div style="margin:6px 0;"><b>${esc(x.name)}</b> <span class="muted">엑셀 ${x.row}행${x.cpa ? ' · ' + esc(x.cpa) : ''}${x.dept ? ' · ' + esc(x.dept) : ''}${x.cpaDiff ? ' · 명단의 회계사 번호와 다름' : ''}</span>
+          <select class="rc-amb" data-i="${i}" style="margin:4px 0 0; width:100%;">
+            <option value="">넘기기 (출석 처리 안 함)</option>
+            ${x.cands.map((m) => `<option value="${m.member_id}" ${m.checked_at ? 'disabled' : ''}>${esc(m.name)} · ${esc([m.title, m.dept, m.cpa_no].filter(Boolean).join(' · '))}${m.checked_at ? ` (이미 출석 ${reconHm(m.checked_at)})` : ''}</option>`).join('')}
+          </select></div>`).join('')), true);
+    }
+    if (notFound.length) {
+      html += sec('❓ 명단에 없는 사람 — 처리하지 않습니다', notFound.length, box(notFound.map((x) =>
+        `<div style="margin:4px 0;"><b>${esc(x.name)}</b> <span class="muted">엑셀 ${x.row}행${x.cpa ? ' · ' + esc(x.cpa) : ''}${x.dept ? ' · ' + esc(x.dept) : ''}</span></div>`).join('')
+        + '<p class="hint" style="margin:6px 0;">이름 철자나 회계사 번호가 명단과 다른지 확인해 주세요. 명단에 먼저 추가하면 다시 맞출 수 있습니다.</p>'), true);
+    }
+    if (unknown.length) {
+      html += sec('⚠️ 출석 여부를 알 수 없는 값 — 처리하지 않습니다', unknown.length, box(unknown.map((x) =>
+        `<div style="margin:4px 0;"><b>${esc(x.name)}</b> <span class="muted">엑셀 ${x.row}행 · ‘${esc(x.raw)}’</span></div>`).join('')), true);
+    }
+    if (already.size) {
+      html += sec('이미 출석 — 그대로 둡니다', already.size, box([...already.values()].map(({ m }) =>
+        `<div style="margin:4px 0;">${who(m)} <span class="muted" style="font-variant-numeric:tabular-nums;">${fmtShortTime(m.checked_at)}</span></div>`).join('')), false);
+    }
+    if (xAbsent.size) {
+      html += sec('참고: 엑셀엔 미출석인데 여기엔 출석 — 지우지 않습니다', xAbsent.size, box([...xAbsent.values()].map(({ m }) =>
+        `<div style="margin:4px 0;">${who(m)} <span class="muted" style="font-variant-numeric:tabular-nums;">${fmtShortTime(m.checked_at)}</span></div>`).join('')
+        + '<p class="hint" style="margin:6px 0;">잘못 찍힌 기록이면 출석 현황 표에서 ‘출석 취소’ 로 지울 수 있습니다.</p>'), false);
+    }
+
+    const chosen = () => {
+      const ids = [...document.querySelectorAll('.rc-add:checked')].map((c) => Number(c.value));
+      document.querySelectorAll('.rc-amb').forEach((s) => { if (s.value) ids.push(Number(s.value)); });
+      return [...new Set(ids)];
+    };
+    openEdit('엑셀로 출석 맞추기', html, async () => {
+      const ids = chosen();
+      if (!ids.length) throw new Error('출석 처리할 사람을 골라 주세요');
+      const d = $('rcDate').value;
+      const t = $('rcTime').value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !/^\d{2}:\d{2}/.test(t)) throw new Error('출석 날짜와 시각을 넣어 주세요');
+      const at = new Date(`${d}T${t.slice(0, 5)}:00+09:00`);
+      if (Number.isNaN(at.getTime())) throw new Error('출석 날짜와 시각이 올바르지 않습니다');
+      const r = await api(`/api/sheets/${sheet.id}/mark-many`, {
+        method: 'POST',
+        body: JSON.stringify({ member_ids: ids, checked_at: at.toISOString() }),
+      });
+      const extra = [r.already ? `이미 출석 ${r.already}명` : '', r.missing ? `명단에서 사라짐 ${r.missing}명` : ''].filter(Boolean);
+      toast(`${r.added}명을 출석 처리했습니다${extra.length ? ` (${extra.join(' · ')})` : ''}`);
+      renderStatus(sheet.id);
+    });
+    editModal.querySelector('.modal-body').style.maxWidth = '640px';
+    const sync = () => { $('btnEditSave').textContent = `${chosen().length}명 출석 처리`; };
+    sync();
+    $('rcAll')?.addEventListener('change', (e) => {
+      document.querySelectorAll('.rc-add').forEach((c) => { c.checked = e.target.checked; });
+      sync();
+    });
+    $('editModalFields').onchange = (e) => {
+      if (e.target.matches('.rc-add')) {
+        const all = [...document.querySelectorAll('.rc-add')];
+        if ($('rcAll')) $('rcAll').checked = all.every((c) => c.checked);
+      }
+      if (e.target.matches('.rc-add, .rc-amb')) sync();
     };
   }
 
@@ -1076,39 +1372,41 @@
     }
   });
 
+  // ── 엑셀 열 제목 알아보기 (명단 올리기 · 엑셀로 출석 맞추기가 같이 쓴다) ──
+  const isNameHeader = (v) => ['이름', '성명', '성함', 'name'].includes(v.replace(/\s/g, '').toLowerCase());
+  // 부서 열이 여럿일 때(예: '소속' · '부서' · '부서(구분용)') 어느 것을 쓸지 정한다.
+  // 화면에 보여 온 값이 '부서' 쪽이라 그 열을 먼저 쓰고, 없으면 '소속' 을 쓴다.
+  // '(구분용)' 처럼 계산용으로 붙은 보조 열은 쓰지 않는다.
+  const deptScore = (v) => {
+    const w = v.replace(/\s/g, '');
+    const lo = w.toLowerCase();
+    if (w.includes('구분')) return 0;
+    if (w === '부서' || w === '부서명') return 4;
+    if (w.includes('부서')) return 3;
+    if (w === '소속' || w === '소속부서' || w.includes('소속')) return 2;
+    if (['팀', '본부', 'department', 'dept', 'team'].includes(lo)) return 1;
+    return 0;
+  };
+  const titleScore = (v) => {
+    const w = v.replace(/\s/g, '');
+    const lo = w.toLowerCase();
+    if (w.includes('구분')) return 0;
+    if (['직함', '직급', '직위', '직책', '호칭', 'title', 'position', 'rank', 'grade'].includes(lo)) return 2;
+    return 0;
+  };
+  // 회계사 등록번호 — 'KICPA 등록번호', '공인회계사 등록번호', '회계사번호', 'CPA No' 등
+  const isCpaHeader = (v) => {
+    const w = v.replace(/\s/g, '').toLowerCase();
+    if (w.includes('사업자')) return false;              // 사업자등록번호는 아니다
+    return w.includes('kicpa') || w.includes('cpa번호') || w === 'cpano'
+      || w.includes('등록번호') || (w.includes('회계사') && w.includes('번호'));
+  };
+
   // 다양한 형태의 명단 엑셀에서 이름/부서를 알아서 찾아낸다:
   //  - 제목 줄 위 몇 줄이 있어도, 헤더가 이름/성명·부서/소속/팀 등이어도 인식
   //  - 헤더가 없고 첫 열이 연번(숫자)이면 한 칸 밀어서 인식
   function extractMembers(rows) {
     const grid = rows.map((r) => (Array.isArray(r) ? r : []).map((c) => String(c ?? '').trim()));
-    const isNameHeader = (v) => ['이름', '성명', '성함', 'name'].includes(v.replace(/\s/g, '').toLowerCase());
-    // 부서 열이 여럿일 때(예: '소속' · '부서' · '부서(구분용)') 어느 것을 쓸지 정한다.
-    // 화면에 보여 온 값이 '부서' 쪽이라 그 열을 먼저 쓰고, 없으면 '소속' 을 쓴다.
-    // '(구분용)' 처럼 계산용으로 붙은 보조 열은 쓰지 않는다.
-    const deptScore = (v) => {
-      const w = v.replace(/\s/g, '');
-      const lo = w.toLowerCase();
-      if (w.includes('구분')) return 0;
-      if (w === '부서' || w === '부서명') return 4;
-      if (w.includes('부서')) return 3;
-      if (w === '소속' || w === '소속부서' || w.includes('소속')) return 2;
-      if (['팀', '본부', 'department', 'dept', 'team'].includes(lo)) return 1;
-      return 0;
-    };
-    const titleScore = (v) => {
-      const w = v.replace(/\s/g, '');
-      const lo = w.toLowerCase();
-      if (w.includes('구분')) return 0;
-      if (['직함', '직급', '직위', '직책', '호칭', 'title', 'position', 'rank', 'grade'].includes(lo)) return 2;
-      return 0;
-    };
-    // 회계사 등록번호 — 'KICPA 등록번호', '공인회계사 등록번호', '회계사번호', 'CPA No' 등
-    const isCpaHeader = (v) => {
-      const w = v.replace(/\s/g, '').toLowerCase();
-      if (w.includes('사업자')) return false;              // 사업자등록번호는 아니다
-      return w.includes('kicpa') || w.includes('cpa번호') || w === 'cpano'
-        || w.includes('등록번호') || (w.includes('회계사') && w.includes('번호'));
-    };
     // 참석여부 — 'Y(참석)' 인 사람만 명단에 올린다
     const isAttendHeader = (v) => {
       const w = v.replace(/\s/g, '');

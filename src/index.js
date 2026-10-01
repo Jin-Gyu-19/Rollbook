@@ -2538,6 +2538,51 @@ async function route(request, env, pathname) {
       }
       return json({ ok: true });
     }
+
+    // 여러 명을 한꺼번에 출석 처리 (관리자 — 엑셀로 출석 맞추기)
+    // 출석 시각은 관리자가 고른 때로 넣는다. 이미 출석한 사람의 기록은 건드리지 않는다.
+    if (seg[3] === 'mark-many' && method === 'POST') {
+      const sheet = await db.prepare('SELECT id FROM sheets WHERE id = ?').bind(id).first();
+      if (!sheet) return err('출석부를 찾을 수 없습니다.', 404);
+      const body = await readBody(request);
+      const raw = Array.isArray(body?.member_ids) ? body.member_ids : null;
+      if (!raw || !raw.length) return err('출석 처리할 사람이 없습니다.');
+      if (raw.length > 3000) return err('한 번에 3000명까지 처리할 수 있습니다.');
+      const ids = [...new Set(raw.map(Number))];
+      if (ids.some((v) => !Number.isInteger(v) || v <= 0)) return err('잘못된 회원 ID 가 있습니다.');
+      const t = new Date(String(body?.checked_at ?? ''));
+      if (Number.isNaN(t.getTime())) return err('출석 시각이 올바르지 않습니다.');
+      if (t.getTime() > Date.now() + 86400000) return err('출석 시각이 너무 먼 미래입니다.');
+      if (t.getTime() < Date.UTC(2000, 0, 1)) return err('출석 시각이 올바르지 않습니다.');
+      const at = t.toISOString();
+
+      const exists = new Set();
+      const already = new Set();
+      for (let i = 0; i < ids.length; i += SQL_IN_CHUNK) {
+        const part = ids.slice(i, i + SQL_IN_CHUNK);
+        const qs = part.map(() => '?').join(',');
+        const [m, a] = await db.batch([
+          db.prepare(`SELECT id FROM members WHERE id IN (${qs})`).bind(...part),
+          db.prepare(`SELECT member_id FROM attendance WHERE sheet_id = ? AND member_id IN (${qs})`).bind(id, ...part),
+        ]);
+        for (const r of m.results) exists.add(r.id);
+        for (const r of a.results) already.add(r.member_id);
+      }
+      const todo = ids.filter((v) => exists.has(v) && !already.has(v));
+      const stmts = todo.map((v) => db
+        .prepare('INSERT INTO attendance (sheet_id, member_id, checked_at) VALUES (?, ?, ?) ON CONFLICT(sheet_id, member_id) DO NOTHING')
+        .bind(id, v, at));
+      let added = 0;
+      for (let i = 0; i < stmts.length; i += DB_BATCH_CHUNK) {
+        const res = await db.batch(stmts.slice(i, i + DB_BATCH_CHUNK));
+        for (const r of res) added += r.meta?.changes ?? 0;
+      }
+      return json({
+        ok: true, added, checked_at: at,
+        already: ids.filter((v) => already.has(v)).length,
+        missing: ids.filter((v) => !exists.has(v)).length,
+      });
+    }
   }
 
   return null;
