@@ -92,6 +92,7 @@
     $('editModalTitle').textContent = title;
     $('editModalFields').innerHTML = fieldsHtml;
     $('editModalFields').onchange = null;
+    $('editModalFields').onclick = null;
     editSaveHandler = onSave;
     $('btnEditSave').hidden = false;
     $('btnEditSave').textContent = '저장';
@@ -102,6 +103,8 @@
   function openView(title, html, wide) {
     $('editModalTitle').textContent = title;
     $('editModalFields').innerHTML = html;
+    $('editModalFields').onchange = null;
+    $('editModalFields').onclick = null;
     editSaveHandler = null;
     $('btnEditSave').hidden = true;
     $('btnEditCancel').textContent = '닫기';
@@ -566,7 +569,7 @@
     };
   }
 
-  // ── 엑셀로 출석 맞추기 ───────────────────────────────
+  // ── 임시 기능: 엑셀로 출석 맞추기 (김진규 본인 로그인 QR 일 때만 보인다 · 나중에 지운다) ──
   // 내가 따로 관리한 엑셀에는 '출석' 인데 여기엔 미출석인 사람을 골라, 고른 시각으로 출석 처리한다.
   // 이미 출석한 사람의 기록(시각)은 건드리지 않고, 엑셀에 미출석이라고 돼 있어도 지우지 않는다.
   const normName = (v) => String(v ?? '').replace(/\s/g, '').toLowerCase();
@@ -687,11 +690,57 @@
 
   const reconHm = (iso) => { const t = kstParts(iso); return t ? `${t.hour}:${t.minute}` : ''; };
 
-  $('btnRecon')?.addEventListener('click', () => {
-    if (!Number($('statusSheetSel').value)) { toast('출석부를 먼저 고르세요', true); return; }
-    $('reconFile').value = '';
-    $('reconFile').click();
-  });
+  // 쓸 수 있는 사람에게만 단추를 보인다 (서버도 따로 막는다)
+  api('/api/recon/me').then((r) => {
+    if (r?.allowed && $('btnRecon')) $('btnRecon').style.display = '';
+  }).catch(() => {});
+
+  // 단추 → 파일 고르기 + 최근에 맞춘 기록(되돌리기)
+  async function openReconHub() {
+    const sheetId = Number($('statusSheetSel').value);
+    const sheet = sheetsCache.find((x) => x.id === sheetId);
+    if (!sheet) { toast('출석부를 먼저 고르세요', true); return; }
+    let log = [];
+    try { log = (await api('/api/recon/me')).log || []; } catch (e) { toast(e.message, true); return; }
+    const rows = log.map((r) => `
+      <tr>
+        <td style="white-space:nowrap;">${esc(fmtShortTime(r.at))}</td>
+        <td>${esc(r.sheet_date)} · ${esc(r.sheet_title)}</td>
+        <td style="white-space:nowrap;">${r.n}명 · ${esc(fmtShortTime(r.checked_at))}</td>
+        <td class="right" style="white-space:nowrap;">${r.undone_at
+          ? `<span class="muted">되돌림 (${r.undone_n}명)</span>`
+          : `<button class="small ghost" data-undo="${esc(r.id)}">되돌리기</button>`}</td>
+      </tr>`).join('');
+    openView('엑셀로 출석 맞추기', `
+      <p class="hint" style="margin:0 0 10px;">대상 출석부: <b>${esc(sheet.sheet_date)} · ${esc(sheet.title)}</b><br>
+        엑셀에는 출석인데 여기엔 미출석인 사람을 골라, 정한 시각으로 출석 처리합니다.
+        이미 있는 출석 기록은 바꾸거나 지우지 않고, 처리하기 직전에 백업을 한 벌 떠 둡니다.</p>
+      <button class="primary" id="rcPick" style="width:100%;">엑셀 파일 고르기</button>
+      <h3 style="margin:18px 0 6px; font-size:14px;">최근에 맞춘 기록</h3>
+      ${log.length ? `<div class="table-scroll"><table>
+        <thead><tr><th>처리한 때</th><th>출석부</th><th>넣은 사람 · 출석 시각</th><th class="right"></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+        <p class="hint" style="margin:6px 0 0;">되돌리기는 그때 넣은 줄만 지웁니다. 그 뒤에 출석 취소·재스캔으로 바뀐 줄은 그대로 둡니다.</p>`
+        : '<p class="hint" style="margin:0;">아직 없습니다.</p>'}`, true);
+    $('rcPick').onclick = () => { $('reconFile').value = ''; $('reconFile').click(); };
+    $('editModalFields').onclick = async (e) => {
+      const b = e.target.closest('button[data-undo]');
+      if (!b) return;
+      const r = log.find((x) => x.id === b.dataset.undo);
+      if (!r || !confirm(`${r.sheet_date} · ${r.sheet_title} 에 넣은 ${r.n}명을 다시 미출석으로 되돌릴까요?`)) return;
+      b.disabled = true;
+      try {
+        const res = await api('/api/recon/undo', { method: 'POST', body: JSON.stringify({ run_id: r.id }) });
+        toast(`${res.removed}명을 되돌렸습니다${res.kept ? ` (${res.kept}명은 그 뒤에 바뀌어 그대로 둠)` : ''}`);
+        if (Number($('statusSheetSel').value) === r.sheet_id) renderStatus(r.sheet_id);
+        openReconHub();
+      } catch (e2) {
+        b.disabled = false;
+        toast(e2.message, true);
+      }
+    };
+  }
+  $('btnRecon')?.addEventListener('click', openReconHub);
 
   $('reconFile')?.addEventListener('change', async () => {
     const file = $('reconFile').files[0];
@@ -831,10 +880,10 @@
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !/^\d{2}:\d{2}/.test(t)) throw new Error('출석 날짜와 시각을 넣어 주세요');
       const at = new Date(`${d}T${t.slice(0, 5)}:00+09:00`);
       if (Number.isNaN(at.getTime())) throw new Error('출석 날짜와 시각이 올바르지 않습니다');
-      const r = await api(`/api/sheets/${sheet.id}/mark-many`, {
+      const r = await api('/api/recon/apply', {
         method: 'POST',
-        body: JSON.stringify({ member_ids: ids, checked_at: at.toISOString() }),
-      });
+        body: JSON.stringify({ sheet_id: sheet.id, member_ids: ids, checked_at: at.toISOString() }),
+      }).catch((e) => { renderStatus(sheet.id); throw e; });   // 중간에 멈췄어도 표는 지금 상태로
       const extra = [r.already ? `이미 출석 ${r.already}명` : '', r.missing ? `명단에서 사라짐 ${r.missing}명` : ''].filter(Boolean);
       toast(`${r.added}명을 출석 처리했습니다${extra.length ? ` (${extra.join(' · ')})` : ''}`);
       renderStatus(sheet.id);

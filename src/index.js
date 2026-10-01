@@ -21,7 +21,7 @@ const SQL_IN_CHUNK = 80;
 const DB_BATCH_CHUNK = 50;
 
 // 표·열을 바꿀 때마다 이 값을 올린다. 올리지 않으면 예전 DB 가 고쳐지지 않는다.
-const SCHEMA_VERSION = '2026-09-05-1';
+const SCHEMA_VERSION = '2026-10-01-1';
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
@@ -168,6 +168,8 @@ async function ensureSchema(db) {
   try { await db.prepare("ALTER TABLE members ADD COLUMN cpa_no TEXT NOT NULL DEFAULT ''").run(); } catch { /* 이미 있음 */ }
   try { await db.prepare('ALTER TABLE sheets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0').run(); } catch { /* 이미 있음 */ }
   try { await db.prepare('ALTER TABLE backups ADD COLUMN changes TEXT').run(); } catch { /* 이미 있음 */ }
+  // 누가 로그인했는지 (QR 로 들어온 관리자만 채워진다 — 비밀번호·복구 코드 로그인은 비어 있다)
+  try { await db.prepare('ALTER TABLE sessions ADD COLUMN member_id INTEGER').run(); } catch { /* 이미 있음 */ }
 
   // 여기까지 왔으면 최신 — 다음부터는 위에서 한 번만 물어보고 지나간다
   await db.prepare(
@@ -263,22 +265,23 @@ async function setSetting(db, key, value) {
 async function getSession(db, request) {
   const token = parseCookies(request)[SESSION_COOKIE];
   if (!token) return null;
-  const row = await db.prepare('SELECT role, expires_at FROM sessions WHERE token = ?').bind(token).first();
+  const row = await db.prepare('SELECT role, expires_at, member_id FROM sessions WHERE token = ?').bind(token).first();
   if (!row) return null;
   if (row.expires_at < new Date().toISOString()) {
     await db.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run();
     return null;
   }
-  return { role: row.role, token };
+  return { role: row.role, token, memberId: row.member_id ?? null };
 }
 
 // 관리자 30일 · 스캐너 PC 1년 유지
-async function createSession(db, role, request) {
+async function createSession(db, role, request, memberId = null) {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const token = toB64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   const days = role === 'admin' ? 30 : 365;
   const expires = new Date(Date.now() + days * 86400_000).toISOString();
-  await db.prepare('INSERT INTO sessions (token, role, expires_at) VALUES (?, ?, ?)').bind(token, role, expires).run();
+  await db.prepare('INSERT INTO sessions (token, role, expires_at, member_id) VALUES (?, ?, ?, ?)')
+    .bind(token, role, expires, memberId).run();
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${days * 86400}${secure}`;
 }
@@ -1450,6 +1453,9 @@ async function serveWorkshop(request, env, view) {
 async function route(request, env, pathname) {
   const db = env.DB;
 
+  // 임시 기능 — 엑셀로 출석 맞추기 (주인 관리자만, 나중에 지운다)
+  if (pathname.startsWith('/api/recon/')) return reconRoute(request, db, pathname);
+
   // ── 백업 (관리자 전용) ──────────────────────────────
   // 느릴 때 어디가 느린지 보는 곳 — 관리자만 열린다.
   // db_ping_ms 가 크면 데이터베이스가 멀리 있다는 뜻이고(=요청마다 왕복 비용),
@@ -1681,7 +1687,7 @@ async function route(request, env, pathname) {
     if (!admin) return err('관리자로 지정된 인원이 없습니다.', 500);
     const recovery = newRecoveryCode();
     await setSetting(db, 'recovery_code', await hashPassword(recovery));
-    const cookie = await createSession(db, 'admin', request);
+    const cookie = await createSession(db, 'admin', request, admin.id);
     // 복구 코드는 이 응답에서 딱 한 번만 원문으로 나간다 (DB 에는 해시만 남음)
     return jsonWithCookie(
       { ok: true, role: 'admin', name: admin.name, login_token: admin.login_token, recovery_code: recovery },
@@ -1730,7 +1736,7 @@ async function route(request, env, pathname) {
       db.prepare('UPDATE members SET login_token = ? WHERE id = ?').bind(token, admin.id),
       db.prepare("INSERT INTO settings (key, value) VALUES ('recovery_code', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(await hashPassword(recovery)),
     ]);
-    const cookie = await createSession(db, 'admin', request);
+    const cookie = await createSession(db, 'admin', request, admin.id);
     return jsonWithCookie({ ok: true, role: 'admin', name: admin.name, recovery_code: recovery, claimed: true }, cookie);
   }
 
@@ -1831,14 +1837,14 @@ async function route(request, env, pathname) {
         return err('출석용 QR 입니다. 로그인 QR 을 비춰 주세요.', 400);
       }
       const member = await db
-        .prepare('SELECT name, is_admin FROM members WHERE code = ?')
+        .prepare('SELECT id, name, is_admin FROM members WHERE code = ?')
         .bind(payload.slice('ROLLBOOK:'.length))
         .first();
       if (!member) return err('등록되지 않은 QR 입니다.', 400);
       if (!member.is_admin) return err(`${member.name}님은 관리자로 지정되어 있지 않습니다.`, 403);
       await clearFails(db, request);
       await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
-      const cookie = await createSession(db, 'admin', request);
+      const cookie = await createSession(db, 'admin', request, member.id);
       return jsonWithCookie({ ok: true, role: 'admin', name: member.name }, cookie);
     }
 
@@ -1849,14 +1855,16 @@ async function route(request, env, pathname) {
 
     let role = null;
     let name = '';
+    let memberId = null;
     if (isAdminQr) {
       const member = await db
-        .prepare('SELECT name, title FROM members WHERE login_token = ? AND is_admin = 1')
+        .prepare('SELECT id, name, title FROM members WHERE login_token = ? AND is_admin = 1')
         .bind(payload.slice('ROLLBOOK-LOGIN:'.length))
         .first();
       if (member) {
         role = 'admin';
         name = member.name;
+        memberId = member.id;
       }
     } else {
       const token = await getSetting(db, 'scanner_token');
@@ -1873,7 +1881,7 @@ async function route(request, env, pathname) {
 
     await clearFails(db, request);
     await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
-    const cookie = await createSession(db, role, request);
+    const cookie = await createSession(db, role, request, memberId);
     return jsonWithCookie({ ok: true, role, name }, cookie);
   }
 
@@ -2538,52 +2546,167 @@ async function route(request, env, pathname) {
       }
       return json({ ok: true });
     }
-
-    // 여러 명을 한꺼번에 출석 처리 (관리자 — 엑셀로 출석 맞추기)
-    // 출석 시각은 관리자가 고른 때로 넣는다. 이미 출석한 사람의 기록은 건드리지 않는다.
-    if (seg[3] === 'mark-many' && method === 'POST') {
-      const sheet = await db.prepare('SELECT id FROM sheets WHERE id = ?').bind(id).first();
-      if (!sheet) return err('출석부를 찾을 수 없습니다.', 404);
-      const body = await readBody(request);
-      const raw = Array.isArray(body?.member_ids) ? body.member_ids : null;
-      if (!raw || !raw.length) return err('출석 처리할 사람이 없습니다.');
-      if (raw.length > 3000) return err('한 번에 3000명까지 처리할 수 있습니다.');
-      const ids = [...new Set(raw.map(Number))];
-      if (ids.some((v) => !Number.isInteger(v) || v <= 0)) return err('잘못된 회원 ID 가 있습니다.');
-      const t = new Date(String(body?.checked_at ?? ''));
-      if (Number.isNaN(t.getTime())) return err('출석 시각이 올바르지 않습니다.');
-      if (t.getTime() > Date.now() + 86400000) return err('출석 시각이 너무 먼 미래입니다.');
-      if (t.getTime() < Date.UTC(2000, 0, 1)) return err('출석 시각이 올바르지 않습니다.');
-      const at = t.toISOString();
-
-      const exists = new Set();
-      const already = new Set();
-      for (let i = 0; i < ids.length; i += SQL_IN_CHUNK) {
-        const part = ids.slice(i, i + SQL_IN_CHUNK);
-        const qs = part.map(() => '?').join(',');
-        const [m, a] = await db.batch([
-          db.prepare(`SELECT id FROM members WHERE id IN (${qs})`).bind(...part),
-          db.prepare(`SELECT member_id FROM attendance WHERE sheet_id = ? AND member_id IN (${qs})`).bind(id, ...part),
-        ]);
-        for (const r of m.results) exists.add(r.id);
-        for (const r of a.results) already.add(r.member_id);
-      }
-      const todo = ids.filter((v) => exists.has(v) && !already.has(v));
-      const stmts = todo.map((v) => db
-        .prepare('INSERT INTO attendance (sheet_id, member_id, checked_at) VALUES (?, ?, ?) ON CONFLICT(sheet_id, member_id) DO NOTHING')
-        .bind(id, v, at));
-      let added = 0;
-      for (let i = 0; i < stmts.length; i += DB_BATCH_CHUNK) {
-        const res = await db.batch(stmts.slice(i, i + DB_BATCH_CHUNK));
-        for (const r of res) added += r.meta?.changes ?? 0;
-      }
-      return json({
-        ok: true, added, checked_at: at,
-        already: ids.filter((v) => already.has(v)).length,
-        missing: ids.filter((v) => !exists.has(v)).length,
-      });
-    }
   }
 
   return null;
+}
+
+// ═════════════════════════════════════════════════════
+// 임시 기능 — 엑셀로 출석 맞추기
+// QR 을 안 찍고 들어온 사람을 관리자가 따로 적은 엑셀로 한꺼번에 출석 처리한다.
+// ★ 김진규(주인) 본인의 로그인 QR·명찰로 들어온 세션만 쓸 수 있다.
+//   비밀번호·복구 코드로 들어온 세션은 누구인지 모르므로 막힌다.
+// ★ 지킬 것
+//   - 넣기만 한다. 이미 있는 출석 기록은 시각까지 그대로 두고, 지우지 않는다.
+//   - 바꾸기 전에 백업을 한 벌 떠 둔다 (못 뜨면 아무것도 바꾸지 않는다).
+//   - 넣은 사람을 기록해 두어 '되돌리기' 로 그 줄만 지울 수 있다.
+// 지울 때: 이 블록, route() 의 /api/recon/ 한 줄, admin.js 의 '엑셀로 출석 맞추기' 블록,
+//          admin.html 의 #btnRecon·#reconFile, CLAUDE.md 의 해당 절.
+// ═════════════════════════════════════════════════════
+const RECON_OWNER = '김진규';
+const RECON_LOG_KEY = 'recon_log';
+const RECON_LOG_KEEP = 20;
+const RECON_MAX = 3000;
+
+async function reconAllowed(db, request) {
+  const s = await getSession(db, request);
+  if (!s || s.role !== 'admin' || !s.memberId) return false;
+  const m = await db.prepare('SELECT name, is_admin FROM members WHERE id = ?').bind(s.memberId).first();
+  return Boolean(m && m.is_admin === 1 && String(m.name).replace(/\s/g, '') === RECON_OWNER);
+}
+
+// 바꾸기 직전 상태를 '직접' 백업으로 남긴다. 마지막 줄이 자동 백업이면 내용이 같아도 새로 뜬다 —
+// 자동 백업은 1분 안에 더해지기만 하면 덮어써져서, 바꾸기 전 상태가 사라질 수 있기 때문이다.
+async function reconBackup(db) {
+  const last = await db.prepare('SELECT kind FROM backups ORDER BY created_at DESC, id DESC LIMIT 1').first();
+  await saveSnapshot(db, 'manual', { onlyIfChanged: last?.kind === 'manual' });
+}
+
+async function reconLog(db) {
+  try {
+    const v = JSON.parse((await getSetting(db, RECON_LOG_KEY)) || '[]');
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+const reconSaveLog = (db, log) => setSetting(db, RECON_LOG_KEY, JSON.stringify(log.slice(0, RECON_LOG_KEEP)));
+const reconSummary = (r) => ({
+  id: r.id, at: r.at, sheet_id: r.sheet_id, sheet_title: r.sheet_title, sheet_date: r.sheet_date,
+  checked_at: r.checked_at, n: r.ids.length, undone_at: r.undone_at ?? null, undone_n: r.undone_n ?? null,
+});
+
+async function reconRoute(request, db, pathname) {
+  const method = request.method;
+  const allowed = await reconAllowed(db, request);
+  if (pathname === '/api/recon/me' && method === 'GET') {
+    if (!allowed) return json({ allowed: false });
+    return json({ allowed: true, log: (await reconLog(db)).map(reconSummary) });
+  }
+  if (!allowed) return err('이 기능은 김진규 본인의 로그인 QR 로 들어왔을 때만 쓸 수 있습니다.', 403);
+
+  // 출석 처리 — 고른 사람을 고른 시각으로 넣는다
+  if (pathname === '/api/recon/apply' && method === 'POST') {
+    const body = await readBody(request);
+    const sheetId = Number(body?.sheet_id);
+    const sheet = Number.isInteger(sheetId)
+      ? await db.prepare('SELECT id, title, sheet_date FROM sheets WHERE id = ?').bind(sheetId).first() : null;
+    if (!sheet) return err('출석부를 찾을 수 없습니다.', 404);
+    const raw = Array.isArray(body?.member_ids) ? body.member_ids : null;
+    if (!raw || !raw.length) return err('출석 처리할 사람이 없습니다.');
+    if (raw.length > RECON_MAX) return err(`한 번에 ${RECON_MAX}명까지 처리할 수 있습니다.`);
+    const ids = [...new Set(raw.map(Number))];
+    if (ids.some((v) => !Number.isInteger(v) || v <= 0)) return err('잘못된 회원 ID 가 있습니다.');
+    const t = new Date(String(body?.checked_at ?? ''));
+    if (Number.isNaN(t.getTime()) || t.getTime() < Date.UTC(2000, 0, 1)) return err('출석 시각이 올바르지 않습니다.');
+    if (t.getTime() > Date.now() + 86400000) return err('출석 시각이 너무 먼 미래입니다.');
+    const at = t.toISOString();
+
+    // 바꾸기 전 상태를 먼저 떠 둔다 — 못 뜨면 아무것도 하지 않는다
+    try {
+      await reconBackup(db);
+    } catch (e) {
+      return err(`백업을 뜨지 못해 아무것도 바꾸지 않았습니다: ${e.message}`, 500);
+    }
+
+    const exists = new Set();
+    const already = new Set();
+    for (let i = 0; i < ids.length; i += SQL_IN_CHUNK) {
+      const part = ids.slice(i, i + SQL_IN_CHUNK);
+      const qs = part.map(() => '?').join(',');
+      const [m, a] = await db.batch([
+        db.prepare(`SELECT id FROM members WHERE id IN (${qs})`).bind(...part),
+        db.prepare(`SELECT member_id FROM attendance WHERE sheet_id = ? AND member_id IN (${qs})`).bind(sheet.id, ...part),
+      ]);
+      for (const r of m.results) exists.add(r.id);
+      for (const r of a.results) already.add(r.member_id);
+    }
+    const todo = ids.filter((v) => exists.has(v) && !already.has(v));
+
+    // 넣기만 한다 (이미 있으면 그대로). 실제로 들어간 사람만 기록에 남긴다.
+    const added = [];
+    let failure = null;
+    for (let i = 0; i < todo.length; i += DB_BATCH_CHUNK) {
+      const part = todo.slice(i, i + DB_BATCH_CHUNK);
+      try {
+        const res = await db.batch(part.map((v) => db
+          .prepare('INSERT INTO attendance (sheet_id, member_id, checked_at) VALUES (?, ?, ?) ON CONFLICT(sheet_id, member_id) DO NOTHING')
+          .bind(sheet.id, v, at)));
+        res.forEach((r, k) => { if ((r.meta?.changes ?? 0) > 0) added.push(part[k]); });
+      } catch (e) {
+        failure = e;   // 한 묶음은 통째로 들어가거나 통째로 안 들어간다 — 앞 묶음까지는 기록한다
+        break;
+      }
+    }
+    let runId = null;
+    if (added.length) {
+      runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      const log = await reconLog(db);
+      log.unshift({
+        id: runId, at: new Date().toISOString(), sheet_id: sheet.id, sheet_title: sheet.title,
+        sheet_date: sheet.sheet_date, checked_at: at, ids: added,
+      });
+      await reconSaveLog(db, log);
+    }
+    if (failure) {
+      return json({
+        error: `중간에 오류가 나서 ${added.length}명까지만 처리했습니다 (${todo.length - added.length}명 남음). `
+          + `‘되돌리기’ 로 처리한 것을 지우거나, 같은 파일로 다시 맞추면 남은 사람만 처리됩니다. (${failure.message})`,
+        added: added.length, run_id: runId,
+      }, 500);
+    }
+    return json({
+      ok: true, added: added.length, run_id: runId, checked_at: at,
+      already: ids.filter((v) => already.has(v)).length,
+      missing: ids.filter((v) => !exists.has(v)).length,
+    });
+  }
+
+  // 되돌리기 — 그때 넣은 줄만 지운다 (그 뒤에 취소·다시 찍혀 시각이 바뀐 줄은 건드리지 않는다)
+  if (pathname === '/api/recon/undo' && method === 'POST') {
+    const body = await readBody(request);
+    const log = await reconLog(db);
+    const run = log.find((r) => r.id === String(body?.run_id ?? ''));
+    if (!run) return err('그 기록을 찾을 수 없습니다.', 404);
+    if (run.undone_at) return err('이미 되돌린 기록입니다.', 409);
+    try {
+      await reconBackup(db);
+    } catch (e) {
+      return err(`백업을 뜨지 못해 아무것도 바꾸지 않았습니다: ${e.message}`, 500);
+    }
+    const stmts = run.ids.map((v) => db
+      .prepare('DELETE FROM attendance WHERE sheet_id = ? AND member_id = ? AND checked_at = ?')
+      .bind(run.sheet_id, v, run.checked_at));
+    let removed = 0;
+    for (let i = 0; i < stmts.length; i += DB_BATCH_CHUNK) {
+      const res = await db.batch(stmts.slice(i, i + DB_BATCH_CHUNK));
+      for (const r of res) removed += r.meta?.changes ?? 0;
+    }
+    run.undone_at = new Date().toISOString();
+    run.undone_n = removed;
+    await reconSaveLog(db, log);
+    return json({ ok: true, removed, kept: run.ids.length - removed });
+  }
+
+  return err('찾을 수 없는 API 경로입니다.', 404);
 }
