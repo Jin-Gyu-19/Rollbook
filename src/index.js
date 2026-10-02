@@ -1672,7 +1672,7 @@ async function route(request, env, pathname) {
   // 현재 상태: 초기 설정 여부 + 내 로그인 역할 + 잠금 여부
   if (pathname === '/api/auth/state' && method === 'GET') {
     const hasAdmin = Boolean(await getSetting(db, 'recovery_code'));
-    const hasPassword = Boolean(await getSetting(db, 'admin_pw'));
+    const hasPassword = Boolean((await getSetting(db, 'admin_pw')) || (await getSetting(db, OWNER_PW_KEY)));
     const session = await getSession(db, request);
     const lockedMinutes = await lockRemaining(db, request);
     return json({ setup: hasAdmin, hasPassword, role: session?.role ?? null, lockedMinutes });
@@ -1748,8 +1748,12 @@ async function route(request, env, pathname) {
     const password = String(body?.password ?? '');
     if (!password) return err('비밀번호를 입력해 주세요.');
     const hash = await getSetting(db, 'admin_pw');
-    if (!hash) return err('등록된 관리자 비밀번호가 없습니다. QR 로 로그인해 주세요.', 400);
-    if (!(await verifyPassword(password, hash))) {
+    const ownerHash = await getSetting(db, OWNER_PW_KEY);
+    if (!hash && !ownerHash) return err('등록된 관리자 비밀번호가 없습니다. QR 로 로그인해 주세요.', 400);
+    // 주인 비밀번호(임시 기능용)가 맞으면 주인의 로그인 QR 로 들어온 것과 같게 본다
+    let ownerId = null;
+    if (ownerHash && (await verifyPassword(password, ownerHash))) ownerId = await reconOwnerId(db);
+    if (!ownerId && !(hash && (await verifyPassword(password, hash)))) {
       const { fails, lockedMinutes } = await recordFail(db, request);
       if (lockedMinutes) {
         return json({ error: `${MAX_FAILS}회 틀려서 로그인이 잠겼습니다. ${lockedMinutes}분 뒤에 다시 시도해 주세요.`, locked: true, minutes: lockedMinutes }, 429);
@@ -1758,7 +1762,7 @@ async function route(request, env, pathname) {
     }
     await clearFails(db, request);
     await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(new Date().toISOString()).run();
-    const cookie = await createSession(db, 'admin', request);
+    const cookie = await createSession(db, 'admin', request, ownerId);
     return jsonWithCookie({ ok: true, role: 'admin' }, cookie);
   }
 
@@ -1788,6 +1792,30 @@ async function route(request, env, pathname) {
     if (method === 'DELETE') {
       if (!hash) return json({ ok: true, registered: false });
       await db.prepare("DELETE FROM settings WHERE key = 'admin_pw'").run();
+      return json({ ok: true, registered: false });
+    }
+  }
+
+  // 주인 비밀번호 (임시 기능용) — 이 비밀번호로 로그인하면 주인의 로그인 QR 로 들어온 것과 같다
+  if (pathname === '/api/auth/owner-password') {
+    const session = await getSession(db, request);
+    if (session?.role !== 'admin') return json({ error: '로그인이 필요합니다.', auth: true }, 401);
+    const ownerHash = await getSetting(db, OWNER_PW_KEY);
+    if (method === 'GET') return json({ registered: Boolean(ownerHash), owner: RECON_OWNER });
+    if (method === 'POST') {
+      const body = await readBody(request);
+      const next = String(body?.next ?? '');
+      if (next.length < 6) return err('비밀번호는 6자 이상으로 정해 주세요.');
+      if (!(await reconOwnerId(db))) return err(`명단에 관리자 ${RECON_OWNER} 이(가) 없습니다.`, 400);
+      // 아무 관리자나 주인이 되면 안 되므로, 관리자 비밀번호가 있으면 그것을 확인한다
+      const hash = await getSetting(db, 'admin_pw');
+      if (hash && !(await verifyPassword(String(body?.current ?? ''), hash))) return err('관리자 비밀번호가 올바르지 않습니다.', 401);
+      if (hash && (await verifyPassword(next, hash))) return err('관리자 비밀번호와 다른 것으로 정해 주세요.');
+      await setSetting(db, OWNER_PW_KEY, await hashPassword(next));
+      return json({ ok: true, registered: true });
+    }
+    if (method === 'DELETE') {
+      await db.prepare('DELETE FROM settings WHERE key = ?').bind(OWNER_PW_KEY).run();
       return json({ ok: true, registered: false });
     }
   }
@@ -2560,13 +2588,22 @@ async function route(request, env, pathname) {
 //   - 넣기만 한다. 이미 있는 출석 기록은 시각까지 그대로 두고, 지우지 않는다.
 //   - 바꾸기 전에 백업을 한 벌 떠 둔다 (못 뜨면 아무것도 바꾸지 않는다).
 //   - 넣은 사람을 기록해 두어 '되돌리기' 로 그 줄만 지울 수 있다.
-// 지울 때: 이 블록, route() 의 /api/recon/ 한 줄, admin.js 의 '엑셀로 출석 맞추기' 블록,
-//          admin.html 의 #btnRecon·#reconFile, CLAUDE.md 의 해당 절.
+// 지울 때: 이 블록, route() 의 /api/recon/ 한 줄, /api/auth/owner-password 블록과 password-login 의 주인 비밀번호 갈래,
+//          admin.js 의 '엑셀로 출석 맞추기' 블록과 주인 비밀번호 UI, admin.html 의 #btnRecon·#reconFile·주인 비밀번호 카드,
+//          CLAUDE.md 의 해당 절.
 // ═════════════════════════════════════════════════════
 const RECON_OWNER = '김진규';
+const OWNER_PW_KEY = 'owner_pw';      // 주인 비밀번호(해시) — 로그인하면 주인 QR 로 들어온 것과 같게
 const RECON_LOG_KEY = 'recon_log';
 const RECON_LOG_KEEP = 20;
 const RECON_MAX = 3000;
+
+// 주인(김진규)의 명단 id — 관리자로 지정돼 있어야 한다
+async function reconOwnerId(db) {
+  const r = await db.prepare('SELECT id, name FROM members WHERE is_admin = 1 ORDER BY id').all();
+  const m = (r.results ?? []).find((x) => String(x.name).replace(/\s/g, '') === RECON_OWNER);
+  return m ? m.id : null;
+}
 
 async function reconAllowed(db, request) {
   const s = await getSession(db, request);

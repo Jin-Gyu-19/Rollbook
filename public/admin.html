@@ -267,6 +267,28 @@
       <p class="hint">비밀번호를 저장하면 다른 기기에 로그인돼 있던 관리자 세션은 모두 로그아웃됩니다. 비밀번호를 없애면 QR 로만 로그인하게 됩니다.</p>
     </div>
 
+    <!-- 임시 기능(엑셀로 출석 맞추기)용 — 나중에 지운다 -->
+    <div class="card" id="ownerPwCard">
+      <h2>주인 비밀번호 <span class="stag warn" style="vertical-align:middle; font-size:11.5px;">임시</span></h2>
+      <p class="muted" id="ownerPwMsg">‘엑셀로 출석 맞추기’ 는 김진규 본인의 로그인 QR 로 들어왔을 때만 보입니다. QR 없이도 쓸 수 있게, 이 비밀번호로 로그인하면 그 QR 로 들어온 것과 같게 봅니다.</p>
+      <div class="form-row" style="margin-top:14px;">
+        <label id="ownerPwCurrentWrap" class="hidden">관리자 비밀번호 (확인용)
+          <input id="ownerPwCurrent" type="password" autocomplete="current-password">
+        </label>
+        <label>주인 비밀번호 (6자 이상)
+          <input id="ownerPwNext" type="password" autocomplete="new-password">
+        </label>
+        <label>주인 비밀번호 확인
+          <input id="ownerPwNext2" type="password" autocomplete="new-password">
+        </label>
+        <span class="actions">
+          <button class="primary" id="btnSaveOwnerPw">저장</button>
+          <button class="ghost hidden" id="btnRemoveOwnerPw">없애기</button>
+        </span>
+      </div>
+      <p class="hint">로그인 화면의 ‘비밀번호로 로그인’ 칸에 이 비밀번호를 넣으면 됩니다. 관리자 비밀번호와는 다른 것으로 정해 주세요.</p>
+    </div>
+
     <div class="card">
       <h2>스캐너 PC 로그인 QR</h2>
       <p class="muted">출석 촬영용 PC 는 이 QR 로 로그인합니다. 촬영 화면만 쓸 수 있고 관리자 페이지에는 들어올 수 없습니다. 한 번 로그인하면 재부팅해도 1년간 유지됩니다.</p>

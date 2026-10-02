@@ -77,7 +77,7 @@
     if (name === 'status') loadStatusTab();
     if (name === 'members') loadMembers();
     if (name === 'qr') loadQrTab();
-    if (name === 'security') loadSecurityTab();
+    if (name === 'security') { loadSecurityTab(); loadOwnerPwState(); }
     if (name === 'backup') loadBackupTab();
   }
   tabs.addEventListener('click', (e) => {
@@ -634,6 +634,7 @@
       const r = grid[i];
       const name = str(r[nameCol]);
       if (!name || /^\d+$/.test(name) || isNameHeader(name) || name.length > 20) continue;
+      if (/^(총|합계|소계|총계|계|총원|총인원|합)$/.test(name)) continue;   // 합계 줄
       let present = true;
       let raw = '';
       if (mode === 'status') { raw = r[stCol]; present = attendValue(raw); }
@@ -742,6 +743,49 @@
   }
   $('btnRecon')?.addEventListener('click', openReconHub);
 
+  // 파일 → 시트들 [{ name, rows }] (CSV 는 시트 하나)
+  async function readReconFile(file) {
+    const buf = await file.arrayBuffer();
+    if (/\.csv$/i.test(file.name)) {
+      let text = new TextDecoder('utf-8').decode(buf);
+      if (text.includes('�')) text = new TextDecoder('euc-kr').decode(buf);
+      const rows = text.replace(/^﻿/, '').split(/\r?\n/).map((l) => l.split(',').map((v) => v.trim().replace(/^"(.*)"$/, '$1')));
+      return [{ name: file.name, rows }];
+    }
+    await needXlsx();
+    const wb = XLSX.read(buf);
+    return wb.SheetNames.map((n) => ({ name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' }) }));
+  }
+
+  // 시트 앞머리에서 날짜를 찾는다 (출석집계표의 '일 시' 줄 등) → 'YYYY-MM-DD' 또는 ''
+  function reconSheetDate(rows) {
+    for (const r of rows.slice(0, 8)) {
+      for (const c of r) {
+        if (typeof c === 'number' && c > 40000 && c < 70000) {           // 엑셀 날짜 일련번호
+          const d = new Date(Date.UTC(1899, 11, 30) + Math.round(c) * 86400000);
+          return d.toISOString().slice(0, 10);
+        }
+        if (c instanceof Date && !Number.isNaN(c.getTime())) {
+          return `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`;
+        }
+        const w = String(c ?? '').trim();
+        let m = w.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+        if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+        m = w.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+      }
+    }
+    return '';
+  }
+
+  // 시트 제목을 알아볼 수 있게 — 집계표라면 '과목명' 값
+  function reconSheetSubject(rows) {
+    for (const r of rows.slice(0, 8)) {
+      if (/^과목명/.test(String(r[0] ?? '').trim()) && String(r[1] ?? '').trim()) return String(r[1]).trim();
+    }
+    return '';
+  }
+
   $('reconFile')?.addEventListener('change', async () => {
     const file = $('reconFile').files[0];
     $('reconFile').value = '';
@@ -753,24 +797,11 @@
     const label = btn.textContent;
     btn.disabled = true;
     btn.textContent = '엑셀 읽는 중…';
-    let xrows;
+    let parts;
     let members;
     try {
-      const buf = await file.arrayBuffer();
-      let rows;
-      if (/\.csv$/i.test(file.name)) {
-        let text = new TextDecoder('utf-8').decode(buf);
-        if (text.includes('�')) text = new TextDecoder('euc-kr').decode(buf);
-        rows = text.replace(/^﻿/, '').split(/\r?\n/).map((l) => l.split(',').map((v) => v.trim().replace(/^"(.*)"$/, '$1')));
-      } else {
-        await needXlsx();
-        const wb = XLSX.read(buf);
-        // 시트가 여럿이면 '이름/성명' 머리가 있는 첫 시트를 쓴다
-        const pick = wb.SheetNames.find((n) => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' })
-          .slice(0, 20).some((r) => r.some((c) => isNameHeader(String(c ?? '').trim())))) || wb.SheetNames[0];
-        rows = XLSX.utils.sheet_to_json(wb.Sheets[pick], { header: 1, defval: '' });
-      }
-      xrows = extractAttendance(rows);
+      const all = await readReconFile(file);
+      parts = all.map((s) => ({ ...s, x: extractAttendance(s.rows), date: reconSheetDate(s.rows), subject: reconSheetSubject(s.rows) }));
       members = (await api(`/api/sheets/${sheetId}`)).rows;
     } catch (e) {
       toast(`파일을 읽지 못했습니다: ${e.message}`, true);
@@ -779,13 +810,18 @@
       btn.disabled = false;
       btn.textContent = label;
     }
+    // 이름 머리가 있는 시트들. 여럿이면 출석부 여러 개에 한꺼번에 맞춘다.
+    const good = parts.filter((s) => s.x.length && s.x.headerFound);
+    if (good.length >= 2) { showReconBatch(file.name, good); return; }
+    const one = good[0] || parts.find((s) => s.x.length) || null;
     // 이름 머리가 없는데 명단과 맞는 사람도 하나 없으면 엉뚱한 파일로 본다
-    const noName = !xrows.length || (!xrows.headerFound && !matchAttendance(xrows, members).some((x) => x.cands.length));
+    const noName = !one || (!one.x.headerFound && !matchAttendance(one.x, members).some((x) => x.cands.length));
     if (noName) { toast('파일에서 이름(성명) 칸을 찾지 못했습니다 — 열 제목을 ‘이름’ 이나 ‘성명’ 으로 두고 다시 올려 주세요', true); return; }
-    showRecon(sheet, file.name, xrows, members);
+    showRecon(sheet, file.name, one.x, members);
   });
 
-  function showRecon(sheet, fileName, xrows, members) {
+  // 엑셀 사람들과 출석부 명단을 견줘 갈래를 나눈다
+  function reconPlan(xrows, members) {
     const matched = matchAttendance(xrows, members);
     const add = new Map();      // member_id → { m, x } — 엑셀 출석 · 여기 미출석
     const already = new Map();  // 엑셀 출석 · 여기도 출석 (시각 그대로)
@@ -807,39 +843,35 @@
     }
     // 같은 사람이 엑셀 여러 줄에서 '출석' 이면 한 번만, 다른 줄에서 미출석이어도 출석 쪽을 따른다
     for (const id of [...add.keys(), ...already.keys()]) xAbsent.delete(id);
-    const presentCount = matched.filter((x) => x.present === true).length;
+    return { matched, add, already, ambiguous, notFound, unknown, xAbsent, presentCount: matched.filter((x) => x.present === true).length };
+  }
 
-    // 기본 시각: 그 출석부 날짜에 찍힌 가장 이른 출석 시각, 없으면 09:00
+  // 기본 시각: 그 출석부 날짜에 찍힌 가장 이른 출석 시각, 없으면 09:00
+  function reconDefaults(sheet, members) {
     const defDate = sheet.sheet_date || kstToday();
     const kstDay = (iso) => { const t = kstParts(iso); return t ? `${t.year}-${t.month}-${t.day}` : ''; };
     const times = members.map((m) => m.checked_at).filter((v) => v && kstDay(v) === defDate).sort();
-    const defTime = times.length ? reconHm(times[0]) : '09:00';
+    return { defDate, defTime: times.length ? reconHm(times[0]) : '09:00' };
+  }
 
+  const reconModeNote = (xrows) => (xrows.mode === 'status'
+    ? `‘${esc(xrows.statusHeader)}’ 칸으로 출석 여부를 봤습니다.`
+    : xrows.mode === 'time'
+      ? `‘${esc(xrows.statusHeader)}’ 칸에 값이 있는 사람을 출석으로 봤습니다.`
+      : '<b>출석 여부 칸이 없어 파일에 있는 사람 모두를 출석으로 봤습니다.</b>');
+
+  // 갈래별 목록 HTML. 체크박스(.rc-add)·동명이인 고르기(.rc-amb)는 root 안에서만 센다.
+  function reconPlanHtml(plan, compact) {
     const who = (m) => `<b>${esc(m.name)}</b> <span class="muted">${esc([m.title, m.dept].filter(Boolean).join(' · '))}</span>`;
-    const box = (inner) => `<div style="max-height:240px; overflow:auto; border:1px solid var(--line, #E5E7EB); border-radius:10px; padding:6px 10px; margin:6px 0 4px;">${inner}</div>`;
-    const sec = (title, n, inner, open) => `<details ${open ? 'open' : ''} style="margin:10px 0;"><summary style="cursor:pointer; font-weight:700;">${title} <span class="muted">${n}명</span></summary>${inner}</details>`;
-    const modeNote = xrows.mode === 'status'
-      ? `‘${esc(xrows.statusHeader)}’ 칸으로 출석 여부를 봤습니다.`
-      : xrows.mode === 'time'
-        ? `‘${esc(xrows.statusHeader)}’ 칸에 값이 있는 사람을 출석으로 봤습니다.`
-        : '<b>출석 여부 칸이 없어 파일에 있는 사람 모두를 출석으로 봤습니다.</b>';
-
+    const box = (inner) => `<div style="max-height:${compact ? 160 : 240}px; overflow:auto; border:1px solid var(--line, #E5E7EB); border-radius:10px; padding:6px 10px; margin:6px 0 4px;">${inner}</div>`;
+    const sec = (title, n, inner, open) => `<details ${open ? 'open' : ''} style="margin:${compact ? 6 : 10}px 0;"><summary style="cursor:pointer; font-weight:700;">${title} <span class="muted">${n}명</span></summary>${inner}</details>`;
+    const { add, already, ambiguous, notFound, unknown, xAbsent } = plan;
     const addList = [...add.values()];
-    let html = `
-      <p class="hint" style="margin:0 0 10px;">대상 출석부: <b>${esc(sheet.sheet_date)} · ${esc(sheet.title)}</b><br>
-        ‘${esc(fileName)}’ ${matched.length}줄 중 출석 ${presentCount}명 · ${modeNote}</p>
-      <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
-        <label style="margin:0;">출석 날짜 <input type="date" id="rcDate" value="${esc(defDate)}" style="margin:4px 0 0;"></label>
-        <label style="margin:0;">출석 시각 (한국시간) <input type="time" id="rcTime" value="${esc(defTime)}" style="margin:4px 0 0;"></label>
-      </div>
-      <p class="hint" style="margin:6px 0 0;">아래에서 고른 사람만 이 시각으로 출석 처리됩니다. 이미 출석한 사람의 시각은 바꾸지 않습니다.</p>`;
-
-    html += sec(`✅ 출석으로 바꿀 사람 — 엑셀엔 출석, 여기엔 미출석`, addList.length, addList.length
-      ? `<label class="check-inline" style="margin:6px 0 0;"><input type="checkbox" id="rcAll" checked> 모두 고르기</label>`
+    let html = sec('✅ 출석으로 바꿀 사람 — 엑셀엔 출석, 여기엔 미출석', addList.length, addList.length
+      ? `<label class="check-inline" style="margin:6px 0 0;"><input type="checkbox" class="rc-all" checked> 모두 고르기</label>`
         + box(addList.map(({ m }) => `<label class="check-inline" style="font-weight:400; margin:4px 0;">
             <input type="checkbox" class="rc-add" value="${m.member_id}" checked> ${who(m)}</label>`).join(''))
-      : '<p class="hint" style="margin:6px 0;">없습니다 — 엑셀과 여기가 이미 맞습니다.</p>', true);
-
+      : '<p class="hint" style="margin:6px 0;">없습니다 — 엑셀과 여기가 이미 맞습니다.</p>', !compact || addList.length > 0);
     if (ambiguous.length) {
       html += sec('👥 동명이인 · 회계사 번호 다름 — 누구인지 골라 주세요', ambiguous.length, box(ambiguous.map((x, i) => `
         <div style="margin:6px 0;"><b>${esc(x.name)}</b> <span class="muted">엑셀 ${x.row}행${x.cpa ? ' · ' + esc(x.cpa) : ''}${x.dept ? ' · ' + esc(x.dept) : ''}${x.cpaDiff ? ' · 명단의 회계사 번호와 다름' : ''}</span>
@@ -851,11 +883,11 @@
     if (notFound.length) {
       html += sec('❓ 명단에 없는 사람 — 처리하지 않습니다', notFound.length, box(notFound.map((x) =>
         `<div style="margin:4px 0;"><b>${esc(x.name)}</b> <span class="muted">엑셀 ${x.row}행${x.cpa ? ' · ' + esc(x.cpa) : ''}${x.dept ? ' · ' + esc(x.dept) : ''}</span></div>`).join('')
-        + '<p class="hint" style="margin:6px 0;">이름 철자나 회계사 번호가 명단과 다른지 확인해 주세요. 명단에 먼저 추가하면 다시 맞출 수 있습니다.</p>'), true);
+        + '<p class="hint" style="margin:6px 0;">이름 철자나 회계사 번호가 명단과 다른지 확인해 주세요. 명단에 먼저 추가하면 다시 맞출 수 있습니다.</p>'), !compact);
     }
     if (unknown.length) {
       html += sec('⚠️ 출석 여부를 알 수 없는 값 — 처리하지 않습니다', unknown.length, box(unknown.map((x) =>
-        `<div style="margin:4px 0;"><b>${esc(x.name)}</b> <span class="muted">엑셀 ${x.row}행 · ‘${esc(x.raw)}’</span></div>`).join('')), true);
+        `<div style="margin:4px 0;"><b>${esc(x.name)}</b> <span class="muted">엑셀 ${x.row}행 · ‘${esc(x.raw)}’</span></div>`).join('')), !compact);
     }
     if (already.size) {
       html += sec('이미 출석 — 그대로 둡니다', already.size, box([...already.values()].map(({ m }) =>
@@ -866,42 +898,182 @@
         `<div style="margin:4px 0;">${who(m)} <span class="muted" style="font-variant-numeric:tabular-nums;">${fmtShortTime(m.checked_at)}</span></div>`).join('')
         + '<p class="hint" style="margin:6px 0;">잘못 찍힌 기록이면 출석 현황 표에서 ‘출석 취소’ 로 지울 수 있습니다.</p>'), false);
     }
+    return html;
+  }
 
-    const chosen = () => {
-      const ids = [...document.querySelectorAll('.rc-add:checked')].map((c) => Number(c.value));
-      document.querySelectorAll('.rc-amb').forEach((s) => { if (s.value) ids.push(Number(s.value)); });
-      return [...new Set(ids)];
-    };
+  // root 안에서 고른 사람들
+  function reconChosen(root) {
+    const ids = [...root.querySelectorAll('.rc-add:checked')].map((c) => Number(c.value));
+    root.querySelectorAll('.rc-amb').forEach((s) => { if (s.value) ids.push(Number(s.value)); });
+    return [...new Set(ids)];
+  }
+
+  // '모두 고르기' 와 낱개 체크를 root 안에서 맞물리게 한다 (바뀔 때마다 sync)
+  function reconOnChange(e, sync) {
+    const root = e.target.closest('.rc-root') || $('editModalFields');
+    if (e.target.matches('.rc-all')) {
+      root.querySelectorAll('.rc-add').forEach((c) => { c.checked = e.target.checked; });
+    } else if (e.target.matches('.rc-add')) {
+      const all = [...root.querySelectorAll('.rc-add')];
+      const allBox = root.querySelector('.rc-all');
+      if (allBox) allBox.checked = all.every((c) => c.checked);
+    }
+    if (e.target.matches('.rc-all, .rc-add, .rc-amb')) sync();
+  }
+
+  function reconAt(d, t) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !/^\d{2}:\d{2}/.test(t)) throw new Error('출석 날짜와 시각을 넣어 주세요');
+    const at = new Date(`${d}T${t.slice(0, 5)}:00+09:00`);
+    if (Number.isNaN(at.getTime())) throw new Error('출석 날짜와 시각이 올바르지 않습니다');
+    return at.toISOString();
+  }
+
+  // 시트 하나 → 고른 출석부 하나
+  function showRecon(sheet, fileName, xrows, members) {
+    const plan = reconPlan(xrows, members);
+    const { defDate, defTime } = reconDefaults(sheet, members);
+    const html = `
+      <div class="rc-root">
+      <p class="hint" style="margin:0 0 10px;">대상 출석부: <b>${esc(sheet.sheet_date)} · ${esc(sheet.title)}</b><br>
+        ‘${esc(fileName)}’ ${plan.matched.length}줄 중 출석 ${plan.presentCount}명 · ${reconModeNote(xrows)}</p>
+      <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+        <label style="margin:0;">출석 날짜 <input type="date" id="rcDate" value="${esc(defDate)}" style="margin:4px 0 0;"></label>
+        <label style="margin:0;">출석 시각 (한국시간) <input type="time" id="rcTime" value="${esc(defTime)}" style="margin:4px 0 0;"></label>
+      </div>
+      <p class="hint" style="margin:6px 0 0;">아래에서 고른 사람만 이 시각으로 출석 처리됩니다. 이미 출석한 사람의 시각은 바꾸지 않습니다.</p>
+      ${reconPlanHtml(plan, false)}
+      </div>`;
+    const root = () => $('editModalFields');
     openEdit('엑셀로 출석 맞추기', html, async () => {
-      const ids = chosen();
+      const ids = reconChosen(root());
       if (!ids.length) throw new Error('출석 처리할 사람을 골라 주세요');
-      const d = $('rcDate').value;
-      const t = $('rcTime').value;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !/^\d{2}:\d{2}/.test(t)) throw new Error('출석 날짜와 시각을 넣어 주세요');
-      const at = new Date(`${d}T${t.slice(0, 5)}:00+09:00`);
-      if (Number.isNaN(at.getTime())) throw new Error('출석 날짜와 시각이 올바르지 않습니다');
+      const at = reconAt($('rcDate').value, $('rcTime').value);
       const r = await api('/api/recon/apply', {
         method: 'POST',
-        body: JSON.stringify({ sheet_id: sheet.id, member_ids: ids, checked_at: at.toISOString() }),
+        body: JSON.stringify({ sheet_id: sheet.id, member_ids: ids, checked_at: at }),
       }).catch((e) => { renderStatus(sheet.id); throw e; });   // 중간에 멈췄어도 표는 지금 상태로
       const extra = [r.already ? `이미 출석 ${r.already}명` : '', r.missing ? `명단에서 사라짐 ${r.missing}명` : ''].filter(Boolean);
       toast(`${r.added}명을 출석 처리했습니다${extra.length ? ` (${extra.join(' · ')})` : ''}`);
       renderStatus(sheet.id);
     });
     editModal.querySelector('.modal-body').style.maxWidth = '640px';
-    const sync = () => { $('btnEditSave').textContent = `${chosen().length}명 출석 처리`; };
+    const sync = () => { $('btnEditSave').textContent = `${reconChosen(root()).length}명 출석 처리`; };
     sync();
-    $('rcAll')?.addEventListener('change', (e) => {
-      document.querySelectorAll('.rc-add').forEach((c) => { c.checked = e.target.checked; });
-      sync();
-    });
-    $('editModalFields').onchange = (e) => {
-      if (e.target.matches('.rc-add')) {
-        const all = [...document.querySelectorAll('.rc-add')];
-        if ($('rcAll')) $('rcAll').checked = all.every((c) => c.checked);
-      }
-      if (e.target.matches('.rc-add, .rc-amb')) sync();
+    root().onchange = (e) => reconOnChange(e, sync);
+  }
+
+  // 시트 여러 개(예: 출석집계표 과목별 시트) → 출석부 여러 개에 한꺼번에.
+  // 시트의 날짜와 출석부 날짜가 같으면 순서대로 짝지어 두고, 틀리면 고쳐 고를 수 있다.
+  async function showReconBatch(fileName, parts) {
+    const membersOf = new Map();   // sheet id → 명단
+    const getMembers = async (id) => {
+      if (!membersOf.has(id)) membersOf.set(id, (await api(`/api/sheets/${id}`)).rows);
+      return membersOf.get(id);
     };
+    // 자동 짝짓기: 같은 날짜끼리, 나오는 순서대로
+    const used = new Set();
+    const guess = parts.map((s) => {
+      if (!s.date) return null;
+      const cand = sheetsCache.filter((sh) => sh.sheet_date === s.date && !used.has(sh.id));
+      if (!cand.length) return null;
+      used.add(cand[0].id);
+      return cand[0].id;
+    });
+    const opts = (sel) => `<option value="">건너뛰기</option>` + sheetsCache.map((sh) =>
+      `<option value="${sh.id}" ${sh.id === sel ? 'selected' : ''}>${esc(sh.sheet_date)} · ${esc(sh.title)}</option>`).join('');
+    const blocks = parts.map((s, i) => `
+      <details class="rc-root rc-blk" data-i="${i}" open style="margin:10px 0; border:1px solid var(--line, #E5E7EB); border-radius:12px; padding:8px 12px;">
+        <summary style="cursor:pointer;"><b>${esc(s.subject || s.name)}</b> <span class="muted">${s.subject ? esc(s.name) + ' · ' : ''}${s.date ? esc(s.date) + ' · ' : ''}${s.x.length}명</span>
+          <span class="muted rc-sum" style="float:right;"></span></summary>
+        <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin:8px 0 4px;">
+          <label style="margin:0; flex:1 1 220px;">출석부 <select class="rc-sheet" style="margin:4px 0 0; width:100%;">${opts(guess[i])}</select></label>
+          <label style="margin:0;">출석 날짜 <input type="date" class="rc-date" style="margin:4px 0 0;"></label>
+          <label style="margin:0;">출석 시각 (한국시간) <input type="time" class="rc-time" style="margin:4px 0 0;"></label>
+        </div>
+        <p class="hint rc-note" style="margin:0 0 4px;">${reconModeNote(s.x)}</p>
+        <div class="rc-plan"></div>
+      </details>`).join('');
+    const html = `
+      <p class="hint" style="margin:0 0 6px;">‘${esc(fileName)}’ 에서 시트 ${parts.length}개를 찾았습니다. 시트마다 어느 출석부에 맞출지와 출석 시각을 확인해 주세요.
+        건너뛰기로 둔 시트는 처리하지 않습니다. 이미 출석한 사람의 시각은 바꾸지 않습니다.</p>
+      ${blocks}`;
+    const root = () => $('editModalFields');
+    const blkOf = (i) => root().querySelector(`.rc-blk[data-i="${i}"]`);
+    const plans = new Array(parts.length).fill(null);
+    const sync = () => {
+      let total = 0; let n = 0;
+      parts.forEach((s, i) => {
+        const b = blkOf(i); if (!b) return;
+        const id = Number(b.querySelector('.rc-sheet').value);
+        const k = id ? reconChosen(b).length : 0;
+        b.querySelector('.rc-sum').textContent = id ? `${k}명 처리` : '건너뜀';
+        if (id) { total += k; n++; }
+      });
+      $('btnEditSave').textContent = `${total}명 출석 처리 (출석부 ${n}개)`;
+    };
+    const fill = async (i) => {
+      const b = blkOf(i);
+      const id = Number(b.querySelector('.rc-sheet').value);
+      const planEl = b.querySelector('.rc-plan');
+      if (!id) { plans[i] = null; planEl.innerHTML = ''; sync(); return; }
+      planEl.innerHTML = '<p class="hint">명단을 읽는 중…</p>';
+      try {
+        const sheet = sheetsCache.find((x) => x.id === id);
+        const members = await getMembers(id);
+        const plan = reconPlan(parts[i].x, members);
+        plans[i] = plan;
+        const { defDate, defTime } = reconDefaults(sheet, members);
+        b.querySelector('.rc-date').value = defDate;
+        b.querySelector('.rc-time').value = defTime;
+        planEl.innerHTML = reconPlanHtml(plan, true);
+      } catch (e) {
+        plans[i] = null;
+        planEl.innerHTML = `<p class="hint" style="color:var(--danger);">명단을 읽지 못했습니다 — ${esc(e.message)}</p>`;
+      }
+      sync();
+    };
+    openEdit('엑셀로 출석 맞추기 — 시트 여러 개', html, async () => {
+      // 먼저 전부 확인하고 나서 하나씩 보낸다
+      const jobs = [];
+      const seen = new Set();
+      for (let i = 0; i < parts.length; i++) {
+        const b = blkOf(i);
+        const id = Number(b.querySelector('.rc-sheet').value);
+        if (!id) continue;
+        if (seen.has(id)) throw new Error('같은 출석부가 두 시트에 골라져 있습니다 — 하나만 남겨 주세요');
+        seen.add(id);
+        const ids = reconChosen(b);
+        if (!ids.length) continue;
+        const sheet = sheetsCache.find((x) => x.id === id);
+        jobs.push({ i, sheet, ids, at: reconAt(b.querySelector('.rc-date').value, b.querySelector('.rc-time').value) });
+      }
+      if (!jobs.length) throw new Error('출석 처리할 사람이 없습니다');
+      let added = 0; const done = [];
+      for (const j of jobs) {
+        $('btnEditSave').textContent = `처리 중… ${done.length + 1} / ${jobs.length}`;
+        try {
+          const r = await api('/api/recon/apply', {
+            method: 'POST',
+            body: JSON.stringify({ sheet_id: j.sheet.id, member_ids: j.ids, checked_at: j.at }),
+          });
+          added += r.added; done.push(j);
+        } catch (e) {
+          const cur = Number($('statusSheetSel').value);
+          if (cur) renderStatus(cur);
+          throw new Error(`‘${j.sheet.title}’ 에서 멈췄습니다 (앞의 ${done.length}개 출석부 ${added}명은 처리됨): ${e.message}`);
+        }
+      }
+      toast(`출석부 ${done.length}개에 ${added}명을 출석 처리했습니다`);
+      const cur = Number($('statusSheetSel').value);
+      if (cur) renderStatus(cur);
+    });
+    editModal.querySelector('.modal-body').style.maxWidth = '760px';
+    root().onchange = (e) => {
+      if (e.target.matches('.rc-sheet')) { fill(Number(e.target.closest('.rc-blk').dataset.i)); return; }
+      reconOnChange(e, sync);
+    };
+    sync();
+    for (let i = 0; i < parts.length; i++) await fill(i);
   }
 
   // ── 출석집계표 내려받기 ──────────────────────────────
@@ -2492,6 +2664,44 @@
       $('pwCurrent').value = $('pwNext').value = $('pwNext2').value = '';
       toast('비밀번호를 없앴습니다 — 이제 QR 로만 로그인합니다');
       loadPasswordState();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  // 주인 비밀번호 (임시 기능용 — 나중에 지운다)
+  async function loadOwnerPwState() {
+    try {
+      const [{ registered }, adminPw] = await Promise.all([api('/api/auth/owner-password'), api('/api/auth/admin-password')]);
+      $('ownerPwCurrentWrap').classList.toggle('hidden', !adminPw.registered);
+      $('btnRemoveOwnerPw').classList.toggle('hidden', !registered);
+      $('btnSaveOwnerPw').textContent = registered ? '변경' : '등록';
+      $('ownerPwMsg').textContent = registered
+        ? '주인 비밀번호가 등록되어 있습니다. 로그인 화면의 ‘비밀번호로 로그인’ 에서 이 비밀번호를 넣으면 김진규 본인의 QR 로 들어온 것과 같게 봅니다.'
+        : '‘엑셀로 출석 맞추기’ 는 김진규 본인의 로그인 QR 로 들어왔을 때만 보입니다. QR 없이도 쓸 수 있게, 이 비밀번호로 로그인하면 그 QR 로 들어온 것과 같게 봅니다.';
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }
+  $('btnSaveOwnerPw')?.addEventListener('click', async () => {
+    const next = $('ownerPwNext').value;
+    if (next !== $('ownerPwNext2').value) return toast('주인 비밀번호 두 개가 서로 다릅니다.', true);
+    if (next.length < 6) return toast('비밀번호는 6자 이상으로 정해 주세요.', true);
+    try {
+      await api('/api/auth/owner-password', { method: 'POST', body: JSON.stringify({ current: $('ownerPwCurrent').value, next }) });
+      $('ownerPwCurrent').value = $('ownerPwNext').value = $('ownerPwNext2').value = '';
+      toast('주인 비밀번호를 저장했습니다 — 로그아웃 뒤 이 비밀번호로 다시 로그인하면 됩니다');
+      loadOwnerPwState();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+  $('btnRemoveOwnerPw')?.addEventListener('click', async () => {
+    if (!confirm('주인 비밀번호를 없앨까요? 이미 로그인한 세션은 그대로 남습니다.')) return;
+    try {
+      await api('/api/auth/owner-password', { method: 'DELETE' });
+      toast('주인 비밀번호를 없앴습니다');
+      loadOwnerPwState();
     } catch (e) {
       toast(e.message, true);
     }
