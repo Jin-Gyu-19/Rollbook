@@ -21,7 +21,7 @@ const SQL_IN_CHUNK = 80;
 const DB_BATCH_CHUNK = 50;
 
 // 표·열을 바꿀 때마다 이 값을 올린다. 올리지 않으면 예전 DB 가 고쳐지지 않는다.
-const SCHEMA_VERSION = '2026-10-01-1';
+const SCHEMA_VERSION = '2026-10-02-1';
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
@@ -170,6 +170,10 @@ async function ensureSchema(db) {
   try { await db.prepare('ALTER TABLE backups ADD COLUMN changes TEXT').run(); } catch { /* 이미 있음 */ }
   // 누가 로그인했는지 (QR 로 들어온 관리자만 채워진다 — 비밀번호·복구 코드 로그인은 비어 있다)
   try { await db.prepare('ALTER TABLE sessions ADD COLUMN member_id INTEGER').run(); } catch { /* 이미 있음 */ }
+  // 출석집계표용 — 출석부(과목)마다 다른 코드번호·강사명·연수시간
+  for (const col of ['rp_code', 'rp_teacher', 'rp_hours']) {
+    try { await db.prepare(`ALTER TABLE sheets ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`).run(); } catch { /* 이미 있음 */ }
+  }
 
   // 여기까지 왔으면 최신 — 다음부터는 위에서 한 번만 물어보고 지나간다
   await db.prepare(
@@ -210,6 +214,16 @@ function text(v, max = 200) {
   if (v == null) return '';
   if (typeof v !== 'string') v = typeof v === 'number' ? String(v) : '';
   return v.trim().slice(0, max);
+}
+
+// 출석집계표용 칸 — 코드번호(숫자)·강사명·연수시간(숫자). 비워 두면 내려받을 때 오른쪽 칸 값을 쓴다.
+function reportFields(body) {
+  const code = text(body?.rp_code, 40);
+  const teacher = text(body?.rp_teacher, 120);
+  const hours = text(body?.rp_hours, 10);
+  if (code && !/^\d+$/.test(code)) return { error: '코드번호는 숫자만 넣어 주세요.' };
+  if (hours && !(Number(hours) >= 0 && Number(hours) < 1000)) return { error: '연수시간은 숫자로 넣어 주세요.' };
+  return { code, teacher, hours: hours ? String(Number(hours)) : '' };
 }
 
 async function readBody(request) {
@@ -479,7 +493,7 @@ async function backupFingerprint(text) {
 async function buildBackup(db) {
   const [members, sheets, attendance, logo] = await Promise.all([
     db.prepare('SELECT id, name, title, dept, code, cpa_no, is_admin, created_at FROM members ORDER BY id').all(),
-    db.prepare('SELECT id, title, sheet_date, is_active, sort_order, created_at FROM sheets ORDER BY id').all(),
+    db.prepare('SELECT id, title, sheet_date, is_active, sort_order, created_at, rp_code, rp_teacher, rp_hours FROM sheets ORDER BY id').all(),
     db.prepare('SELECT id, sheet_id, member_id, checked_at FROM attendance ORDER BY id').all(),
     db.prepare("SELECT value FROM settings WHERE key = 'brand_logo'").first(),
   ]);
@@ -539,6 +553,9 @@ function backupDiff(prev, next) {
     if (o.title !== x.title) diffs.push(`이름 ${o.title}→${x.title}`);
     if (o.sheet_date !== x.sheet_date) diffs.push(`날짜 ${o.sheet_date}→${x.sheet_date}`);
     if (!!o.is_active !== !!x.is_active) diffs.push(x.is_active ? '출석 시작' : '출석 중단');
+    if ((o.rp_code ?? '') !== (x.rp_code ?? '')) diffs.push(`코드번호 ${o.rp_code || '(없음)'}→${x.rp_code || '(없음)'}`);
+    if ((o.rp_teacher ?? '') !== (x.rp_teacher ?? '')) diffs.push(`강사명 ${o.rp_teacher || '(없음)'}→${x.rp_teacher || '(없음)'}`);
+    if ((o.rp_hours ?? '') !== (x.rp_hours ?? '')) diffs.push(`연수시간 ${o.rp_hours || '(없음)'}→${x.rp_hours || '(없음)'}`);
     if (diffs.length) sheets.changed.push(`${x.title}: ${diffs.join(', ')}`);
   }
   for (const [id, x] of ps) if (!ns.has(id)) sheets.removed.push(x.title);
@@ -711,9 +728,9 @@ async function restoreBackup(db, data) {
   }
   for (const sh of data.sheets ?? []) {
     stmts.push(db.prepare(
-      'INSERT INTO sheets (id, title, sheet_date, is_active, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO sheets (id, title, sheet_date, is_active, sort_order, created_at, rp_code, rp_teacher, rp_hours) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).bind(sh.id, sh.title ?? '', sh.sheet_date ?? '', sh.is_active ?? 0, sh.sort_order ?? 0,
-      sh.created_at ?? new Date().toISOString()));
+      sh.created_at ?? new Date().toISOString(), sh.rp_code ?? '', sh.rp_teacher ?? '', sh.rp_hours ?? ''));
   }
   for (const a of data.attendance ?? []) {
     stmts.push(db.prepare(
@@ -2450,6 +2467,7 @@ async function route(request, env, pathname) {
     const { results } = await db
       .prepare(`
         SELECT s.id, s.title, s.sheet_date, s.is_active, s.created_at, s.sort_order,
+               s.rp_code, s.rp_teacher, s.rp_hours,
                (SELECT COUNT(*) FROM attendance a WHERE a.sheet_id = s.id) AS attended
         FROM sheets s
         ORDER BY s.sort_order ASC, s.sheet_date DESC, s.id DESC
@@ -2466,12 +2484,14 @@ async function route(request, env, pathname) {
     const activate = Boolean(body?.activate);
     if (!title) return err('출석부 이름을 입력해 주세요.');
     if (!sheetDate) return err('날짜를 선택해 주세요.');
+    const rp = reportFields(body);
+    if (rp.error) return err(rp.error);
 
     const top = await db.prepare('SELECT MIN(sort_order) AS n FROM sheets').first();
     const order = Number.isFinite(top?.n) ? Number(top.n) - 1 : 0;
     const r = await db
-      .prepare('INSERT INTO sheets (title, sheet_date, is_active, sort_order) VALUES (?, ?, 0, ?)')
-      .bind(title, sheetDate, order)
+      .prepare('INSERT INTO sheets (title, sheet_date, is_active, sort_order, rp_code, rp_teacher, rp_hours) VALUES (?, ?, 0, ?, ?, ?, ?)')
+      .bind(title, sheetDate, order, rp.code, rp.teacher, rp.hours)
       .run();
     const id = r.meta.last_row_id;
     if (activate) {
@@ -2519,9 +2539,11 @@ async function route(request, env, pathname) {
       const sheetDate = text(body?.sheet_date);
       if (!title) return err('출석부 이름을 입력해 주세요.');
       if (!sheetDate) return err('날짜를 선택해 주세요.');
+      const rp = reportFields(body);
+      if (rp.error) return err(rp.error);
       await db
-        .prepare('UPDATE sheets SET title = ?, sheet_date = ? WHERE id = ?')
-        .bind(title, sheetDate, id)
+        .prepare('UPDATE sheets SET title = ?, sheet_date = ?, rp_code = ?, rp_teacher = ?, rp_hours = ? WHERE id = ?')
+        .bind(title, sheetDate, rp.code, rp.teacher, rp.hours, id)
         .run();
       const sheet = await db.prepare('SELECT * FROM sheets WHERE id = ?').bind(id).first();
       return sheet ? json({ sheet }) : err('출석부를 찾을 수 없습니다.', 404);
@@ -2630,7 +2652,7 @@ async function reconLog(db) {
 const reconSaveLog = (db, log) => setSetting(db, RECON_LOG_KEY, JSON.stringify(log.slice(0, RECON_LOG_KEEP)));
 const reconSummary = (r) => ({
   id: r.id, at: r.at, sheet_id: r.sheet_id, sheet_title: r.sheet_title, sheet_date: r.sheet_date,
-  checked_at: r.checked_at, n: r.ids.length, undone_at: r.undone_at ?? null, undone_n: r.undone_n ?? null,
+  checked_at: r.checked_at, spread: Boolean(r.spread), n: r.ids.length, undone_at: r.undone_at ?? null, undone_n: r.undone_n ?? null,
 });
 
 async function reconRoute(request, db, pathname) {
@@ -2658,6 +2680,8 @@ async function reconRoute(request, db, pathname) {
     if (Number.isNaN(t.getTime()) || t.getTime() < Date.UTC(2000, 0, 1)) return err('출석 시각이 올바르지 않습니다.');
     if (t.getTime() > Date.now() + 86400000) return err('출석 시각이 너무 먼 미래입니다.');
     const at = t.toISOString();
+    // 실제 스캔처럼 보이게 — 사람마다 수십 초씩 띄워 넣고 순서도 섞는다 (같은 초에 여럿이 찍히는 일은 없으니)
+    const spread = Boolean(body?.spread);
 
     // 바꾸기 전 상태를 먼저 떠 둔다 — 못 뜨면 아무것도 하지 않는다
     try {
@@ -2678,18 +2702,26 @@ async function reconRoute(request, db, pathname) {
       for (const r of m.results) exists.add(r.id);
       for (const r of a.results) already.add(r.member_id);
     }
-    const todo = ids.filter((v) => exists.has(v) && !already.has(v));
+    let todo = ids.filter((v) => exists.has(v) && !already.has(v));
+    // 사람마다 넣을 시각 — 흩어 넣기면 섞은 순서로 10~60초씩 띄운다 (39명이면 20분 남짓)
+    if (spread) todo = todo.map((v) => [Math.random(), v]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+    let cursor = t.getTime();
+    const timeOf = new Map();
+    for (const v of todo) {
+      if (spread && timeOf.size) cursor += 10000 + Math.floor(Math.random() * 50001);
+      timeOf.set(v, new Date(cursor).toISOString());
+    }
 
     // 넣기만 한다 (이미 있으면 그대로). 실제로 들어간 사람만 기록에 남긴다.
-    const added = [];
+    const added = [];   // [{ id, at }]
     let failure = null;
     for (let i = 0; i < todo.length; i += DB_BATCH_CHUNK) {
       const part = todo.slice(i, i + DB_BATCH_CHUNK);
       try {
         const res = await db.batch(part.map((v) => db
           .prepare('INSERT INTO attendance (sheet_id, member_id, checked_at) VALUES (?, ?, ?) ON CONFLICT(sheet_id, member_id) DO NOTHING')
-          .bind(sheet.id, v, at)));
-        res.forEach((r, k) => { if ((r.meta?.changes ?? 0) > 0) added.push(part[k]); });
+          .bind(sheet.id, v, timeOf.get(v))));
+        res.forEach((r, k) => { if ((r.meta?.changes ?? 0) > 0) added.push({ id: part[k], at: timeOf.get(part[k]) }); });
       } catch (e) {
         failure = e;   // 한 묶음은 통째로 들어가거나 통째로 안 들어간다 — 앞 묶음까지는 기록한다
         break;
@@ -2701,7 +2733,7 @@ async function reconRoute(request, db, pathname) {
       const log = await reconLog(db);
       log.unshift({
         id: runId, at: new Date().toISOString(), sheet_id: sheet.id, sheet_title: sheet.title,
-        sheet_date: sheet.sheet_date, checked_at: at, ids: added,
+        sheet_date: sheet.sheet_date, checked_at: at, spread, ids: added.map((x) => x.id), rows: added,
       });
       await reconSaveLog(db, log);
     }
@@ -2714,6 +2746,7 @@ async function reconRoute(request, db, pathname) {
     }
     return json({
       ok: true, added: added.length, run_id: runId, checked_at: at,
+      last_at: added.length ? added[added.length - 1].at : null,
       already: ids.filter((v) => already.has(v)).length,
       missing: ids.filter((v) => !exists.has(v)).length,
     });
@@ -2731,9 +2764,11 @@ async function reconRoute(request, db, pathname) {
     } catch (e) {
       return err(`백업을 뜨지 못해 아무것도 바꾸지 않았습니다: ${e.message}`, 500);
     }
-    const stmts = run.ids.map((v) => db
+    // 예전 기록(rows 없음)은 모두 같은 시각으로 넣었던 것
+    const rows = Array.isArray(run.rows) ? run.rows : run.ids.map((v) => ({ id: v, at: run.checked_at }));
+    const stmts = rows.map((r) => db
       .prepare('DELETE FROM attendance WHERE sheet_id = ? AND member_id = ? AND checked_at = ?')
-      .bind(run.sheet_id, v, run.checked_at));
+      .bind(run.sheet_id, r.id, r.at));
     let removed = 0;
     for (let i = 0; i < stmts.length; i += DB_BATCH_CHUNK) {
       const res = await db.batch(stmts.slice(i, i + DB_BATCH_CHUNK));

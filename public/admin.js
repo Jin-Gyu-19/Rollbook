@@ -149,9 +149,13 @@
         body: JSON.stringify({
           title: $('sheetTitle').value,
           sheet_date: $('sheetDate').value,
+          rp_code: $('sheetRpCode').value,
+          rp_teacher: $('sheetRpTeacher').value,
+          rp_hours: $('sheetRpHours').value,
         }),
       });
       $('sheetTitle').value = '';
+      $('sheetRpCode').value = $('sheetRpTeacher').value = $('sheetRpHours').value = '';
       toast('출석부를 만들었습니다');
       loadSheets();
     } catch (e) {
@@ -225,7 +229,8 @@
                 ${sortable ? `<span class="grip">${GRIP_SVG}</span>` : ''}<span class="num">${sheetsCache.indexOf(s) + 1}</span>
               </td>
               <td class="nowrap">${esc(s.sheet_date)}</td>
-              <td><b>${esc(s.title)}</b></td>
+              <td><b>${esc(s.title)}</b>${(s.rp_code || s.rp_teacher || s.rp_hours)
+                ? `<div class="muted" style="font-size:12px; margin-top:2px;">${esc([s.rp_code && `코드 ${s.rp_code}`, s.rp_teacher, s.rp_hours && `${s.rp_hours}시간`].filter(Boolean).join(' · '))}</div>` : ''}</td>
               <td>${s.is_active ? '<span class="stag ok">기록 중</span>' : '<span class="stag">보관</span>'}</td>
               <td style="font-variant-numeric:tabular-nums;" class="nowrap">${s.attended} / ${memberCountText()}</td>
               <td class="right"><span class="row-actions" style="justify-content:flex-end; flex-wrap:nowrap;">
@@ -237,7 +242,7 @@
                   <span class="menu" data-menu="${s.id}" hidden>
                     ${s.is_active ? `<button data-act="scan" data-id="${s.id}">📷 스캔 화면 열기</button>` : ''}
                     <button data-act="view" data-id="${s.id}">출석 현황 보기</button>
-                    <button data-act="edit" data-id="${s.id}">이름·날짜 수정</button>
+                    <button data-act="edit" data-id="${s.id}">수정 (이름·날짜·집계표 정보)</button>
                   </span>
                 </span>
                 <button class="icon-btn danger" data-act="del" data-id="${s.id}" title="삭제">${TRASH_SVG}</button>
@@ -408,11 +413,18 @@
       } else if (b.dataset.act === 'edit') {
         openEdit('출석부 수정', `
           <label>출석부 이름 <input id="efTitle" value="${esc(sheet.title)}"></label>
-          <label>날짜 <input id="efDate" type="date" value="${esc(sheet.sheet_date)}"></label>`,
+          <label>날짜 <input id="efDate" type="date" value="${esc(sheet.sheet_date)}"></label>
+          <p class="hint" style="margin:10px 0 4px;">출석집계표용 — 비워 두면 내려받을 때 오른쪽 칸 값을 씁니다.</p>
+          <label>코드번호 <input id="efRpCode" value="${esc(sheet.rp_code ?? '')}" placeholder="5030500" inputmode="numeric"></label>
+          <label>강사명 <input id="efRpTeacher" value="${esc(sheet.rp_teacher ?? '')}" placeholder="김효건"></label>
+          <label>연수시간 <input id="efRpHours" type="number" min="0" step="0.5" value="${esc(sheet.rp_hours ?? '')}" placeholder="2"></label>`,
           async () => {
             await api(`/api/sheets/${id}`, {
               method: 'PUT',
-              body: JSON.stringify({ title: $('efTitle').value, sheet_date: $('efDate').value }),
+              body: JSON.stringify({
+                title: $('efTitle').value, sheet_date: $('efDate').value,
+                rp_code: $('efRpCode').value, rp_teacher: $('efRpTeacher').value, rp_hours: $('efRpHours').value,
+              }),
             });
             toast('저장되었습니다');
             loadSheets();
@@ -461,6 +473,12 @@
     if (!sheet) return;
     if ($('rpSubject') && rpFilledFor !== id) $('rpSubject').value = sheet.title;
     if ($('rpDate')) $('rpDate').value = sheet.sheet_date || $('rpDate').value;
+    // 출석부에 적어 둔 코드번호·강사명·연수시간이 있으면 그걸로 (없으면 전에 쓰던 값 그대로)
+    if (rpFilledFor !== id) {
+      if (sheet.rp_code && $('rpCode')) $('rpCode').value = sheet.rp_code;
+      if (sheet.rp_teacher && $('rpTeacher')) $('rpTeacher').value = sheet.rp_teacher;
+      if (sheet.rp_hours && $('rpHours')) $('rpHours').value = sheet.rp_hours;
+    }
     rpFilledFor = id;
   }
 
@@ -707,7 +725,7 @@
       <tr>
         <td style="white-space:nowrap;">${esc(fmtShortTime(r.at))}</td>
         <td>${esc(r.sheet_date)} · ${esc(r.sheet_title)}</td>
-        <td style="white-space:nowrap;">${r.n}명 · ${esc(fmtShortTime(r.checked_at))}</td>
+        <td style="white-space:nowrap;">${r.n}명 · ${esc(fmtShortTime(r.checked_at))}${r.spread ? '~' : ''}</td>
         <td class="right" style="white-space:nowrap;">${r.undone_at
           ? `<span class="muted">되돌림 (${r.undone_n}명)</span>`
           : `<button class="small ghost" data-undo="${esc(r.id)}">되돌리기</button>`}</td>
@@ -940,7 +958,8 @@
         <label style="margin:0;">출석 날짜 <input type="date" id="rcDate" value="${esc(defDate)}" style="margin:4px 0 0;"></label>
         <label style="margin:0;">출석 시각 (한국시간) <input type="time" id="rcTime" value="${esc(defTime)}" style="margin:4px 0 0;"></label>
       </div>
-      <p class="hint" style="margin:6px 0 0;">아래에서 고른 사람만 이 시각으로 출석 처리됩니다. 이미 출석한 사람의 시각은 바꾸지 않습니다.</p>
+      <label class="check-inline" style="margin:8px 0 0;"><input type="checkbox" id="rcSpread" checked> 시각을 조금씩 흩어 넣기 (사람마다 10~60초씩 띄우고 순서를 섞음)</label>
+      <p class="hint" style="margin:6px 0 0;">아래에서 고른 사람만 이 시각부터 출석 처리됩니다. 이미 출석한 사람의 시각은 바꾸지 않습니다.</p>
       ${reconPlanHtml(plan, false)}
       </div>`;
     const root = () => $('editModalFields');
@@ -950,10 +969,11 @@
       const at = reconAt($('rcDate').value, $('rcTime').value);
       const r = await api('/api/recon/apply', {
         method: 'POST',
-        body: JSON.stringify({ sheet_id: sheet.id, member_ids: ids, checked_at: at }),
+        body: JSON.stringify({ sheet_id: sheet.id, member_ids: ids, checked_at: at, spread: $('rcSpread').checked }),
       }).catch((e) => { renderStatus(sheet.id); throw e; });   // 중간에 멈췄어도 표는 지금 상태로
       const extra = [r.already ? `이미 출석 ${r.already}명` : '', r.missing ? `명단에서 사라짐 ${r.missing}명` : ''].filter(Boolean);
-      toast(`${r.added}명을 출석 처리했습니다${extra.length ? ` (${extra.join(' · ')})` : ''}`);
+      const span = r.last_at && r.last_at !== r.checked_at ? ` · ${reconHm(r.checked_at)}~${reconHm(r.last_at)}` : '';
+      toast(`${r.added}명을 출석 처리했습니다${span}${extra.length ? ` (${extra.join(' · ')})` : ''}`);
       renderStatus(sheet.id);
     });
     editModal.querySelector('.modal-body').style.maxWidth = '640px';
@@ -996,6 +1016,7 @@
     const html = `
       <p class="hint" style="margin:0 0 6px;">‘${esc(fileName)}’ 에서 시트 ${parts.length}개를 찾았습니다. 시트마다 어느 출석부에 맞출지와 출석 시각을 확인해 주세요.
         건너뛰기로 둔 시트는 처리하지 않습니다. 이미 출석한 사람의 시각은 바꾸지 않습니다.</p>
+      <label class="check-inline" style="margin:0 0 4px;"><input type="checkbox" id="rcSpread" checked> 시각을 조금씩 흩어 넣기 (사람마다 10~60초씩 띄우고 순서를 섞음)</label>
       ${blocks}`;
     const root = () => $('editModalFields');
     const blkOf = (i) => root().querySelector(`.rc-blk[data-i="${i}"]`);
@@ -1054,7 +1075,7 @@
         try {
           const r = await api('/api/recon/apply', {
             method: 'POST',
-            body: JSON.stringify({ sheet_id: j.sheet.id, member_ids: j.ids, checked_at: j.at }),
+            body: JSON.stringify({ sheet_id: j.sheet.id, member_ids: j.ids, checked_at: j.at, spread: $('rcSpread').checked }),
           });
           added += r.added; done.push(j);
         } catch (e) {
@@ -1098,7 +1119,8 @@
   };
   const sheetNameSafe = (v) => String(v).replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 31);
 
-  async function buildReportXlsx(rows, meta) {
+  // 시트 한 장의 XML (집계표 양식 그대로)
+  function reportSheetXml(rows, meta, selected) {
     const esc2 = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const txt = (ref, val, st) => `<c r="${ref}" t="inlineStr"${st ? ` s="${st}"` : ''}><is><t xml:space="preserve">${esc2(val)}</t></is></c>`;
     const num = (ref, val, st) => `<c r="${ref}"${st ? ` s="${st}"` : ''}><v>${val}</v></c>`;
@@ -1147,7 +1169,7 @@
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
       `<dimension ref="A1:D${lastRow}"/>` +
-      '<sheetViews><sheetView tabSelected="1" workbookViewId="0"/></sheetViews>' +
+      `<sheetViews><sheetView ${selected ? 'tabSelected="1" ' : ''}workbookViewId="0"/></sheetViews>` +
       '<sheetFormatPr defaultRowHeight="16.5"/>' +
       '<cols>' +
       '<col min="1" max="1" width="14.4" customWidth="1"/>' +
@@ -1159,7 +1181,10 @@
       '<mergeCells count="1"><mergeCell ref="A1:D1"/></mergeCells>' +
       '</worksheet>';
 
-    const styles =
+    return sheet;
+  }
+
+  const REPORT_STYLES =
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
       '<numFmts count="1"><numFmt numFmtId="176" formatCode="yyyy&quot;-&quot;mm&quot;-&quot;dd"/></numFmts>' +
@@ -1186,7 +1211,10 @@
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>' + /* 6 본문 */
       '</cellXfs></styleSheet>';
 
-    const name = sheetNameSafe(`출석집계표_${meta.code}_${meta.subject}`);
+
+  // 집계표 시트 여러 장을 엑셀 파일 하나로 묶는다 — parts: [{ name, rows, meta }]
+  async function buildReportWorkbook(parts) {
+    const esc2 = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     await needZip();
     const zip = new JSZip();
     zip.file('[Content_Types].xml',
@@ -1195,7 +1223,7 @@
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
       '<Default Extension="xml" ContentType="application/xml"/>' +
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      parts.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') +
       '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
       '</Types>');
     zip.file('_rels/.rels',
@@ -1207,16 +1235,21 @@
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
       'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-      `<sheets><sheet name="${esc2(name)}" sheetId="1" state="visible" r:id="rId1"/></sheets></workbook>`);
+      `<sheets>${parts.map((p, i) => `<sheet name="${esc2(p.name)}" sheetId="${i + 1}" state="visible" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`);
     zip.file('xl/_rels/workbook.xml.rels',
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
-      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      parts.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') +
+      `<Relationship Id="rId${parts.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
       '</Relationships>');
-    zip.file('xl/styles.xml', styles);
-    zip.file('xl/worksheets/sheet1.xml', sheet);
-    return { blob: await zip.generateAsync({ type: 'blob' }), name };
+    zip.file('xl/styles.xml', REPORT_STYLES);
+    parts.forEach((p, i) => zip.file(`xl/worksheets/sheet${i + 1}.xml`, reportSheetXml(p.rows, p.meta, i === 0)));
+    return zip.generateAsync({ type: 'blob' });
+  }
+
+  async function buildReportXlsx(rows, meta) {
+    const name = sheetNameSafe(`출석집계표_${meta.code}_${meta.subject}`);
+    return { blob: await buildReportWorkbook([{ name, rows, meta }]), name };
   }
 
   $('btnReport')?.addEventListener('click', async () => {
@@ -1265,6 +1298,54 @@
       $('rpHint').textContent = `${list.length}명으로 만들었습니다.`
         + (noCpa.length ? ` 회계사 번호가 없는 ${noCpa.length}명(${noCpa.slice(0, 5).map((x) => x.name).join(', ')}${noCpa.length > 5 ? ' 외' : ''})은 ${$('rpOnlyCpa').checked ? '빠졌습니다' : '등록번호 칸이 비어 있습니다'} — 명단 탭에서 번호를 채울 수 있습니다.` : '');
       toast(`출석집계표 ${list.length}명을 내려받았습니다`);
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  });
+
+  // 출석집계표 모두 — 엑셀 파일 하나에 출석부별 시트. 과목명·일시는 출석부에서, 코드번호·강사명·연수시간은
+  // 출석부에 적어 둔 값(없으면 오른쪽 칸 값)으로. 장소와 '회계사 번호가 있는 사람만' 은 오른쪽 칸을 따른다.
+  $('btnReportAll')?.addEventListener('click', async () => {
+    const btn = $('btnReportAll');
+    if (!sheetsCache.length) { toast('출석부가 없습니다', true); return; }
+    btn.disabled = true;
+    const label = btn.textContent;
+    const onlyCpa = $('rpOnlyCpa').checked;
+    const fallback = { code: $('rpCode').value.trim(), teacher: $('rpTeacher').value.trim(), hours: Number($('rpHours').value) || 0, place: $('rpPlace').value.trim() };
+    try {
+      const parts = [];
+      const empty = [];
+      const names = new Set();
+      for (let i = 0; i < sheetsCache.length; i++) {
+        const sh = sheetsCache[i];
+        btn.textContent = `만드는 중… ${i + 1} / ${sheetsCache.length}`;
+        const { rows } = await api(`/api/sheets/${sh.id}`);
+        const attended = rows.filter((r) => r.checked_at);
+        const list = onlyCpa ? attended.filter((r) => String(r.cpa_no ?? '').trim()) : attended;
+        if (!list.length) { empty.push(sh.title); continue; }
+        list.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+        const meta = {
+          subject: sh.title, date: sh.sheet_date, place: fallback.place,
+          code: sh.rp_code || fallback.code,
+          teacher: sh.rp_teacher || fallback.teacher,
+          hours: Number(sh.rp_hours) || fallback.hours,
+        };
+        let name = sheetNameSafe(`출석집계표_${sh.title}`);
+        for (let k = 2; names.has(name); k++) name = sheetNameSafe(`출석집계표_${sh.title}`).slice(0, 31 - ` (${k})`.length) + ` (${k})`;
+        names.add(name);
+        parts.push({ name, rows: list, meta });
+      }
+      if (!parts.length) { toast('내보낼 출석 기록이 있는 출석부가 없습니다', true); return; }
+      const blob = await buildReportWorkbook(parts);
+      saveBlob(blob, `출석집계표_전체_${kstToday()}.xlsx`);
+      const noMeta = sheetsCache.filter((sh) => !sh.rp_code || !sh.rp_teacher || !sh.rp_hours).map((sh) => sh.title);
+      $('rpAllHint').textContent = `출석부 ${parts.length}개를 시트 하나씩으로 만들었습니다.`
+        + (empty.length ? ` 기록이 없어 뺀 출석부: ${empty.join(', ')}.` : '')
+        + (noMeta.length ? ` 코드번호·강사명·연수시간이 비어 있어 오른쪽 칸 값을 쓴 출석부: ${noMeta.join(', ')} — 출석부 탭에서 적어 두면 다음부터 자동으로 들어갑니다.` : '');
+      toast(`출석집계표 ${parts.length}개 시트를 내려받았습니다`);
     } catch (e) {
       toast(e.message, true);
     } finally {

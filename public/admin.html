@@ -44,6 +44,14 @@
         </label>
         <span class="actions"><button class="primary" id="btnCreateSheet">만들기</button></span>
       </div>
+      <details style="margin-top:8px;">
+        <summary class="hint" style="cursor:pointer;">출석집계표 정보 (코드번호 · 강사명 · 연수시간) — 과목마다 다르면 여기에 적어 두세요</summary>
+        <div class="form-row" style="margin-top:8px;">
+          <label>코드번호 <input id="sheetRpCode" placeholder="5030500" inputmode="numeric"></label>
+          <label>강사명 <input id="sheetRpTeacher" placeholder="김효건"></label>
+          <label>연수시간 <input id="sheetRpHours" type="number" min="0" step="0.5" placeholder="2"></label>
+        </div>
+      </details>
       <p class="hint">만든 뒤 목록의 <b>⋯</b> → "📷 출석 체크 시작" 을 누르면 그 출석부로 기록이 시작되면서 촬영 화면이 열립니다.</p>
     </div>
 
@@ -87,6 +95,8 @@
         </label>
         <button class="primary" id="btnReport" style="width:100%;">출석집계표 내려받기</button>
         <p class="hint" id="rpHint" style="margin-top:10px;"></p>
+        <button id="btnReportAll" style="width:100%; margin-top:6px;">모든 출석부 집계표 (엑셀 하나)</button>
+        <p class="hint" id="rpAllHint" style="margin-top:10px;">엑셀 파일 하나에 출석부마다 시트 하나씩. 과목명·일시는 출석부에서, 코드번호·강사명·연수시간은 출석부에 적어 둔 값(없으면 위 칸)으로 넣습니다.</p>
 
         <div class="side-div"></div>
         <h2 style="margin:0 0 6px; font-size:16px;">출석 체크 내역 내려받기</h2>
